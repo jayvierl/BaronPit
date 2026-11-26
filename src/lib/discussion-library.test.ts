@@ -1,15 +1,21 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { postgres } from "../../test/postgres";
 import { q } from "./db";
 import { librarySchema } from "./discussion-library-schema";
 import { changeLibrary, hasUnreadReplies, libraryState, publicDiscussion, replyActivity, savedPlaybook, setReplyMode, watchedDiscussions } from "./discussion-library";
 import { discussionMetadata } from "./discussion-library-preview";
+import { profileReplies } from "./profile-replies";
+import { addComment, listComments } from "./social";
+import { withdrawSubmission } from "./submissions";
+import type { User } from "./auth";
 
 vi.mock("@neondatabase/serverless", async () => ({ neon: (await import("../../test/postgres")).neonForTests }));
 beforeAll(async () => {
   vi.stubEnv("VERCEL_ENV", "development");
   vi.stubEnv("DATABASE_URL", "postgresql://fixture.invalid/library");
   vi.stubEnv("APP_ORIGIN", "https://community.example");
+  vi.stubEnv("MODERATION_OPENAI_API_KEY", "");
   await q`SELECT 1`;
   await postgres.exec(librarySchema.join(";"));
 }, 30000);
@@ -67,6 +73,39 @@ describe("private discussion library", () => {
     expect(await changeLibrary(1, "comment", 25, "read", true)).toBe(true);
     expect(await hasUnreadReplies(1)).toBe(false);
     expect((await watchedDiscussions(1, null)).entries).toEqual([]);
+  });
+  it("addresses a nested comment by ID in Activity and public Replies and keeps retries idempotent", async () => {
+    const sender: User = { id: 1, email: "1@example.invalid", displayName: "Reader", avatarHue: 1,
+      bio: "", createdAt: "2025-01-01", bannedUntil: null, strikeCount: 0, ageBand: "adult", termsCurrent: true };
+    await q`UPDATE wp_users SET display_name='Alice' WHERE id=2`;
+    await q`UPDATE wp_users SET display_name='Bob' WHERE id=3`;
+    const key = randomUUID();
+    const send = (parentId = 23, submissionId = key) =>
+      addComment(sender, 10, "Save that wave before dragon.", parentId, false, false, submissionId);
+    const [reply, retry] = await Promise.all([send(),send()]);
+    if (!reply.ok) throw Error(reply.error);
+    expect(retry).toEqual(reply);
+    expect(reply.status).toBe("visible");
+    expect(await q`SELECT parent_id FROM wp_comments WHERE submission_id=${key}::uuid`).toEqual([{parent_id:23}]);
+    expect(await send(21)).toMatchObject({ok:false, error:expect.stringContaining("different submission")});
+    expect((await listComments(10,null))[0].replies[0].replies).toMatchObject([{id: reply.postId, parentId: 23}]);
+    expect((await replyActivity(3,null)).entries).toMatchObject([{id:reply.postId, replyReason:"comment", unread:true}]);
+    expect((await replyActivity(2,null)).entries.map(entry => entry.id)).not.toContain(reply.postId);
+    expect(await changeLibrary(2,"comment",reply.postId,"read",true)).toBe(false);
+    expect(await changeLibrary(3,"comment",reply.postId,"read",true)).toBe(true);
+    expect((await profileReplies(1,null,null)).replies).toContainEqual(expect.objectContaining({id:reply.postId, recipient:"Bob"}));
+    // An older reply still addresses the actual comment stored on its original row.
+    expect((await profileReplies(3,null,null)).replies).toMatchObject([{id:23, recipient:"Alice"}]);
+
+    await q`INSERT INTO wp_blocks(blocker_id,blocked_id) VALUES(3,1)`;
+    expect(await send(23,randomUUID())).toMatchObject({ok:false});
+    expect((await replyActivity(3,null)).entries).toEqual([]);
+    await q`DELETE FROM wp_blocks WHERE blocker_id=3 AND blocked_id=1`;
+    expect(await withdrawSubmission(2,"comment",21)).toBe(true);
+    expect((await replyActivity(3,null)).entries).toEqual([]);
+    expect((await profileReplies(1,null,null)).replies.map(row => row.id)).not.toContain(reply.postId);
+    expect(await send(23,randomUUID())).toMatchObject({ok:false});
+    expect(await send()).toEqual(reply);
   });
   it("silences direct and watched replies per recipient and resumes without backfilling the muted period", async () => {
     expect(await setReplyMode(2,10,"muted")).toBe(true);

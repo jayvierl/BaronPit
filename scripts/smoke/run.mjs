@@ -11,6 +11,7 @@ import { checkCommunityDuo } from "./community-duo.mjs";
 import { checkPlayerProfiles } from "./profiles.mjs";
 import { checkNavigation } from "./navigation.mjs";
 import { checkProfileEditor } from "./profile-editor.mjs";
+import { checkPersonalSafety } from "./personal-safety.mjs";
 import { fixturePhotoEnv } from "./photo-scanner.mjs";
 import { checkImage, publicArtwork } from "../public-art.mjs";
 
@@ -266,6 +267,7 @@ try {
   await checkSubmissions(journey);
   await checkCommunityDuo(journey);
   await checkProfileEditor(journey);
+  await checkPersonalSafety(journey);
   console.log(completed + " production HTTP journeys passed against the local PostgreSQL fixture.");
 } catch (error) {
   console.error(output);

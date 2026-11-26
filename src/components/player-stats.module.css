@@ -8,16 +8,21 @@
 .header { align-items: baseline; justify-content: space-between; gap: 8px; }
 .header h2 { margin: 0; font-size: 1rem; }
 .header a { color: var(--accent-ink); font-size: .84rem; font-weight: 600; }
+.records { display: grid; gap: 10px; margin: 12px 0; }
+.queue + .queue { border-top: 1px solid var(--border); padding-top: 10px; }
+.queue h3 { margin: 0 0 6px; font-size: .9rem; }
+.rankEmpty { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 0; }
 .ranked {
   display: grid;
-  grid-template-columns: 1.12fr 1fr .88fr;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
-  margin: 14px 0;
+  margin: 0;
   font-variant-numeric: tabular-nums;
 }
 .panel dt, .panel small, .note { color: var(--ink-soft); font-size: .79rem; }
 .panel dd { margin: 2px 0 0; }
 .ranked dd { font-weight: 700; font-size: clamp(1rem, 3.6vw, 1.4rem); line-height: 1.2; }
+.ranked dd small { display: block; margin-top: 3px; font-weight: 400; }
 .recent { border-top: 1px solid var(--border); padding-top: 10px; }
 .recent h3 { margin: 0 0 7px; font-size: .84rem; }
 .recent dl { margin: 0; gap: 6px 20px; }

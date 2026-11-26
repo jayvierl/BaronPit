@@ -82,7 +82,9 @@ export async function duoPilotResults(window = duoPilotWindows().current): Promi
   ), invites AS MATERIALIZED (
     SELECT CASE WHEN s.user_id IS NOT NULL AND o.user_id IS NOT NULL THEN r.sender_puuid END AS sender_puuid,
       CASE WHEN s.user_id IS NOT NULL AND o.user_id IS NOT NULL THEN l.puuid END AS owner_puuid,
-      r.id,r.created_at,r.accepted_at,r.status,r.sender_requeue,r.owner_requeue,
+      r.id,r.created_at,r.accepted_at,r.cancelled_at,r.sender_requeue,r.owner_requeue,
+      (r.status='accepted' OR (r.status='declined' AND r.cancelled_at IS NOT NULL))
+        AND r.accepted_at BETWEEN r.created_at AND now() AS accepted,
       s.user_id AS enrolled_sender,o.user_id AS enrolled_owner
     FROM wp_duo_requests r JOIN wp_lfg l ON l.id=r.listing_id
     LEFT JOIN active s ON s.user_id=r.sender_id AND s.joined_at<=r.created_at
@@ -98,14 +100,17 @@ export async function duoPilotResults(window = duoPilotWindows().current): Promi
       AND ${independent("sender")} AND ${independent("owner")}
   ), bilateral AS (
     SELECT least(r.enrolled_sender,r.enrolled_owner) AS first_id,greatest(r.enrolled_sender,r.enrolled_owner) AS second_id,
-      r.status='accepted' AND r.accepted_at BETWEEN r.created_at AND now() AS accepted,
-      r.sender_requeue AND r.owner_requeue AS mutual,ck.covered_until,r.created_at,r.accepted_at,
-      ARRAY(SELECT started FROM (${sharedStarts}) observed WHERE sender.fetched_at>now()-interval '24 hours' AND owner.fetched_at>now()-interval '24 hours'
-        UNION SELECT ck.first_game_at UNION SELECT ck.repeat_game_at) AS starts
+      r.accepted,r.cancelled_at IS NULL AND r.sender_requeue AND r.owner_requeue AS mutual,
+      ck.covered_until,r.created_at,r.accepted_at,
+      ARRAY(SELECT started FROM (${sharedStarts}) observed WHERE r.cancelled_at IS NULL
+          AND sender.fetched_at>now()-interval '24 hours' AND owner.fetched_at>now()-interval '24 hours'
+        UNION SELECT ck.first_game_at WHERE r.cancelled_at IS NULL OR ck.first_game_at<=r.cancelled_at
+        UNION SELECT ck.repeat_game_at WHERE r.cancelled_at IS NULL OR ck.repeat_game_at<=r.cancelled_at) AS starts
     FROM invites r
     JOIN eligible sender ON sender.id=r.enrolled_sender AND sender.puuid=r.sender_puuid
     JOIN eligible owner ON owner.id=r.enrolled_owner AND owner.puuid=r.owner_puuid AND owner.age_band=sender.age_band AND owner.platform=sender.platform
     LEFT JOIN wp_duo_game_checks ck ON ck.request_id=r.id AND ck.expires_at>now()
+      AND (r.cancelled_at IS NULL OR ck.checked_at<=r.cancelled_at)
     WHERE r.enrolled_sender IS NOT NULL AND r.enrolled_owner IS NOT NULL
   ), pair_start AS (
     SELECT first_id,second_id,bool_or(accepted) AS accepted,bool_or(accepted AND mutual) AS mutual,
@@ -130,7 +135,7 @@ export async function duoPilotResults(window = duoPilotWindows().current): Promi
     (SELECT count(DISTINCT c.user_id)::int FROM active c JOIN wp_lfg l ON l.user_id=c.user_id
       WHERE l.safe_listing AND l.status IN ('open','closed') AND l.created_at>=greatest(c.joined_at,$4::timestamptz) AND l.created_at<$5::timestamptz) listed,
     (SELECT count(DISTINCT enrolled_sender)::int FROM invites) sent,
-    (SELECT count(DISTINCT enrolled_owner)::int FROM invites WHERE status='accepted' AND accepted_at BETWEEN created_at AND now()) AS "acceptedInvites",
+    (SELECT count(DISTINCT enrolled_owner)::int FROM invites WHERE accepted) AS "acceptedInvites",
     (SELECT count(*)::int FROM bilateral WHERE accepted) AS "acceptedRequests",
     (SELECT round((percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM accepted_at-created_at)/60))::numeric)::int
       FROM bilateral WHERE accepted) AS "medianAcceptanceMinutes",

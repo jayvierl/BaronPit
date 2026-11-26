@@ -10,7 +10,7 @@ import type { AvatarIdentity } from "@/lib/author-identity";
 import { REACTION_EMOJIS, samePatch } from "@/lib/pure";
 import { clipLink } from "@/lib/clip-link";
 import { PATCH_NOTES_INDEX, publicPatch } from "@/lib/patch-notes";
-import { Avatar, RichBody, timeAgo } from "./ui";
+import { Avatar, PermalinkTime, RichBody, timeAgo } from "./ui";
 import { ChampionPortrait } from "./champion-portrait";
 import { MatchCard } from "./match-card";
 import { PostLibraryActions } from "./discussion-library-actions";
@@ -111,8 +111,8 @@ export function PostCard({
             <Link className="post-author" href={`/u/${post.authorId}`}>
               {post.authorName}
             </Link>
-            <a className={styles.permalink} href={`/post/${post.id}`} aria-label={`Open thread by ${post.authorName}`}>
-              <time className="time" dateTime={post.createdAt} title={post.createdAt} suppressHydrationWarning>{timeAgo(post.createdAt)}</time>
+            <a className={styles.permalink} href={`/post/${post.id}`}>
+              <PermalinkTime iso={post.createdAt} context={`Open thread by ${post.authorName}`} />
             </a>
             {post.roomName && post.roomSlug && <span className={styles.topic}>
               <span aria-hidden="true">›</span> <Link href={`/rooms/${post.roomSlug}`}>{post.roomName}</Link>

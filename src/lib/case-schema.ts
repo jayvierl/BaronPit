@@ -28,6 +28,12 @@ export function caseSchema(sql: NeonQueryFunction<false, false>) {
       evidence text NOT NULL,opened_at timestamptz NOT NULL DEFAULT now(),reviewed_at timestamptz)`,
     sql`ALTER TABLE wp_safety_urgent ADD COLUMN IF NOT EXISTS release_requested_by integer`,
     sql`CREATE UNIQUE INDEX IF NOT EXISTS wp_safety_urgent_open ON wp_safety_urgent(target_kind,target_id) WHERE reviewed_at IS NULL`,
+    sql`CREATE TABLE IF NOT EXISTS wp_safety_text_evidence (
+      receipt uuid NOT NULL REFERENCES wp_safety_urgent(receipt), digest text NOT NULL CHECK (digest ~ '^[a-f0-9]{64}$'),
+      surface text NOT NULL CHECK (surface IN ('post','comment','profile','duo')),
+      fields jsonb NOT NULL CHECK (jsonb_typeof(fields)='array'),
+      captured_at timestamptz NOT NULL DEFAULT now(), reported_at timestamptz,
+      legal_hold boolean NOT NULL DEFAULT true, PRIMARY KEY(receipt,digest))`,
     sql`ALTER TABLE wp_safety_appeals ADD COLUMN IF NOT EXISTS review_operation uuid`,
     sql`ALTER TABLE wp_reports ADD COLUMN IF NOT EXISTS decision_id integer REFERENCES wp_safety_decisions(id)`,
     sql`CREATE INDEX IF NOT EXISTS wp_open_safety_cases ON wp_reports(target_kind,target_id,category,reporter_id) WHERE status='open'`,

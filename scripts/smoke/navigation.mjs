@@ -10,6 +10,10 @@ export async function checkNavigation(journey) {
   const primary = search.match(/<nav\b[^>]*aria-label="Primary"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
   assert.equal((primary.match(/<a\b/g) ?? []).length, 5);
   for (const path of ["/", "/search", "/#compose", "/activity", "/lfg"]) assert.ok(primary.includes('href="' + path + '"'));
+  for (const [, attrs, markup] of primary.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)) {
+    const text = markup.replace(/<[^>]+>/g, "").trim();
+    assert.ok(text && attrs.includes('aria-label="' + text + '"'), "Navigation label must match its visible text");
+  }
   assert.ok(search.includes('aria-label="My profile"'));
   assert.ok(search.includes('aria-label="Explore the community"'));
   await journey("/search?scope=players", {includes:['aria-label="League region"', 'name="q"', "Player stats"]});

@@ -8,6 +8,9 @@ import {normalizePhoto,readPhotoBody,maxOriginalBytes} from "./profile-photo-ima
 import {photoStatus,stagePhoto,readPhoto,removePhotos,maintainPhotos} from "./profile-photo";
 import {reviewablePhotos,readReviewPhoto,resolvePhoto} from "./profile-photo-review";
 import {scanPhoto,photoScanningEnabled} from "./profile-photo-scanner";
+import { screenText } from "./managed-text-screen";
+import { scoreContent } from "./moderation";
+import { fileReport } from "./safety-cases";
 vi.mock("@neondatabase/serverless",async()=>({neon:(await import("../../test/postgres")).neonForTests}));
 vi.mock("./profile-photo-scanner",()=>({photoScanningEnabled:vi.fn(()=>true),scanPhoto:vi.fn(async()=>"approved")}));
 const admin={id:6,email:"staff@example.invalid",bannedUntil:null} as User;
@@ -86,17 +89,53 @@ describe("private raster photo lifecycle",()=>{
   });
   it("backs up a selected image on a subsequent child-safety report, and expiry spares protected evidence",async()=>{
     const current=await stage(4);await select(4,current.photoId,current.photoHash!);
-    await q`INSERT INTO wp_safety_urgent(receipt,target_kind,target_id,rule,evidence) VALUES
-      ('12345678-1234-4123-8123-123456789abc','user',4,'child_safety','Synthetic report')`;
+    vi.stubEnv("MODERATION_OPENAI_API_KEY", "fixture-only");
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({results:[{flagged:true,categories:{"sexual/minors":true}}]})));
+    try {
+      const fixture = "Inert synthetic profile text";
+      expect((await screenText(scoreContent(fixture), [fixture], 4, "profile")).action).toBe("block");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.stubEnv("MODERATION_OPENAI_API_KEY", "");
+    }
+    const [incident]=await q`SELECT receipt FROM wp_safety_urgent WHERE target_kind='user' AND target_id=4`;
+    expect(await readPhoto(null,current.photoId,current.photoHash!)).toEqual(image);
+    expect(await q`SELECT id FROM wp_profile_photo_evidence WHERE id=${current.photoId}::uuid`).toEqual([]);
+    await q`UPDATE wp_safety_urgent SET release_requested_by=2 WHERE receipt=${incident.receipt}::uuid`;
+    expect(await fileReport(admin,"user",4,"child_safety","Synthetic avatar report")).toEqual({status:200});
     expect(await readPhoto(null,current.photoId,current.photoHash!)).toBeNull();
+    expect(await q`SELECT receipt,release_requested_by FROM wp_safety_urgent WHERE target_kind='user' AND target_id=4`)
+      .toEqual([{receipt:incident.receipt,release_requested_by:null}]);
     await removePhotos(4);
-    expect(await q`SELECT source,legal_hold FROM wp_profile_photo_evidence WHERE id=${current.photoId}::uuid`).toEqual([{source:"profile_report",legal_hold:true}]);
+    expect(await q`SELECT receipt,source,legal_hold FROM wp_profile_photo_evidence WHERE id=${current.photoId}::uuid`)
+      .toEqual([{receipt:incident.receipt,source:"profile_report",legal_hold:true}]);
     const staged=await stage(5);
     await q`UPDATE wp_profile_photos SET expires_at=now()-interval '1 minute' WHERE id=${staged.photoId}::uuid`;
     expect(await readPhoto(5,staged.photoId,staged.photoHash!,true)).toBeNull();
     await maintainPhotos();
     expect(await q`SELECT id FROM wp_profile_photos WHERE id=${staged.photoId}::uuid`).toEqual([]);
     expect(await q`SELECT count(*)::int AS count FROM wp_profile_photo_evidence`).toEqual([{count:2}]);
+  });
+  it("defers expiry during a scan and preserves a late restricted result",async()=>{
+    let start!: (id:string)=>void;
+    let finish!: ()=>void;
+    const scanning = new Promise<string>(resolve=>{start=resolve});
+    const wait = new Promise<void>(resolve=>{finish=resolve});
+    vi.mocked(scanPhoto).mockImplementationOnce(async ({id})=>{start(id);await wait;return "restricted"});
+    const upload = stagePhoto(1,original,image);
+    const id = await scanning;
+    try {
+      await q`UPDATE wp_profile_photos SET expires_at=now()-interval '1 minute' WHERE id=${id}::uuid`;
+      await q`DELETE FROM wp_profile_photos WHERE id=${id}::uuid AND expires_at<=now()`;
+      await maintainPhotos();
+      expect(await q`SELECT status FROM wp_profile_photos WHERE id=${id}::uuid`).toEqual([{status:"pending"}]);
+    } finally {
+      finish();
+      await upload;
+    }
+    await maintainPhotos();
+    expect(await q`SELECT id FROM wp_profile_photos WHERE id=${id}::uuid`).toEqual([]);
+    expect(await q`SELECT source FROM wp_profile_photo_evidence WHERE id=${id}::uuid`).toEqual([{source:"scanner"}]);
   });
   it("recovers pending attempts via the authorized maintenance runner and checks readiness before accepting bytes",async()=>{
     vi.mocked(scanPhoto).mockResolvedValueOnce("pending");

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { playerFromRow } from "./riot";
-import { publicPlayerSummary, readRankedEntries, type RankedEntry } from "./player-summary";
+import { playerSnapshotTiming, publicPlayerSummary, readRankedEntries, socialRankLabel, type RankedEntry } from "./player-summary";
 
 const solo: RankedEntry = {queueType:"RANKED_SOLO_5x5",tier:"GOLD",rank:"II",leaguePoints:42,wins:80,losses:20};
 const flex: RankedEntry = {queueType:"RANKED_FLEX_SR",tier:"EMERALD",rank:"IV",leaguePoints:19,wins:1,losses:9};
@@ -15,6 +15,10 @@ describe("public Riot profile summary", () => {
       rankedGames:110,rankedWins:81,rankedLosses:29,rankedWinRate:74,
       hasBothQueues:true,rankedGamesScope:"solo-and-flex",sampleGames:0,topRole:null,
       asOf:"2025-12-15T03:00:00.000Z",
+      rankedRecords:[
+        {queue:"Ranked Solo/Duo",rank:"Gold II · 42 LP",tier:"GOLD",wins:80,losses:20,games:100,winRate:80},
+        {queue:"Ranked Flex",rank:"Emerald IV · 19 LP",tier:"EMERALD",wins:1,losses:9,games:10,winRate:10},
+      ],
     });
   });
 
@@ -23,6 +27,7 @@ describe("public Riot profile summary", () => {
     expect(player.rankTier).toBeNull();
     expect(publicPlayerSummary(player)).toMatchObject({
       queue:"Ranked Flex",rank:"Emerald IV · 19 LP",games:10,winRate:10,hasBothQueues:false,
+      rankedRecords:[{queue:"Ranked Flex",tier:"EMERALD",games:10}],
     });
   });
 
@@ -41,13 +46,22 @@ describe("public Riot profile summary", () => {
 
   it("distinguishes no published rank or a zero denominator from an actual zero win rate", () => {
     const summary = (rankedEntries: unknown) => publicPlayerSummary(playerFromRow({...row,snapshot:{rankedEntries}}));
-    expect(summary([])).toMatchObject({rank:"Unranked",rankStatus:"unranked",games:null,winRate:null});
+    expect(summary([])).toMatchObject({rank:"Unranked",rankStatus:"unranked",games:null,winRate:null,rankedRecords:[]});
     expect(summary([{...solo,wins:0,losses:0}])).toMatchObject({games:0,winRate:null});
     expect(summary([{...solo,wins:0,losses:2}])).toMatchObject({games:2,winRate:0});
     expect(readRankedEntries([{...solo,wins:-3}])).toBeUndefined();
     expect(readRankedEntries([solo,solo])).toBeUndefined();
     expect(readRankedEntries([null])).toBeUndefined();
     expect(readRankedEntries([solo,{queueType:"CHERRY"}])).toEqual([solo]);
+  });
+
+  it("shares the cache freshness window, rejects future timestamps, and preserves dates across UTC years", () => {
+    const now = Date.parse("2026-01-01T00:03:00Z");
+    expect(playerSnapshotTiming("2026-01-01T00:00:00Z", now)).toEqual({ asOf: "2026-01-01T00:00:00.000Z", fresh: true });
+    expect(playerSnapshotTiming("2025-12-31T23:58:00Z", now)).toEqual({ asOf: "2025-12-31T23:58:00.000Z", fresh: false });
+    expect(playerSnapshotTiming("2026-01-01T00:04:00Z", now)).toEqual({ asOf: null, fresh: false });
+    const player = playerFromRow({...row, fetched_at:"2020-12-15T03:00:00Z", snapshot:{rankedEntries:[flex]}});
+    expect(socialRankLabel(player)).toBe("Emerald IV (Flex) · as of Dec 15, 2020");
   });
 
   it("caps the all-queue sample, ignores games with unknown roles, and preserves role ties", () => {

@@ -18,10 +18,10 @@ export async function DuoGameChecks({ userId }: { userId: number }) {
       <h3>Invitation accepted <time dateTime={check.acceptedAt}>{utc(check.acceptedAt)}</time></h3>
       <p>{check.firstGameAt ? "First shared game verified · " + utc(check.firstGameAt)
         : "First game awaiting confirmation."}</p>
-      {check.firstGameAt && <p>{check.repeatGameAt ? "Played again on another day · " + utc(check.repeatGameAt)
+      {check.firstGameAt && (check.repeatGameAt || !check.cancelled) && <p>{check.repeatGameAt ? "Played again on another day · " + utc(check.repeatGameAt)
         : "Repeat game awaiting confirmation. The check covers later UTC dates within seven days of your first game."}</p>}
       {check.checkedAt && <p className="meta">Last checked <time dateTime={check.checkedAt}>{utc(check.checkedAt)}</time>.</p>}
-      <DuoGameCheckButton id={check.requestId} />
+      {!check.cancelled && <DuoGameCheckButton id={check.requestId} />}
     </article>)}
   </section>;
 }

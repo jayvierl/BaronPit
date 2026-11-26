@@ -20,3 +20,9 @@ export const sharedStarts = `SELECT DISTINCT start.at AS started
 export const sharedGame = `(EXISTS (${sharedStarts}) OR EXISTS (
   SELECT 1 FROM wp_duo_game_checks saved WHERE saved.request_id=r.id
     AND saved.expires_at>now() AND saved.first_game_at>r.accepted_at))`;
+
+// A cancelled booking only keeps results that had already been confirmed and stored.
+export const confirmedBeforeCancellation = `(EXISTS (
+  SELECT 1 FROM wp_duo_game_checks saved WHERE saved.request_id=r.id
+    AND saved.expires_at>now() AND saved.checked_at<=r.cancelled_at
+    AND saved.first_game_at>r.accepted_at AND saved.first_game_at<=r.cancelled_at))`;

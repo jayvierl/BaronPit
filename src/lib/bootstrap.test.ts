@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 vi.mock("@neondatabase/serverless", async () => ({ neon: (await import("../../test/postgres")).neonForTests }));
 import { postgres, testQueries } from "../../test/postgres";
-import { q } from "./db";
+import { getSql, q, schemaStatements } from "./db";
 beforeAll(async () => {
   vi.stubEnv("DATABASE_URL","postgresql://local-fixture.invalid/old");
   vi.stubEnv("VERCEL_ENV","development");
@@ -12,9 +12,19 @@ afterAll(async()=>{vi.unstubAllEnvs();await postgres.close();});
 it("brings an existing install forward atomically and retains its patch state",async()=>{
   const rows = await q`SELECT key,value FROM wp_meta ORDER BY key`;
   expect(rows).toContainEqual({key:"last_patch",value:"16.23.1"});
-  expect(rows.some(r=>r.key==="schema_revision")).toBe(true);
+  expect(rows).toContainEqual({key:"schema_revision", value:"baron-profile-avatar-20261126-1"});
+  expect(rows).toContainEqual({key:"schema_generation", value:"1"});
   expect(await q`SELECT to_regclass('wp_safety_page_delivery') IS NOT NULL AS installed`).toEqual([{installed:true}]);
   testQueries.length=0;
   await q`SELECT 1`;
   expect(testQueries).toHaveLength(1);
+});
+
+it("stops a stale cold-start transaction before it can reapply incompatible DDL", async () => {
+  const sql = await getSql();
+  await sql`UPDATE wp_meta SET value='2' WHERE key='schema_generation'`;
+  testQueries.length = 0;
+  await expect(sql.transaction(schemaStatements(sql, true))).rejects.toMatchObject({code:"BP001"});
+  expect(testQueries.some(s => s.includes("CREATE TABLE IF NOT EXISTS wp_users"))).toBe(false);
+  expect(await q`SELECT value FROM wp_meta WHERE key='schema_generation'`).toEqual([{value:"2"}]);
 });

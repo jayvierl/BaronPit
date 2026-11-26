@@ -22,31 +22,40 @@ export function PlayerStats({ player, source = "cache", lookupHref }: {
         <h2>League stats</h2>
         {lookupHref && <Link href={lookupHref}>View match history <span aria-hidden="true">→</span></Link>}
       </header>
-      <dl className={styles.ranked}>
-        <div>
-          <dt>Rank</dt>
-          <dd><RankBadge tier={stats.tier}>{stats.rank}</RankBadge></dd>
-          {stats.rankStatus === "ranked" && <small>{stats.queue}</small>}
-        </div>
-        <div>
-          <dt>Ranked games</dt>
-          <dd>{stats.games === null ? "Unavailable" : integer.format(stats.games)}</dd>
-          <small>This ranked year</small>
-        </div>
-        <div>
-          <dt>Win rate</dt>
-          <dd>{stats.winRate === null ? "—" : `${stats.winRate}%`}</dd>
-          {stats.wins !== null && stats.losses !== null
-            ? <small>{integer.format(stats.wins)}W · {integer.format(stats.losses)}L</small>
-            : <small>Record unavailable</small>}
-        </div>
-      </dl>
+      <p className={styles.note}>
+        {source === "stale" ? "Riot couldn’t refresh this record. " : ""}
+        {stats.asOf ? <>
+          {source === "stale" || !stats.snapshotFresh ? "Last known Riot records" : "Riot snapshot"}
+          {" · "}<time dateTime={stats.asOf}>{timestamp.format(new Date(stats.asOf))} UTC</time>
+        </> : "Snapshot date unavailable."}
+      </p>
+      <div className={styles.records}>
+        {stats.rankedRecords.length ? stats.rankedRecords.map(({ queue, tier, rank, games, wins, losses, winRate }) => (
+          <section className={styles.queue} key={queue} aria-label={queue}>
+            <h3>{queue}</h3>
+            <dl className={styles.ranked}>
+              <div><dt>Rank</dt><dd><RankBadge tier={tier}>{rank}</RankBadge></dd></div>
+              <div><dt>Ranked games</dt><dd>{games === null ? "Unavailable" : integer.format(games)}</dd></div>
+              <div>
+                <dt>Win rate</dt>
+                <dd>{winRate === null ? "—" : `${winRate}%`}
+                  {wins !== null && losses !== null
+                    ? <small>{integer.format(wins)}W · {integer.format(losses)}L</small>
+                    : <small>Record unavailable</small>}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        )) : (
+          <p className={styles.rankEmpty}><RankBadge tier={stats.tier}>{stats.rank}</RankBadge> <small>Record unavailable</small></p>
+        )}
+      </div>
       {stats.hasBothQueues && stats.rankedGames !== null && (
         <details className={styles.combined}>
-          <summary>Other ranked stats</summary>
-          <p>Across Solo/Duo and Flex this ranked year · <strong>{gameCount(stats.rankedGames)}</strong>
+          <summary>Combined ranked record</summary>
+          <p>Across Solo/Duo and Flex · <strong>{gameCount(stats.rankedGames)}</strong>
             {stats.rankedWinRate !== null && <> · <strong>{stats.rankedWinRate}%</strong> win rate</>}
-            {stats.rankedWins !== null && stats.rankedLosses !== null && <> ({stats.rankedWins}W · {stats.rankedLosses}L)</>}
+            {stats.rankedWins !== null && stats.rankedLosses !== null && <> ({integer.format(stats.rankedWins)}W · {integer.format(stats.rankedLosses)}L)</>}
           </p>
         </details>
       )}
@@ -67,10 +76,6 @@ export function PlayerStats({ player, source = "cache", lookupHref }: {
           </dl>
         </div>
       ) : <p className={styles.note}>No recent games are available for a role or champion breakdown.</p>}
-      <p className={styles.note}>
-        {source === "stale" ? "Riot couldn’t refresh this record. " : ""}
-        {stats.asOf ? <>Riot snapshot · <time dateTime={stats.asOf}>{timestamp.format(new Date(stats.asOf))} UTC</time></> : "Snapshot date unavailable."}
-      </p>
     </section>
   );
 }

@@ -6,7 +6,8 @@ import { TERMS_VERSION } from "./account-policy";
 import { createDuoListing } from "./duo";
 import { RANKED_QUEUE, sessionOptions } from "./duo-session";
 import { POST as updateProfile } from "../app/api/account/profile/route";
-import { managedTextVerdict } from "./managed-text-screen";
+import { managedTextVerdict, screenText } from "./managed-text-screen";
+import { scoreContent } from "./moderation";
 import { addComment, createPost } from "./social";
 import type { User } from "./auth";
 
@@ -57,6 +58,27 @@ it("routes a synthetic child-safety signal only to the owner queue and never san
   expect(await q`SELECT rule FROM wp_safety_urgent WHERE target_kind='user' AND target_id=1`).toEqual([{rule:"child_safety"}]);
   expect(await q`SELECT id FROM wp_users WHERE id=1 AND banned_until IS NULL`).toHaveLength(1);
   expect(await q`SELECT id FROM wp_mod_log WHERE detail LIKE '%Inert safety exercise%'`).toHaveLength(0);
+});
+
+it("preserves distinct screened submissions on the same private receipt and deduplicates retries",async()=>{
+  http.mockImplementation(async()=>Response.json({results:[result(true,true)]}));
+  await q`INSERT INTO wp_users(id,email,display_name) VALUES(2,'text-fixture@example.test','Fixture')`;
+  const first = "First synthetic exercise";
+  const second = "A separate synthetic exercise";
+  await screenText(scoreContent(first), [first], 2, "post");
+  const [open] = await q`SELECT receipt,evidence FROM wp_safety_urgent WHERE target_kind='user' AND target_id=2 AND reviewed_at IS NULL`;
+  await q`UPDATE wp_safety_urgent SET release_requested_by=9 WHERE receipt=${open.receipt}::uuid`;
+  await screenText(scoreContent(first), [" " + first + " "], 2, "post");
+  expect(await q`SELECT release_requested_by FROM wp_safety_urgent WHERE receipt=${open.receipt}::uuid`).toEqual([{release_requested_by:9}]);
+
+  await screenText(scoreContent(second), [second], 2, "profile");
+  await screenText(scoreContent(second), [second], 2, "profile");
+  expect(await q`SELECT surface,fields FROM wp_safety_text_evidence WHERE receipt=${open.receipt}::uuid ORDER BY surface`)
+    .toEqual([{surface:"post",fields:[first]},{surface:"profile",fields:[second]}]);
+  expect(await q`SELECT receipt,evidence,release_requested_by FROM wp_safety_urgent WHERE target_kind='user' AND target_id=2`)
+    .toEqual([{...open,release_requested_by:null}]);
+  expect(open.evidence).not.toContain(first);
+  expect(open.evidence).not.toContain(second);
 });
 
 it("preserves an existing profile on provider failure and holds an eligible duo note for review",async()=>{

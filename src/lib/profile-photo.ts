@@ -29,9 +29,9 @@ export async function stagePhoto(userId: number, original: Buffer, image: Buffer
   const sql=await getSql(), id=randomUUID(), originalHash=hexDigest(original), contentHash=hexDigest(image);
   const [,rows]=await sql.transaction([
     sql`SELECT pg_advisory_xact_lock(hashtext('profile-edits'),${userId})`,
-    sql`INSERT INTO wp_profile_photos(id,user_id,uploader_id,original,image,original_hash,content_hash,needs_human,retry_at)
+    sql`INSERT INTO wp_profile_photos(id,user_id,uploader_id,original,image,original_hash,content_hash,needs_human,retry_at,scan_lease_id)
       SELECT ${id}::uuid,id,id,decode(${original.toString("base64")},'base64'),decode(${image.toString("base64")},'base64'),
-        ${originalHash},${contentHash},created_at>now()-interval '24 hours' OR strike_count>0,now()+interval '10 minutes'
+        ${originalHash},${contentHash},created_at>now()-interval '24 hours' OR strike_count>0,now()+interval '10 minutes',${id}::uuid
       FROM wp_users WHERE id=${userId} AND safety_status='visible' AND (banned_until IS NULL OR banned_until<=now())
       AND age_band IN ('adult','teen') AND terms_version=${TERMS_VERSION} AND terms_accepted_at IS NOT NULL RETURNING id`,
     sql(`UPDATE wp_profile_photos p SET active=false FROM wp_users u WHERE u.id=$1 AND p.user_id=u.id AND p.active
@@ -39,36 +39,37 @@ export async function stagePhoto(userId: number, original: Buffer, image: Buffer
       AND NOT coalesce(${selected},false)`,[userId,id]),
   ]);
   if (!rows.length) return null;
-  await finishPhoto(id, await scanPhoto({id,image,original,originalHash,contentHash}));
+  await finishPhoto(id, id, await scanPhoto({id,image,original,originalHash,contentHash}));
   const outcome=await photoStatus(userId);
   return outcome.photoId===id ? outcome : {ok:false as const,error:"Another photo replaced this upload. Review your latest selection."};
 }
 
 type Answer = Awaited<ReturnType<typeof scanPhoto>>;
-async function finishPhoto(id: string, answer: Answer) {
+async function finishPhoto(id: string, leaseId: string, answer: Answer) {
   const sql=await getSql();
   if (answer==="restricted") {
     await sql.transaction([
       sql`SELECT pg_advisory_xact_lock(hashtext('wp-review:user:'||uploader_id::text))
-        FROM wp_profile_photos WHERE id=${id}::uuid FOR UPDATE`,
+        FROM wp_profile_photos WHERE id=${id}::uuid AND scan_lease_id=${leaseId}::uuid FOR UPDATE`,
       sql`INSERT INTO wp_profile_photo_evidence(id,uploader_id,original,image,original_hash,content_hash,source,receipt)
         SELECT p.id,p.uploader_id,p.original,p.image,p.original_hash,p.content_hash,'scanner',coalesce(u.receipt,${randomUUID()}::uuid)
         FROM wp_profile_photos p LEFT JOIN wp_safety_urgent u ON u.target_kind='user' AND u.target_id=p.uploader_id AND u.reviewed_at IS NULL
-        WHERE p.id=${id}::uuid AND p.original IS NOT NULL ON CONFLICT(id) DO NOTHING`,
+        WHERE p.id=${id}::uuid AND p.scan_lease_id=${leaseId}::uuid AND p.original IS NOT NULL ON CONFLICT(id) DO NOTHING`,
       sql`INSERT INTO wp_safety_urgent(receipt,target_kind,target_id,rule,evidence)
         SELECT e.receipt,'user',e.uploader_id,'child_safety','Private profile-photo scanner receipt '||e.id::text
-        FROM wp_profile_photo_evidence e WHERE e.id=${id}::uuid AND NOT EXISTS (
-          SELECT 1 FROM wp_safety_urgent old WHERE old.receipt=e.receipt AND old.reviewed_at IS NOT NULL)
-        ON CONFLICT(target_kind,target_id) WHERE reviewed_at IS NULL DO UPDATE SET rule='child_safety'`,
-      sql`UPDATE wp_profile_photos p SET status='rejected',original=NULL,image=NULL,checked_at=now()
-        WHERE p.id=${id}::uuid AND EXISTS(SELECT 1 FROM wp_profile_photo_evidence e WHERE e.id=p.id)`,
+        FROM wp_profile_photo_evidence e JOIN wp_profile_photos p ON p.id=e.id
+        WHERE e.id=${id}::uuid AND p.scan_lease_id=${leaseId}::uuid
+        ON CONFLICT(target_kind,target_id) WHERE reviewed_at IS NULL DO UPDATE SET rule='child_safety',release_requested_by=NULL`,
+      sql`UPDATE wp_profile_photos p SET status='rejected',original=NULL,image=NULL,checked_at=now(),scan_lease_id=NULL
+        WHERE p.id=${id}::uuid AND p.scan_lease_id=${leaseId}::uuid
+        AND EXISTS(SELECT 1 FROM wp_profile_photo_evidence e WHERE e.id=p.id)`,
     ]);
     return;
   }
-  await sql`UPDATE wp_profile_photos SET checked_at=now(),retry_at=now()+interval '10 minutes',
+  await sql`UPDATE wp_profile_photos SET checked_at=now(),retry_at=now()+interval '10 minutes',scan_lease_id=NULL,
       automated_clear=${answer==="approved"},status=CASE WHEN ${answer==="approved"} AND needs_human THEN 'held' ELSE ${answer} END,
       original=CASE WHEN ${answer==="rejected"} THEN NULL ELSE original END,image=CASE WHEN ${answer==="rejected"} THEN NULL ELSE image END
-    WHERE id=${id}::uuid AND NOT automated_clear AND status IN ('pending','held')`;
+    WHERE id=${id}::uuid AND scan_lease_id=${leaseId}::uuid AND NOT automated_clear AND status IN ('pending','held')`;
 }
 
 export async function removePhotos(userId: number) {
@@ -93,18 +94,20 @@ export async function readPhoto(viewer: number | null, id: string, hash: string,
 
 export async function maintainPhotos() {
   if (photoScanningEnabled()) {
+    const leaseId = randomUUID();
     const jobs=await q`WITH claimed AS (
       SELECT id FROM wp_profile_photos WHERE status IN ('pending','held') AND NOT automated_clear
         AND original IS NOT NULL AND retry_at<=now() AND expires_at>now() ORDER BY retry_at,id LIMIT 5 FOR UPDATE SKIP LOCKED
-    ) UPDATE wp_profile_photos p SET retry_at=now()+interval '10 minutes' FROM claimed c WHERE p.id=c.id
+    ) UPDATE wp_profile_photos p SET retry_at=now()+interval '10 minutes',scan_lease_id=${leaseId}::uuid FROM claimed c WHERE p.id=c.id
       RETURNING p.id,encode(p.original,'base64') AS original,encode(p.image,'base64') AS image,p.original_hash,p.content_hash`;
     await Promise.all(jobs.map(async r=>{
       const id=String(r.id);
-      await finishPhoto(id,await scanPhoto({id,original:Buffer.from(String(r.original),"base64"),image:Buffer.from(String(r.image),"base64"),
+      await finishPhoto(id,leaseId,await scanPhoto({id,original:Buffer.from(String(r.original),"base64"),image:Buffer.from(String(r.image),"base64"),
         originalHash:String(r.original_hash),contentHash:String(r.content_hash)}));
     }));
   }
   await queryRows(`DELETE FROM wp_profile_photos p WHERE p.id IN (SELECT p.id FROM wp_profile_photos p
     LEFT JOIN wp_users u ON u.id=p.user_id WHERE (p.expires_at<=now() OR NOT p.active AND (p.automated_clear OR p.status='rejected'))
+    AND NOT (p.status IN ('pending','held') AND NOT p.automated_clear AND p.original IS NOT NULL AND p.retry_at>now())
     AND NOT coalesce(${selected},false) ORDER BY p.expires_at LIMIT 250 FOR UPDATE OF p SKIP LOCKED)`,[]);
 }

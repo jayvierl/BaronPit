@@ -39,7 +39,7 @@ export function PrimaryNavigation() {
       const title = compose ? "New post" : label === "Duos" ? "Find a duo" : label;
       const active = pathname === href ? "page" : href === "/lfg" && pathname.startsWith("/lfg/") ? "location" : undefined;
       const item = <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={path}/></svg><span>{label}</span></>;
-      if (target === "#compose") return <a key={href} href="#compose" className={`primary-nav-link ${styles.link}`} title={title} aria-label={title}
+      if (target === "#compose") return <a key={href} href="#compose" className={`primary-nav-link ${styles.link}`} title={title} aria-label={label}
         onClick={event => {
           if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
             focusComposer();
@@ -47,7 +47,7 @@ export function PrimaryNavigation() {
           }
         }}>{item}</a>;
       return <Link key={href} href={target} prefetch={false} className={`primary-nav-link ${styles.link}`} title={title}
-        aria-label={title} aria-current={active}>{item}<PendingMark/></Link>;
+        aria-label={label} aria-current={active}>{item}<PendingMark/></Link>;
     })}
   </nav>;
 }
