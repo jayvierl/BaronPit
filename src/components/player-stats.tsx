@@ -2,6 +2,7 @@ import Link from "next/link";
 import { gameCount } from "@/lib/pure";
 import { publicPlayerSummary } from "@/lib/player-summary";
 import type { Player } from "@/lib/riot";
+import { RankBadge } from "./rank-badge";
 import styles from "./player-stats.module.css";
 
 const integer = new Intl.NumberFormat("en-US");
@@ -24,7 +25,7 @@ export function PlayerStats({ player, source = "cache", lookupHref }: {
       <dl className={styles.ranked}>
         <div>
           <dt>Rank</dt>
-          <dd className={styles.rank}>{stats.rank}</dd>
+          <dd><RankBadge tier={stats.tier}>{stats.rank}</RankBadge></dd>
           {stats.rankStatus === "ranked" && <small>{stats.queue}</small>}
         </div>
         <div>

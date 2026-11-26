@@ -10,6 +10,7 @@ import { DUO_ROLES } from "@/lib/pure";
 import type { DuoListing, DuoRequest } from "@/lib/duo";
 import { playerStatsHref } from "@/lib/platforms";
 import { postJson } from "@/lib/client";
+import { RankBadge } from "./rank-badge";
 import { SafetyReport } from "./safety-report";
 
 function subscribeClock(notify: () => void) {
@@ -174,7 +175,7 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly 
                 {r.status === "accepted" ? "Matched" : r.incoming ? "Incoming request" : "Request sent"}
               </strong>
               <p>
-                {r.rank} · {r.platform}
+                <RankBadge tier={r.rankTier}>{r.rank}</RankBadge> · {r.platform}
               </p>
               {r.session && <p>{sessionQueues[r.session.queue]} · {sessionTime(r.session.start, viewZone)}<br/>
                 {r.session.roles.join(" / ")} · {playstyles[r.session.vibe as keyof typeof playstyles]} · {r.session.voice ? "Open to voice" : "Text only"}</p>}
@@ -276,7 +277,7 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly 
         const playTime = l.start !== null ? sessionTime(l.start, viewZone) : "Earlier listing · choose a new session to receive invitations";
         return (
           <article key={l.id} className="card">
-            <strong>{l.own ? (l.held ? "Your listing is in review" : "Your listing") : l.rank}</strong>
+            <strong>{l.own ? (l.held ? "Your listing is in review" : "Your listing") : <RankBadge tier={l.rankTier}>{l.rank}</RankBadge>}</strong>
             <p className="meta">{l.queue && sessionQueues[l.queue]}{l.queue === RANKED_QUEUE && !l.own && " · Compatible Solo/Duo ranks"}</p>
             <p>
               {l.roles.join(" / ")} · {l.partnerRole ? (l.partnerRole === "Any" ? "Open to any partner role" : "Looking for " + l.partnerRole) : "Partner role unspecified"} · {l.platform}

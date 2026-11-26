@@ -19,6 +19,7 @@ import { WithdrawSubmission } from "./withdraw-submission";
 import { CommentSection } from "./comment-section";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SafetyReport } from "./safety-report";
+import { RankBadge } from "./rank-badge";
 import { ThreadIcon } from "./thread-icon";
 import styles from "./thread.module.css";
 
@@ -82,6 +83,8 @@ export function PostCard({
     setMyVote(idx);
   };
 
+  const [rankLabel, main] = post.authorFlair?.split(" · ", 2) ?? [];
+  const flair = rankLabel && <><RankBadge tier={post.authorTier}>{rankLabel}</RankBadge>{main && ` · ${main}`}</>;
   const d = post.data as Record<string, unknown>;
   const destination = post.kind === "clip" && post.status === "visible" ? clipLink(d.url) : null;
   const likeCount = reactions["❤️"] ?? 0;
@@ -122,9 +125,9 @@ export function PostCard({
         {(post.authorFlair || d.briefing === true || post.status === "held") && (
           <div className={styles.context}>
             {post.authorFlair && (post.authorStatsHref
-              ? <Link href={post.authorStatsHref} prefetch={false} className="flair"
-                  aria-label={`View ${post.authorName}’s verified Riot stats, ${post.authorFlair}`}>{post.authorFlair}</Link>
-              : <span className="flair">{post.authorFlair}</span>)}
+              ? <Link href={post.authorStatsHref} prefetch={false} className={styles.flairLink}
+                  aria-label={`View ${post.authorName}’s verified Riot stats, ${post.authorFlair}`}>{flair}</Link>
+              : <span>{flair}</span>)}
             {d.briefing === true && <span>Automated patch update</span>}
             {post.status === "held" && <strong>Awaiting moderator review</strong>}
           </div>

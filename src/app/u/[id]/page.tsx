@@ -1,5 +1,10 @@
 import { ChampionPortrait } from "@/components/champion-portrait";
 import Link from "next/link";
+import { Suspense } from "react";
+import { ProfileReplies } from "./profile-replies";
+import { ShareLink } from "@/components/share-link";
+import { RankBadge } from "@/components/rank-badge";
+import { placedRank, socialRankLabel } from "@/lib/player-summary";
 import { notFound } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { currentPatch } from "@/lib/riot";
@@ -21,29 +26,27 @@ export const dynamic = "force-dynamic";
 
 export default async function ProfilePage({ params, searchParams }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; updated?: string }>;
+  searchParams: Promise<{ tab?: string; updated?: string; before?: string }>;
 }) {
-  const [{id},{tab,updated},viewer] = await Promise.all([params,searchParams,getCurrentUser()]);
+  const [{id},{tab,updated,before},viewer] = await Promise.all([params,searchParams,getCurrentUser()]);
   const userId = Number(id);
   if (!Number.isSafeInteger(userId) || userId <= 0 || userId > 2147483647) notFound();
   const today = new Date().toISOString().slice(0, 10);
   const profile = await publicProfile(userId, viewer?.id ?? null, today);
   if (!profile) notFound();
-  const links = readLinkedPlayers(userId);
-  const loadPosts = () => feedByAuthor(userId,viewer,20).catch(() => null);
+  const activeTab = tab === "players" || tab === "stats" ? "stats" : tab === "replies" ? "replies" : "posts";
   const [patch,counts,endorsements,linkedPlayers,following,posts,featuredLink] = await Promise.all([
-    currentPatch(), followCounts(userId), endorsementCounts(userId), links,
+    activeTab === "posts" ? currentPatch() : "", followCounts(userId), endorsementCounts(userId), readLinkedPlayers(userId),
     viewer && viewer.id !== userId ? isFollowing(viewer.id,userId) : false,
-    tab === "players" ? links.then(players => players.length ? [] : loadPosts()) : loadPosts(),
+    activeTab === "posts" ? feedByAuthor(userId,viewer,20).catch(() => null) : [],
     profile.link ? readProfileLink(profile.link, viewer?.id ?? null) : null,
   ]);
   const player = linkedPlayers[0] ?? null;
   const badges = player?.verified ? earnedBadges(player.snapshot) : [];
   if (profile.featured && player?.verified) badges.unshift("Hand of Baron · featured today");
-  const highlight = player?.verified ? dailyHighlight(player, today) : null;
+  const highlight = activeTab === "posts" && player?.verified ? dailyHighlight(player, today) : null;
   const lookupHref = player && playerStatsHref(player.platform, `${player.gameName}#${player.tagLine}`);
   const isSelf = viewer?.id === userId;
-  const activeTab = tab === "players" && linkedPlayers.length > 0 ? "players" : "posts";
 
   return (
     <div>
@@ -54,6 +57,9 @@ export default async function ProfilePage({ params, searchParams }: {
             <h1 className="profile-name">{profile.name}</h1>
             {player && <p className={styles.riotId}>{player.gameName}#{player.tagLine}
               <span> · {player.verified ? "Verified Riot link" : "Unverified Riot link"}</span></p>}
+            {player?.verified && <Link href={`/u/${userId}?tab=stats`} className={styles.identityRank}>
+              <RankBadge tier={placedRank(player).tier}>{socialRankLabel(player)}</RankBadge>
+            </Link>}
             {!player && isSelf && <Link href="/me" className={styles.link}>Link a Riot ID</Link>}
           </div>
           <Avatar name={profile.name} hue={profile.hue} avatar={profile.avatar} size={76} />
@@ -71,6 +77,7 @@ export default async function ProfilePage({ params, searchParams }: {
             <Link href="/lfg" className="btn secondary">My duo preferences</Link>
           </> : viewer ? <FollowButton userId={userId} initial={following} />
             : <Link className="btn small" href={signInHref(`/u/${userId}`)}>Sign in to follow</Link>}
+          <ShareLink path={`/u/${userId}`} kind="profile"/>
           {!isSelf && (viewer ? <UserSafetyMenu userId={userId}/> : <SafetyReport kind="user" targetId={userId}/>)}
         </div>
         {badges.length > 0 && <div className={styles.badges}>
@@ -85,58 +92,62 @@ export default async function ProfilePage({ params, searchParams }: {
           <EndorseRow userId={userId}/>
         </details>}
       </header>
-      {player?.verified && lookupHref && <PlayerStats player={player} lookupHref={lookupHref} />}
-      {player && !player.verified && lookupHref && <p className="meta"><Link href={lookupHref}>View stats for {player.gameName}#{player.tagLine} →</Link></p>}
-      {highlight && player && (
-        <div className="highlight-row">
-          <ChampionPortrait id={highlight.champion} patch={patch} size={46} compact />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, color: "var(--accent-ink)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              Today’s highlight
-            </div>
-            <div style={{ fontSize: 15 }}>
-              <strong>{highlight.champion}</strong> —{" "}
-              <span className={highlight.win ? "win" : "loss"}>{highlight.win ? "Victory" : "Defeat"}</span>{" "}
-              · <span className="kda">{highlight.kills} / {highlight.deaths} / {highlight.assists}</span>
-              <span className="meta"> · {highlight.cs} CS</span>
-            </div>
-            <div className="meta">Selected daily from recent games.</div>
-          </div>
-        </div>
-      )}
-
-      <nav aria-label="Profile sections" className="tabs" style={{ marginTop: 6 }}>
-        <Link href={`/u/${userId}`} aria-current={activeTab === "posts" ? "page" : undefined} className={activeTab === "posts" ? "active" : ""}>Posts</Link>
-        {linkedPlayers.length > 0 && (
-          <Link href={`/u/${userId}?tab=players`} aria-current={activeTab === "players" ? "page" : undefined} className={activeTab === "players" ? "active" : ""}>Players</Link>
-        )}
+      <nav aria-label="Profile sections" className="tabs">
+        {([["posts","Posts"], ["replies","Replies"], ["stats","Player stats"]] as const).map(([id,label]) =>
+          <Link key={id} href={id === "posts" ? `/u/${userId}` : `/u/${userId}?tab=${id}`}
+            prefetch={false} scroll={false} aria-current={activeTab === id ? "page" : undefined} className={activeTab === id ? "active" : ""}>{label}</Link>)}
       </nav>
 
-      {activeTab === "players" ? (
-        <div>
-          {linkedPlayers.map((p) => (
-            <div key={p.puuid} className="list-row">
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <Link href={playerStatsHref(p.platform, `${p.gameName}#${p.tagLine}`)} style={{ fontWeight: 600 }}>
-                  {p.gameName}#{p.tagLine}
-                </Link>
-                <div className="meta">
-                  {p.verified ? "Verified Riot link" : "Unverified Riot link"}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : posts === null ? (
-        <div className="empty">This player’s posts are temporarily unavailable.</div>
-      ) : posts.length === 0 ? (
-        <div className={styles.empty}>
-          <h2>{isSelf ? "Start your first thread" : "No posts yet"}</h2>
-          <Link className={styles.link} href={isSelf ? "/#compose" : "/rooms"}>{isSelf ? "Write a post" : "Browse community rooms"} →</Link>
-        </div>
-      ) : (
-        posts.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(viewer)} viewerId={viewer?.id ?? null} viewerIdentity={publicAvatarIdentity(viewer)} />)
+      {activeTab === "replies" && (
+        <Suspense key={before ?? ""} fallback={<p className={styles.empty} role="status">Loading replies…</p>}>
+          <ProfileReplies authorId={userId} viewerId={viewer?.id ?? null} before={before}/>
+        </Suspense>
       )}
+      {activeTab === "stats" && (
+        linkedPlayers.length ? linkedPlayers.map(p => {
+          const href = playerStatsHref(p.platform, `${p.gameName}#${p.tagLine}`);
+          return <section className={styles.account} key={p.puuid} aria-label={`${p.gameName}#${p.tagLine}`}>
+            <h2>{p.gameName}#{p.tagLine}</h2>
+            <p className="meta">{p.platform.toUpperCase()} · {p.verified ? "Verified Riot link" : "Unverified Riot link"}</p>
+            {p.verified ? <PlayerStats player={p} lookupHref={href}/>
+              : <Link className={styles.link} href={href}>View stats for {p.gameName}#{p.tagLine} →</Link>}
+          </section>;
+        }) : <div className={styles.empty}>
+          <h2>{isSelf ? "Link your Riot ID to show player stats" : "No Riot account linked"}</h2>
+          <Link className={styles.link} href={isSelf ? "/me" : "/player"}>{isSelf ? "Link a Riot ID" : "Look up a Riot ID"}</Link>
+        </div>
+      )}
+      {activeTab === "posts" && <>
+        {highlight && player && (
+          <div className="highlight-row">
+            <ChampionPortrait id={highlight.champion} patch={patch} size={46} compact />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, color: "var(--accent-ink)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Today’s highlight
+              </div>
+              <div style={{ fontSize: 15 }}>
+                <strong>{highlight.champion}</strong> —{" "}
+                <span className={highlight.win ? "win" : "loss"}>{highlight.win ? "Victory" : "Defeat"}</span>{" "}
+                · <span className="kda">{highlight.kills} / {highlight.deaths} / {highlight.assists}</span>
+                <span className="meta"> · {highlight.cs} CS</span>
+              </div>
+              <div className="meta">Selected daily from recent games.</div>
+            </div>
+          </div>
+        )}
+
+        {player && !player.verified && lookupHref && <p className="meta"><Link href={lookupHref}>View stats for {player.gameName}#{player.tagLine} →</Link></p>}
+        {posts === null ? (
+          <div className="empty">This player’s posts are temporarily unavailable.</div>
+        ) : posts.length === 0 ? (
+          <div className={styles.empty}>
+            <h2>{isSelf ? "Start your first thread" : "No posts yet"}</h2>
+            <Link className={styles.link} href={isSelf ? "/#compose" : "/rooms"}>{isSelf ? "Write a post" : "Browse community rooms"} →</Link>
+          </div>
+        ) : (
+          posts.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(viewer)} viewerId={viewer?.id ?? null} viewerIdentity={publicAvatarIdentity(viewer)} />)
+        )}
+      </>}
     </div>
   );
 }

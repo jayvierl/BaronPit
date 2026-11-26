@@ -7,6 +7,9 @@ import { MatchQuestionLinks } from "@/components/match-question-links";
 import { ChampionPortrait } from "@/components/champion-portrait";
 import { Avatar } from "@/components/ui";
 import Link from "next/link";
+import Form from "next/form";
+import { matchQueueName, recentMatchHistory } from "@/lib/match-history";
+import styles from "./history.module.css";
 import { RefreshPlayer } from "@/components/refresh-player";
 import { getCurrentUser } from "@/lib/auth";
 import { lookupPlayer, isPlatform, PLATFORMS, currentPatch, profileIconUrl } from "@/lib/riot";
@@ -20,7 +23,7 @@ import { gameCount, earnedBadges, formReads, type MatchSummary } from "@/lib/pur
 export const dynamic = "force-dynamic";
 
 export default async function PlayerPage({ searchParams }: {
-  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string }>;
+  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; queue?: string; champion?: string }>;
 }) {
   const sp = await searchParams;
   const platform = sp.platform && isPlatform(sp.platform) ? sp.platform : "na1";
@@ -68,12 +71,15 @@ export default async function PlayerPage({ searchParams }: {
   ]);
   const linkedByMe = linked.length > 0;
   const badges = earnedBadges(snap);
-  const last3 = snap.matches.slice(0, 3);
+  const history = recentMatchHistory(snap.matches, sp.queue, sp.champion);
+  const latest = history.matches.slice(0,3);
+  const filtered = Boolean(history.queue || history.champion);
+  const historyHref = playerStatsHref(player.platform, player.gameName + "#" + player.tagLine) + "#match-history";
   const reads = formReads(snap);
 
   // Match history establishes shared games only. Older snapshots have names without tags.
   const mateCounts = new Map<string,number>();
-  for (const game of last3) {
+  for (const game of snap.matches.slice(0,3)) {
     const teammates = new Set((game.teammates ?? []).filter(t => t.name && t.tag).map(t => `${t.name}#${t.tag}`));
     for (const id of teammates) mateCounts.set(id,(mateCounts.get(id) ?? 0) + 1);
   }
@@ -111,19 +117,43 @@ export default async function PlayerPage({ searchParams }: {
         </div>
       </div>
 
-      <h2 className="section">Last 3 games</h2>
-      {last3.length === 0 && <p className="meta">No recent matches found for this player.</p>}
-      {last3.length > 0 && (
+      <h2 id="match-history" className={styles.heading}>Match history</h2>
+      {history.sampleSize > 0 && <>
+        <Form action="/player#match-history" className={styles.filters} key={JSON.stringify([player.puuid, history.queue, history.champion])}>
+          <input type="hidden" name="platform" value={platform}/>
+          <input type="hidden" name="riotId" value={player.gameName + "#" + player.tagLine}/>
+          <label>Queue<select name="queue" defaultValue={history.queue}>
+            <option value="">All queues</option>
+            {history.queue && !history.queues.includes(history.queue) && <option value={history.queue}>Outside this sample</option>}
+            {history.queues.map(q => <option key={q} value={q}>{matchQueueName(q)}</option>)}
+          </select></label>
+          <label>Champion<select name="champion" defaultValue={history.champion}>
+            <option value="">All champions</option>
+            {history.champion && !history.champions.includes(history.champion) && <option value={history.champion}>Outside this sample</option>}
+            {history.champions.map(c => <option key={c} value={c}>{c}</option>)}
+          </select></label>
+          <button className="btn secondary small">Apply</button>
+        </Form>
+        <p className={styles.result} aria-live="polite">
+          {history.winRate === null ? `No matching games in the last ${gameCount(history.sampleSize)}` : <>
+            {filtered ? `${history.matches.length} of ${gameCount(history.sampleSize)}` : `Last ${gameCount(history.sampleSize)}`}
+            {" · "}{history.wins}W–{history.losses}L · {history.winRate}% win rate
+          </>}
+          {filtered && <Link href={historyHref} className={styles.reset}>Clear filters</Link>}
+        </p>
+      </>}
+      {history.sampleSize === 0 && <p className="meta">No recent matches found for this player.</p>}
+      {latest.length > 0 && (
         <Suspense fallback={<p className="meta" role="status">Loading recent games…</p>}>
-          <LatestGames matches={last3} patch={patch} platform={platform} puuid={player.puuid} signedIn={Boolean(user)} />
+          <LatestGames matches={latest} patch={patch} platform={platform} puuid={player.puuid} signedIn={Boolean(user)} />
         </Suspense>
       )}
-      {frequent.length > 0 && (
+      {!filtered && frequent.length > 0 && (
         <p className="meta">Also on the same team recently · {frequent.map(([name,games]) => `${name} (${games} games)`).join(", ")}</p>
       )}
-      {snap.matches.length > 3 && <details className="card">
-        <summary>See all {snap.matches.length} recent games</summary>
-        {snap.matches.slice(3).map(m => <div key={m.matchId} className="match-row">
+      {history.matches.length > 3 && <details className="card" key={historyHref + history.queue + history.champion}>
+        <summary>Show {gameCount(history.matches.length - 3)} more</summary>
+        {history.matches.slice(3).map(m => <div key={m.matchId} className="match-row">
           <ChampionPortrait id={m.champion} patch={patch} size={32} />
           <strong>{m.champion}</strong><span className={m.win ? "win" : "loss"}>{m.win ? "Victory" : "Defeat"}</span>
           <span className="meta">{m.kills}/{m.deaths}/{m.assists} · {new Date(m.playedAt).toLocaleDateString()}</span>
@@ -154,7 +184,7 @@ export default async function PlayerPage({ searchParams }: {
             <div key={c.champion} className="match-row">
               <ChampionPortrait id={c.champion} patch={patch} size={32} />
               <strong style={{ flex: 1 }}>{c.champion}</strong>
-              <span className="meta">{gameCount(c.games)} · {c.wins}W–{c.games - c.wins}L</span>
+              <span className="meta">{gameCount(c.games)} · {c.wins}W–{c.games - c.wins}L{c.games > 0 && ` · ${Math.round(100 * c.wins / c.games)}% WR`}</span>
               <span className="kda">{c.kda.toFixed(2)} KDA</span>
               <Link className="text-btn" href={`/rooms/champ-${c.champion.toLowerCase()}`}>Room →</Link>
             </div>

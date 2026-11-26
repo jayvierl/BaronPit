@@ -1,4 +1,4 @@
-import { shareOrigin } from "@/lib/discussion-library-preview";
+import { shareOrigin } from "@/lib/share-metadata";
 import { reviewHour } from "@/lib/review-hour-time";
 
 // Calendar links include the displayed date so an old browser tab cannot silently book a different week.

@@ -1,9 +1,11 @@
 import type { CardItem } from "./build-catalog";
 import type { AvatarRef } from "./avatar";
+import type { LeagueTier } from "./rank";
 export interface PostView {
   id: number; authorId: number; authorName: string; authorHue: number;
   authorAvatar?: AvatarRef;
   authorFlair: string | null;
+  authorTier?: LeagueTier | null;
   authorStatsHref?: string;
   kind: string; body: string; roomId: number | null; roomSlug: string | null; roomName: string | null;
   isQuestion?: boolean;

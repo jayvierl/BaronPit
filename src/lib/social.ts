@@ -6,7 +6,9 @@ import { publicAvatar } from "./avatar";
 import type { DecisionContext } from "./decisions-input";
 import { preparePost, scoreSubmission, type CreatePostInput } from "./post-input";
 export type { CreatePostInput } from "./post-input";
-import { readRankedEntries, socialRankLabel } from "./player-summary";
+import type { SearchScope } from "./search-scopes";
+import type { PlatformId } from "./platforms";
+import { placedRank, readRankedEntries, socialRankLabel } from "./player-summary";
 import { HIDDEN_AUTHORS, visibleCommentsFor, visiblePostForInteraction } from "./community-queries";
 import { readPosts, readComments } from "./post-reader";
 import type { PostView, CommentView } from "./post-types";
@@ -239,29 +241,31 @@ export async function reconfirmBuild(user: User, postId: number): Promise<{ ok: 
 
 /* ---------------------------------- search --------------------------------- */
 
-export async function searchAll(term: string, viewer: User | null) {
-  const t = term.trim();
-  const tags = t.replace(/^#/, "");
-  const [users, players, rooms, tagPosts] = await Promise.all([
-    t.length >= 2 ? queryRows(`WITH ${HIDDEN_AUTHORS} SELECT id, display_name, avatar_hue, avatar_ref FROM wp_users
+export async function searchAll(term: string, viewer: User | null, scope: SearchScope = "all", platform?: PlatformId) {
+  const t = term.trim().slice(0, 80);
+  const tag = t.startsWith("#") ? t.slice(1) : null;
+  const includes = (section: SearchScope) => scope === "all" || scope === section;
+  const limit = scope === "all" ? 8 : 24;
+  const [users, players, rooms, posts] = await Promise.all([
+    includes("people") && t.length >= 2 ? queryRows(`WITH ${HIDDEN_AUTHORS} SELECT id, display_name, avatar_hue, avatar_ref FROM wp_users
       WHERE safety_status = 'visible' AND id NOT IN (SELECT id FROM hidden) AND strpos(lower(display_name), lower($2)) > 0
-      ORDER BY display_name, id LIMIT 8`, [viewer?.id ?? null, t]) : [],
-    t.length >= 2 && !t.startsWith("#") ? q`SELECT puuid, platform, game_name, tag_line, rank_tier, rank_div, snapshot->'rankedEntries' AS ranked_entries FROM wp_players
+      ORDER BY display_name, id LIMIT $3`, [viewer?.id ?? null, t, limit]) : [],
+    includes("players") && t.length >= 2 && tag === null ? q`SELECT puuid, platform, game_name, tag_line, rank_tier, rank_div, snapshot->'rankedEntries' AS ranked_entries FROM wp_players
       WHERE strpos(lower(game_name || '#' || tag_line), lower(${t})) > 0
-      ORDER BY (lower(game_name || '#' || tag_line) = lower(${t})) DESC, game_name, platform, tag_line LIMIT 8` : [],
-    listRooms(viewer?.id),
-    tags.length >= 2 ? readPosts(viewer?.id ?? null, { tag: tags }, 50) : [],
+        AND (${platform ?? null}::text IS NULL OR platform=${platform ?? null})
+      ORDER BY (lower(game_name || '#' || tag_line) = lower(${t})) DESC, game_name, platform, tag_line LIMIT ${limit}` : [],
+    includes("rooms") && t ? listRooms(viewer?.id, limit, t) : [],
+    includes("posts") && (tag ?? t).length >= 2
+      ? readPosts(viewer?.id ?? null, tag === null ? { text: t } : { tag }, limit) : [],
   ]);
-  const roomHits = rooms.filter(r => r.name.toLowerCase().includes(t.toLowerCase()));
   return {
-    users: users.map((u) => ({ id: Number(u.id), name: String(u.display_name), hue: Number(u.avatar_hue), avatar: publicAvatar(u.avatar_ref) })),
-    players: players.map((p) => ({
-      puuid: String(p.puuid), platform: String(p.platform),
-      riotId: `${p.game_name}#${p.tag_line}`,
-      rank: socialRankLabel({rankTier: p.rank_tier as string | null, rankDiv: p.rank_div as string | null, rankedEntries: readRankedEntries(p.ranked_entries)}),
-    })),
-    rooms: roomHits,
-    tagPosts,
+    users: users.map(u => ({ id: Number(u.id), name: String(u.display_name), hue: Number(u.avatar_hue), avatar: publicAvatar(u.avatar_ref) })),
+    players: players.map(p => {
+      const fields = {rankTier: p.rank_tier as string | null, rankDiv: p.rank_div as string | null, rankedEntries: readRankedEntries(p.ranked_entries)};
+      return {puuid: String(p.puuid), platform: String(p.platform), riotId: `${p.game_name}#${p.tag_line}`, rank: socialRankLabel(fields), tier: placedRank(fields).tier};
+    }),
+    rooms,
+    posts,
   };
 }
 

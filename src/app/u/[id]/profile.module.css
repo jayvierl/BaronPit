@@ -18,3 +18,14 @@
 .endorse summary { cursor: pointer; width: fit-content; padding-block: .6rem; }
 .empty { text-align: center; padding: 2.5rem 1rem; border-bottom: 1px solid var(--border); }
 .empty h2 { font-size: 1.1rem; margin: 0 0 .65rem; }
+.identityRank { display: inline-flex; align-items: center; min-height: 44px; }
+.account, .reply { padding: 1rem .15rem; border-bottom: 1px solid var(--border); }
+.account h2 { margin: 0; font-size: 1.05rem; }
+.account > p { margin: .25rem 0 .6rem; }
+.replyByline, .replyActions, .replyPages { display: flex; align-items: center; gap: .75rem; }
+.replyByline { justify-content: space-between; align-items: baseline; color: var(--ink-mid); font-size: .85rem; }
+.replyByline span { min-width: 0; overflow-wrap: anywhere; }
+.replyByline strong { color: var(--ink); }
+.replyByline time { flex: none; }
+.replyActions, .replyPages { justify-content: space-between; flex-wrap: wrap; }
+.replyActions > a, .replyPages a { display: inline-flex; align-items: center; min-height: 44px; font-size: .88rem; font-weight: 600; gap: .2em; }

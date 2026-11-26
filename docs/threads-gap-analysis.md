@@ -78,3 +78,25 @@ A second check alternated old and polished builds, reversing the order across fo
 Three mobile Lighthouse runs per home release on baronpit.com measured 415.2 to 294.6 KiB transferred, median LCP of 961 to 945 ms, median TBT of 135 to 169 ms, and zero CLS on both. The median performance score moved from 99 to 98. The improvement was in download size and first-screen composition. Production content can change between measurements.
 
 At 320px and 390px, the first conversation moved from 350px to 223px and the first Duo Finder link from 693px to 73px. Across five production routes, all 75 HTTP samples returned 200. Warm-connection median TTFB on Home was 131 ms before and 130 ms after. It rose from 103 to 112 ms on Duo Finder and fell from 123 to 105 ms on the player route. These measurements do not establish a site-wide speedup.
+
+## Social discovery and ranked stats
+
+The public site already supported posts, follows, reposts, rooms, search and Riot lookup. Its profile exposed only Posts and linked Players, a champion room mixed discussion and builds in one stream, and searching plain words found posts only when those words appeared as tags. Public post links included social previews. Sampled community profiles and rooms did not. The same-day comparison covered public Home, profile and discussion. [Threads public profile](https://www.threads.com/@hereticcoffeepdx)
+
+| Addition | Comparison and decision | Observable behavior in the candidate |
+| --- | --- | --- |
+| Profile replies | Threads distinguishes a person's posts from their contributions to other conversations. | Open Replies to see the recipient and room, then jump to the exact reply. Filtering checks the full discussion and its ancestors before pagination. |
+| Room filters | Reddit's post flair helps readers find a particular kind of contribution within a community. | All, Questions, Builds and Polls have shareable URLs. The server filters before limiting results. A compact room header brings the discussion closer to the top. |
+| Collapsible replies | A large reply tree is easier to navigate when a reader can close a finished branch. | Each branch can be folded using touch or keyboard. Counts follow reader visibility. A direct reply link reopens its branch. |
+| Shareable rooms and profiles | A link to a topic or person can bring a reader into the community directly. Threads supports sharing public topic feeds. | Public rooms and profiles have a Share action, canonical URL and social preview. Personal bios, photos and Riot claims stay on the profile. |
+| Search categories | Reddit separates post, community and user searches. League adds a useful distinction between social accounts and in-game players. | Search All, People, Rooms, Posts or Player stats. Terms persist between categories. Normal words and hashtags find eligible posts. A full Riot ID and region open player stats directly. |
+
+[Reddit post flair](https://support.reddithelp.com/hc/en-us/articles/15484545678996-Post-Flair) · [Reddit search](https://support.reddithelp.com/hc/en-us/articles/19695647891988-How-does-Reddit-search-work) · [Meta on sharing feeds](https://about.fb.com/news/2025/02/share-custom-feeds-on-threads/)
+
+### Player stats
+
+Every community profile has a Player stats tab. An owner without a linked account can start linking. Other readers can look up a Riot ID. Unverified claims offer a clearly labelled public lookup. A verified link can display the player's rank on the social profile.
+
+The stats view combines rank, LP and Riot's ranked-year record with the recent role/champion pool. Queue and champion filters apply only to the last 20 available matches. The results show the real sample size, wins, losses and win rate. A stable snapshot timestamp and unavailable/stale labels let a reader judge freshness. The site stores no additional match history for this feature. This covers the quick scouting job; it makes no claim of matching OP.GG or Mobalytics in historical depth. [OP.GG on its stats](https://help.op.gg/hc/en-us/articles/31088795082393-My-stats-aren-t-updating) · [Mobalytics on match filtering](https://mobalytics.gg/lol/guides/how-to-track-lp-by-game)
+
+All ten League tiers use localized badge colors in light and dark mode. A written label accompanies each tint. Unranked and missing rank use neutral styling. Site chrome keeps its existing violet accent. [WCAG use of color](https://www.w3.org/WAI/WCAG22/Understanding/use-of-color)

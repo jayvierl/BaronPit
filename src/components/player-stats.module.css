@@ -1,9 +1,7 @@
 .panel {
   margin: 16px 0;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg);
+  padding-block: 14px;
+  border-block: 1px solid var(--border);
   overflow-wrap: anywhere;
 }
 .header, .recent dl, .recent ul { display: flex; flex-wrap: wrap; }
@@ -20,7 +18,6 @@
 .panel dt, .panel small, .note { color: var(--ink-soft); font-size: .79rem; }
 .panel dd { margin: 2px 0 0; }
 .ranked dd { font-weight: 700; font-size: clamp(1rem, 3.6vw, 1.4rem); line-height: 1.2; }
-.rank { color: var(--accent-ink); }
 .recent { border-top: 1px solid var(--border); padding-top: 10px; }
 .recent h3 { margin: 0 0 7px; font-size: .84rem; }
 .recent dl { margin: 0; gap: 6px 20px; }
@@ -29,7 +26,6 @@
 .recent small { font-weight: 400; white-space: nowrap; }
 .note { margin: 10px 0 0; }
 @media(max-width: 440px) {
-  .panel { padding: 12px; }
   .ranked { gap: 8px; }
   .recent dl { display: grid; }
 }

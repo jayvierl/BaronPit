@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { APP_NAME } from "./brand";
 import { q, dbAvailable } from "./db";
 import { championCatalog } from "./riot";
@@ -113,7 +114,7 @@ function roomFromRow(r: Record<string, unknown>) {
   };
 }
 
-async function readRooms(userId: number | undefined, limit: number, slug: string | null, featuredOnly = false) {
+async function readRooms(userId: number | undefined, limit: number, slug: string | null, featuredOnly = false, nameContains: string | null = null) {
   await ensureRooms();
   const rows = await q`SELECT r.*,h.id AS host_id,h.display_name AS host_name,count(m.user_id)::int AS members,
     coalesce(bool_or(m.user_id=${userId ?? null}::int),false) AS joined FROM wp_rooms r
@@ -124,23 +125,24 @@ async function readRooms(userId: number | undefined, limit: number, slug: string
         (b.blocked_id=h.id AND b.blocker_id=${userId ?? null}) OR (b.blocker_id=h.id AND b.blocked_id=${userId ?? null}))
       AND NOT EXISTS (SELECT 1 FROM wp_mutes m WHERE m.muted_id=h.id AND m.muter_id=${userId ?? null})
     WHERE r.safety_status='visible' AND (${slug}::text IS NULL OR r.slug=${slug})
+      AND (${nameContains}::text IS NULL OR strpos(lower(r.name), lower(${nameContains}::text)) > 0)
       AND (NOT ${featuredOnly} OR r.slug=ANY(${featuredSlugs}::text[]))
     GROUP BY r.id,h.id ORDER BY r.kind DESC,r.name LIMIT ${limit}`;
   return rows.map(roomFromRow);
 }
 
-export function listRooms(userId?: number, limit = 500) {
-  return readRooms(userId, limit, null);
+export function listRooms(userId?: number, limit = 500, nameContains: string | null = null) {
+  return readRooms(userId, limit, null, false, nameContains);
 }
 
 export async function listFeaturedRooms(userId?: number) {
   return featuredRooms(await readRooms(userId, featuredSlugs.length, null, true));
 }
 
-export async function getRoom(slug: string, userId?: number) {
+export const getRoom = cache(async function getRoom(slug: string, userId?: number) {
   const rows = await readRooms(userId, 1, slug);
   return rows[0] ?? null;
-}
+});
 
 export async function setRoomMembership(userId: number, roomId: number, join: boolean): Promise<boolean> {
   if (!join) {

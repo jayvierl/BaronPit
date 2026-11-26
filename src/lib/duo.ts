@@ -4,13 +4,21 @@ import { getSql, q, queryRows } from "./db";
 import { decodeWindows, encodeWindows, scheduleWindows, type PlayWindow } from "./duo-schedule";
 import { filterByDuoFit, loadDuoFit } from "./duo-fit-store";
 import { TERMS_VERSION } from "./account-policy";
-import { rankLabel } from "./rank";
+import type { LeagueTier } from "./rank";
+import { placedRank } from "./player-summary";
 import { rateLimit, type User } from "./auth";
 import { duoPreferences } from "./duo-input";
 import { screenText } from "./managed-text-screen";
 
 export const duoEnabled = () => process.env.DUO_MATCHING_ENABLED === "true";
 type Row = Record<string, unknown>;
+function duoRank(row: Row) {
+  const rank = placedRank({
+    rankTier: typeof row.rank_tier === "string" ? row.rank_tier : null,
+    rankDiv: typeof row.rank_div === "string" ? row.rank_div : null,
+  });
+  return {rank: rank.rank, rankTier: rank.tier};
+}
 const missing = { ok: false as const, error: "That listing or request is no longer available." };
 export interface DuoListing {
   id: number;
@@ -25,6 +33,7 @@ export interface DuoListing {
   vibe: string;
   note: string;
   rank: string;
+  rankTier?: LeagueTier | null;
   form: string | null;
   soloRecord: string | null;
   expiresAt: string;
@@ -38,6 +47,7 @@ export interface DuoRequest {
   incoming: boolean;
   status: string;
   rank: string;
+  rankTier?: LeagueTier | null;
   riotId: string | null;
   socialProfileId: number | null;
   contactEndsAt: number | null;
@@ -153,7 +163,7 @@ function listing(row: Row, userId: number): DuoListing {
     vibe: String(row.vibe),
     note: String(row.note),
     platform: String(row.platform).toUpperCase(),
-    rank: rankLabel(String(row.rank_tier), row.rank_div as string | null),
+    ...duoRank(row),
     form: row.wins != null && Number.isInteger(wins) && wins >= 0 && Number.isInteger(games) && games > 0 && games <= 20 && wins <= games
       ? `${wins}W · ${games - wins}L in ${games} games` : null,
     soloRecord: typeof row.rank_wins === "number" && row.rank_wins >= 0 && typeof row.rank_losses === "number" && row.rank_losses >= 0
@@ -196,7 +206,7 @@ export async function readDuoBoard(userId: number, onlyFit = false, asOf = Date.
       (r): DuoRequest => ({
         id: Number(r.id),
         incoming: Number(r.sender_id) !== userId,
-        rank: rankLabel(String(r.rank_tier), r.rank_div as string | null),
+        ...duoRank(r),
         status: String(r.status),
         session: isSessionQueue(r.session_queue) && r.session_start && typeof r.offered_role === "string" ? {
           queue: r.session_queue, compatible: r.compatible === true,

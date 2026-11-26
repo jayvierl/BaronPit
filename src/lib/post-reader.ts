@@ -4,7 +4,7 @@ import { hasBaronCallOptions } from "./poll";
 import { briefingText, PATCH_PUBLISHER, publicPatch, storedNotesUrl } from "./patch-notes";
 import { queryRows } from "./db";
 import { HIDDEN_AUTHORS, canDisplayPost, visibleCommentsFor } from "./community-queries";
-import { playerFlair, readRankedEntries } from "./player-summary";
+import { placedRank, playerFlair, readRankedEntries } from "./player-summary";
 import { playerStatsHref } from "./platforms";
 import { publicAvatar } from "./avatar";
 import { teamBaronFields } from "./pure";
@@ -13,7 +13,8 @@ import type { PostView, CommentView } from "./post-types";
 
 type Filter = {
   roomId?: number; authorId?: number; postId?: number; following?: boolean; activeReplies?: boolean;
-  builds?: { champion?: string; offMeta?: boolean }; tag?: string;
+  builds?: { champion?: string; offMeta?: boolean }; tag?: string; text?: string;
+  kind?: "poll" | "build"; questions?: boolean;
 };
 type ReactionGroup = { reactions: Record<string, number>; myReactions: string[] };
 
@@ -118,7 +119,8 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
         OR EXISTS (SELECT 1 FROM wp_follows WHERE follower_id = $1 AND followee_id = p.author_id)
         OR EXISTS (SELECT 1 FROM wp_room_members WHERE user_id = $1 AND room_id = p.room_id)
         ${filter.following ? "OR s.user_id IS NOT NULL" : ""})
-      AND (NOT $6::boolean OR p.kind = 'build')
+      AND ($6::text IS NULL OR p.kind = $6)
+      ${filter.questions ? "AND EXISTS (SELECT 1 FROM wp_decisions d WHERE d.post_id = p.id)" : ""}
       AND ($7::text IS NULL OR lower(p.data->>'champion') = lower($7))
       AND (NOT $8::boolean OR p.data->'offMeta' = 'true'::jsonb)
       AND ($9::text IS NULL OR strpos(lower(p.body), lower($9)) > 0)
@@ -152,8 +154,8 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
     ) flair ON TRUE
     ORDER BY p.sort_at DESC, p.id DESC`,
     [viewerId, filter.roomId ?? null, filter.authorId ?? null, filter.postId ?? null,
-      Boolean(filter.following), Boolean(filter.builds), filter.builds?.champion || null,
-      Boolean(filter.builds?.offMeta), filter.tag ? '#' + filter.tag : null, Math.min(Math.max(limit, 1), 100), PATCH_PUBLISHER]);
+      Boolean(filter.following), filter.builds ? "build" : filter.kind ?? null, filter.builds?.champion || null,
+      Boolean(filter.builds?.offMeta), filter.tag ? '#' + filter.tag : filter.text || null, Math.min(Math.max(limit, 1), 100), PATCH_PUBLISHER]);
   if (!rows.length) return [];
   const ids = rows.map(r => Number(r.id));
   const polls = rows.filter(r => r.kind === "poll").map(r => Number(r.id));
@@ -183,13 +185,15 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
       ? { briefing: true, patch: version, notesUrl: storedNotesUrl(version, raw.notesUrl) }
       : publicPostData(r.kind, raw);
     const flair = r.label as [string | null, string | null, unknown, unknown] | null;
+    const rankFields = flair && {rankTier:flair[0], rankDiv:flair[1], rankedEntries:readRankedEntries(flair[3])};
     return {
       id, authorId: Number(r.author_id), authorName: String(r.author_name), authorHue: Number(r.author_hue),
       authorAvatar: publicAvatar(r.avatar_ref),
       isQuestion:r.is_question === true,
       canRepost: r.can_repost === true, myRepost: r.my_repost === true,
       ...(r.sharer != null ? {repostedBy: {id: Number(r.sharer), name: String(r.sharer_name), at: String(r.shared_at)}} : {}),
-      authorFlair: flair ? playerFlair({rankTier:flair[0], rankDiv:flair[1], rankedEntries:readRankedEntries(flair[3])}, flair[2]) : null,
+      authorFlair: flair && rankFields ? playerFlair(rankFields, flair[2]) : null,
+      authorTier: rankFields ? placedRank(rankFields).tier : null,
       ...(flair && r.platform && r.riot_id ? {authorStatsHref:playerStatsHref(String(r.platform), String(r.riot_id))} : {}),
       ...(r.answered_at ? { lastReplyAt: String(r.answered_at) } : {}),
       ...(catalog && (r.kind === "card" || r.kind === "build") ? {itemPatch:catalog.patch,itemDetails:cardItems(catalog,r.kind === "card" ? record(data.match).items : data.items)} : {}),

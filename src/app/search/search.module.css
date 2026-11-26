@@ -1,10 +1,10 @@
-.result { display: flex; align-items: center; gap: .75rem; color: var(--ink); min-height: 44px; }
+.result { display: flex; align-items: center; gap: .75rem; color: var(--ink); min-height: 44px; padding: .65rem .2rem; border-bottom: 1px solid var(--border); }
 .result .identity { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .identity small { display: block; color: var(--ink-mid); }
 .result:hover, .result:focus-visible { background: var(--field); text-decoration: none; }
 .result:hover strong, .result:focus-visible strong { text-decoration: underline; }
 .search { min-width: 0; }
-.form { display: flex; align-items: stretch; gap: .5rem; margin: 1rem 0; }
+.form { display: flex; align-items: stretch; gap: .5rem; margin: 1rem 0 .35rem; }
 .form input { flex: 1; min-width: 0; width: 100%; min-height: 44px; border: 1px solid var(--border-strong); border-radius: .8rem; padding: .6rem .8rem; background: var(--field); color: var(--ink); font: inherit; }
 .form button { min-height: 44px; }
 .places { display: grid; }
@@ -14,3 +14,16 @@
 .lookup summary { min-height: 44px; padding-block: .7rem; cursor: pointer; color: var(--ink); font-weight: 600; }
 .empty { margin-block: 1rem; padding: 1.2rem 0; overflow-wrap: anywhere; }
 .empty p { margin: .3rem 0 0; color: var(--ink-mid); }
+.form select { max-width: 8.3rem; min-width: 0; min-height: 44px; border: 1px solid var(--border-strong); border-radius: .65rem; background: var(--bg); color: var(--ink); font: inherit; }
+.scopes { display: flex; gap: .2rem; border-bottom: 1px solid var(--border); margin-bottom: .8rem; }
+.scopes a { display: grid; place-items: center; padding: .25rem .65rem; min-height: 44px; color: var(--ink-mid); font-size: .9rem; font-weight: 600; border-bottom: 2px solid transparent; }
+.scopes a:hover, .scopes a:focus-visible { color: var(--ink); }
+.scopes a[aria-current="page"] { color: var(--ink); border-color: currentColor; }
+.hint { color: var(--ink-mid); font-size: .92rem; }
+@media (max-width: 420px) {
+  .scopes { justify-content: space-between; }
+  .scopes a { padding-inline: .2rem; min-width: 44px; }
+  .form:has(select) { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .form:has(select) input { grid-column: 1 / -1; }
+  .form select { max-width: none; }
+}
