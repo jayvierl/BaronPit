@@ -4,7 +4,7 @@ import { q } from "./db";
 import { listFeaturedRooms } from "./rooms";
 import { PATCH_NOTES_INDEX, PATCH_PUBLISHER } from "./patch-notes";
 import { readPosts } from "./post-reader";
-import { publicProfile, linkedPlayers, trendingChampions, championRoomPulse } from "./player-insights";
+import { publicProfile, linkedPlayers, linkedPlayerIdentities, trendingChampions, championRoomPulse } from "./player-insights";
 import { ensureRooms, getRoom, listRooms, runPatchWatch, searchAll, todaysSpotlight } from "./social";
 import { summarize, type MatchSummary } from "./pure";
 
@@ -75,6 +75,17 @@ describe("bounded player and community data queries", () => {
     const start = testQueries.length;
     expect((await linkedPlayers(2)).map((p) => p.puuid)).toEqual(["player-1", "player-2"]);
     expect(testQueries.length - start).toBe(1);
+  });
+  it("keeps account settings and picture choices in the same order without transferring match histories", async () => {
+    const full = await linkedPlayers(2);
+    const start = testQueries.length;
+    const identities = await linkedPlayerIdentities(2);
+    expect(testQueries.length - start).toBe(1);
+    expect(identities).toEqual(full.map(p => ({
+      puuid:p.puuid, platform:p.platform, gameName:p.gameName, tagLine:p.tagLine, profileIcon:p.profileIcon,
+      primary:p.primary, verified:p.verified, rankTier:p.rankTier, rankDiv:p.rankDiv, rankLp:p.rankLp, rankedEntries:p.rankedEntries,
+    })));
+    expect(JSON.stringify(identities).length * 10).toBeLessThan(JSON.stringify(full).length);
   });
   it("pins one verified spotlight across viewers, serves a slim profile badge, and rechecks safety live", async () => {
     const day = "2026-11-26";

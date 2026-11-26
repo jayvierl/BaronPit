@@ -5,7 +5,7 @@ import atlas from "../src/lib/champion-portrait-atlas.json" with { type: "json" 
 
 export const publicArtwork = [
   "baron-emblem.png", "baron-hero.png", "baron-icon-32.png", "baron-icon-180.png",
-  "baron-emblem-96.webp", "baron-room-480.webp", "baron-room-960.webp",
+  "baron-emblem-96.webp", "baron-duo.webp", "baron-room-480.webp", "baron-room-960.webp",
   `champions/${atlas.patch}.webp`,
 ];
 
@@ -21,8 +21,9 @@ export function checkImage(file, bytes) {
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
-  for (const file of publicArtwork) {
+  const all = [...publicArtwork, ...atlas.ids.map(id => `champions/${atlas.patch}/${id}.webp`)];
+  for (const file of all) {
     checkImage(file, readFileSync(new URL("../public/" + file, import.meta.url)));
   }
-  console.log(`Verified ${publicArtwork.length} public images.`);
+  console.log(`Verified ${all.length} public images.`);
 }

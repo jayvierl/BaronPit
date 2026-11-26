@@ -34,7 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </Link>
             <div className="topbar-right">
               <ExploreMenu>
-                <Link href="/activity">Activity</Link>
+                <Link href="/me" prefetch={false}>Account settings</Link>
                 <Link href="/rooms">Rooms</Link>
                 <Link href="/questions">Match questions</Link>
                 <Link href="/review-hour">Bot lane review hour</Link>
@@ -43,7 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/champions">Champions</Link>
                 <Link href="/pilot">Community pilot</Link>
               </ExploreMenu>
-              <Link href="/me" prefetch={false} className="btn small" aria-label="Account and sign-in">Account</Link>
+              <Link href="/profile" prefetch={false} className="btn small" aria-label="My profile">Profile</Link>
             </div>
           </div>
         </header>

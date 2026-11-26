@@ -3,6 +3,7 @@ import { PilotVisit } from "@/components/pilot-visit";
 import { signInHref } from "@/lib/signin-return";
 import "./duo.css";
 import Link from "next/link";
+import Image from "next/image";
 import { getCurrentUser } from "@/lib/auth";
 import { duoEnabled, readDuoBoard, type DuoListing, type DuoRequest } from "@/lib/duo";
 import { privateDuoReadiness, type DuoReadiness } from "@/lib/duo-readiness";
@@ -48,14 +49,17 @@ export default async function LfgPage({ searchParams }: { searchParams: Promise<
   return (
     <div className="duo-page">
       {measuring && fit && state.status === "ready" && <PilotVisit kind="duo-board"/>}
-      <header>
-        <h1 className="page-title">Find a duo</h1>
-        <p>Climb with a partner who plays your role pairing and queues when you do.</p>
+      <header className="duo-intro">
+        <div>
+          <h1 className="page-title">Find a duo</h1>
+          <p>Find a lane partner for the hours you actually play.</p>
+        </div>
+        <Image unoptimized src="/baron-duo.webp" width={112} height={84} alt="" />
       </header>
       {state.status === "paused" && (
         <aside className="duo-status">
           <h2>Verified duo matching is coming</h2>
-          <p>Listings open once Riot account verification and community safety coverage are in place. You can set up your private duo plan today.</p>
+          <p>Listings open after Riot account verification and safety coverage are ready. You can save your private preferences now.</p>
         </aside>
       )}
       {state.status === "guest" && (

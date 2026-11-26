@@ -9,7 +9,7 @@ import { championList, confirmedPatch, getCachedPlayer } from "./riot";
 import { createPost } from "./social";
 import {
   decisionRoles,
-  decisionTopics,
+  knownDecisionTopic,
   trialOutcomes,
   type DecisionContext,
   type TrialOutcome,
@@ -22,7 +22,7 @@ export async function askDecision(user: User, input: Record<string, unknown>) {
     input.body.trim().length < 10 ||
     input.body.length > 1000 ||
     !decisionRoles.some((r) => r === input.role) ||
-    !decisionTopics.some((t) => t === input.topic)
+    !knownDecisionTopic(input.topic)
   ) {
     return {
       ok: false as const,
@@ -107,6 +107,7 @@ export type DecisionFilter = {
   champion?: string;
   opponent?: string;
   role?: string;
+  topic?: string;
   patch?: string;
   q?: string;
   before?: number;
@@ -146,7 +147,7 @@ export async function decisions(viewerId: number | null, f: DecisionFilter = {})
     WHERE ${visiblePostForInteraction}
       AND ($2::int IS NULL OR p.id=$2) AND ($3::int IS NULL OR p.id<$3)
       AND ($4='' OR lower(d.champion)=lower($4)) AND ($5='' OR lower(d.opponent)=lower($5))
-      AND ($6='' OR d.role=$6) AND ($7='' OR d.patch=$7)
+      AND ($6='' OR d.role=$6) AND ($7='' OR d.patch=$7) AND ($10='' OR d.topic=$10)
       AND ($8='' OR strpos(lower(p.body),lower($8))>0 OR strpos(lower(answer.body),lower($8))>0)
       AND ($9<>'mine' OR (answer.id IS NULL AND p.author_id<>$1
         AND NOT EXISTS (SELECT 1 FROM wp_comments reply WHERE reply.post_id=p.id AND reply.parent_id IS NULL
@@ -166,6 +167,7 @@ export async function decisions(viewerId: number | null, f: DecisionFilter = {})
       f.patch && /^(1[5-9]|2[0-4])[.]/.test(f.patch) ? publicPatch(f.patch) : (f.patch ?? ""),
       f.q?.slice(0, 120) ?? "",
       f.mode ?? "",
+      f.topic ?? "",
     ],
   );
   return rows.map((r) => ({

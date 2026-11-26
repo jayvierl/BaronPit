@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
 export async function checkSubmissions(journey) {
-  const post = { kind: "text", body: "Which side should we ward after resetting?", submissionId: randomUUID() };
+  const post = { kind: "text", body: "Which side should we ward after resetting?", submissionId: randomUUID(), expectedAuthorId: 501 };
   const options = { session: true, method: "POST", body: post };
+  await journey("/api/social/post", { ...options, session: "helper", status: 409, includes:["Your signed-in account changed"] });
   const published = await journey("/api/social/post", options);
   assert.equal(published.status, "visible");
   assert.deepEqual(await journey("/api/social/post", options), published);

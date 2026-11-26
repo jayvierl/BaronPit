@@ -1,7 +1,9 @@
 "use client";
 
-import { beginDraftSignIn, currentAppPath, restoreAfterMount } from "@/lib/auth-draft";
+import { beginDraftSignIn, consumeAuthDraft, currentAppPath } from "@/lib/auth-draft";
 import { useEffect, useId, useRef, useState } from "react";
+import Link from "next/link";
+import { clearTabDrafts, COMPOSER_SIGNOUT, emptyPostDraft, hasPostDraft, openTabDraft, postReceipt, readPostDraft, type PostDraft, type PostKind } from "@/lib/composer-draft";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { clipLink } from "@/lib/clip-link";
@@ -10,59 +12,105 @@ import { ActionFeedback, usePostAction } from "./post-action";
 import { Avatar } from "./ui";
 import type { AvatarIdentity } from "@/lib/author-identity";
 import styles from "./thread.module.css";
+import composerStyles from "./composer.module.css";
 
-type Kind = "text" | "build" | "poll" | "clip";
+type Notice = { tone: string; text: string; href?: string; label?: string };
 
 export function Composer({
   roomId,
   patch,
   champions,
   viewerIdentity,
+  viewerId,
 }: {
   roomId?: number;
   patch: string;
   champions: string[];
   viewerIdentity?: AvatarIdentity | null;
+  viewerId: number;
 }) {
   const router = useRouter();
-  const [kind, setKind] = useState<Kind>("text");
-  const [body, setBody] = useState("");
-  const [champion, setChampion] = useState("");
-  const [items, setItems] = useState<number[]>([]);
-  const [itemQuery, setItemQuery] = useState("");
+  const [draft, setDraft] = useState(emptyPostDraft);
+  const live = useRef(draft);
+  const storage = useRef<ReturnType<typeof openTabDraft> | null>(null);
+  const touched = useRef(false);
+  const { kind, body, champion, items, itemQuery, runes, offMeta, options, baronCall, clipUrl } = draft;
   const [itemMap, setItemMap] = useState<Record<string, number>>({});
-  const [runes, setRunes] = useState("");
-  const [offMeta, setOffMeta] = useState(false);
-  const [options, setOptions] = useState(["", ""]);
-  const [baronCall, setBaronCall] = useState(false);
-  const [clipUrl, setClipUrl] = useState("");
-  const [msg, setMsg] = useState<{ tone: string; text: string } | null>(null);
+  const [msg, setMsg] = useState<Notice | null>(null);
   const action = usePostAction();
   const [itemError, setItemError] = useState(false);
   const [retry, setRetry] = useState(0);
   const champListId = useId();
 
   const scope = `post:${roomId ?? "home"}`;
-  useEffect(() => restoreAfterMount(scope, draft => {
-    const mode = draft.kind;
-    if (mode === "build" || mode === "clip" || mode === "poll") setKind(mode);
-    if (typeof draft.body === "string") setBody(draft.body.slice(0, 2000));
-    if (typeof draft.champion === "string") setChampion(draft.champion);
-    if (Array.isArray(draft.items)) setItems(draft.items.filter(Number.isSafeInteger).slice(0, 6));
-    if (typeof draft.runes === "string") setRunes(draft.runes);
-    if (typeof draft.clipUrl === "string") setClipUrl(draft.clipUrl);
-    if (Array.isArray(draft.options) && draft.options.every(o => typeof o === "string")) setOptions(draft.options.slice(0, 4));
-    setOffMeta(draft.offMeta === true);
-    setBaronCall(draft.baronCall === true);
-    setMsg({tone: "ok", text: "Your draft is ready to review."});
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const countId = useId();
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [storageError, setStorageError] = useState(false);
+
+  useEffect(() => {
+    try { storage.current = openTabDraft(window.sessionStorage, window.localStorage, viewerId, scope); }
+    catch { storage.current = null; }
+    const frame = window.requestAnimationFrame(() => {
+      let handoff = null;
+      try { handoff = consumeAuthDraft(window.localStorage,scope,window.location.href); }
+      catch { /* Session drafts still work if sign-in continuation is unavailable. */ }
+      if (handoff) window.history.replaceState(window.history.state, "", handoff.destination);
+      if (touched.current) return;
+      const transferred = handoff && (handoff.payload.viewerId === undefined || handoff.payload.viewerId === viewerId)
+        ? readPostDraft(handoff.payload) : null;
+      const restored = transferred ?? storage.current?.restored;
+      if (!restored) return;
+      live.current = restored;
+      setDraft(restored);
+      if (transferred) {
+        try { storage.current?.save(restored); } catch { setStorageError(true); }
+        bodyRef.current?.focus();
+      }
+      setMsg({ tone: "ok", text: "Draft restored." });
+    });
+    function signedOut(event: StorageEvent) {
+      if (event.key !== COMPOSER_SIGNOUT && event.key !== null) return;
+      try { clearTabDrafts(window.sessionStorage); } catch { /* Storage is optional. */ }
+      storage.current = null;
+      touched.current = true;
+      live.current = emptyPostDraft;
+      setDraft(emptyPostDraft);
+      setMsg(null);
+      setConfirmDiscard(false);
+      router.refresh();
+    }
+    window.addEventListener("storage", signedOut);
+    return () => { window.cancelAnimationFrame(frame); window.removeEventListener("storage",signedOut); };
+  }, [scope,viewerId,router]);
+
+  function store(next: PostDraft) {
+    touched.current = true;
+    live.current = next;
+    setDraft(next);
+    try {
+      storage.current?.save(next);
+      setStorageError(!storage.current && hasPostDraft(next));
+    } catch { setStorageError(true); }
+  }
+  function edit(changes: Partial<PostDraft>) {
+    setMsg(null);
+    setConfirmDiscard(false);
+    store({ ...live.current, ...changes, submissionId: null });
+  }
+  function discard() {
+    store(emptyPostDraft);
+    setAttempted("");
+    setConfirmDiscard(false);
+    setMsg({tone:"ok",text:"Draft discarded."});
     bodyRef.current?.focus();
-  }), [scope]);
+  }
 
   function resumeAfterAuth() {
     try {
       const path = currentAppPath().split("#")[0] + "#compose";
       const href = beginDraftSignIn(window.localStorage, scope, path,
-        {kind, body, champion, items, runes, offMeta, options, baronCall, clipUrl}, action.authStep === "enrol" ? "enrol" : undefined);
+        {...live.current, viewerId}, action.authStep === "enrol" ? "enrol" : undefined);
       router.push(href);
     } catch { setMsg({tone: "err", text: "This browser couldn’t save your draft. Copy it before signing in."}); }
   }
@@ -109,31 +157,21 @@ export function Composer({
   const payload = { kind, body, roomId: roomId ?? null, data };
   const submissionKey = JSON.stringify(payload);
   const [attempted, setAttempted] = useState("");
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
   const reconsider = action.reconsider && attempted === submissionKey;
   async function submit(submitForReview = false) {
     if (!canPost || action.busy) return;
     setMsg(null);
     setAttempted(submissionKey);
+    const id = live.current.submissionId ?? crypto.randomUUID();
+    store({ ...live.current, submissionId: id });
     const result = await action.sendDraft("/api/social/post", {
-      ...payload,
+      ...payload, expectedAuthorId: viewerId,
       submitForReview: submitForReview && reconsider,
-    });
+    }, id);
     if (!result) return;
-    const held = result.status === "held";
-    setMsg({
-      tone: held ? "warn" : "ok",
-      text: held ? "Submitted for moderator review." : result.status === "visible" ? "Posted." : "Your earlier submission is recorded in My submissions.",
-    });
-    setBody("");
-    setChampion("");
-    setItems([]);
-    setItemQuery("");
-    setOffMeta(false);
-    setRunes("");
-    setOptions(["", ""]);
-    setBaronCall(false);
-    setClipUrl("");
+    store(emptyPostDraft);
+    setConfirmDiscard(false);
+    setMsg(postReceipt(result));
     router.refresh();
   }
 
@@ -153,6 +191,7 @@ export function Composer({
         <textarea
           ref={bodyRef}
           aria-label="Post text"
+          aria-describedby={countId}
           disabled={action.busy}
           rows={2}
           placeholder={
@@ -165,19 +204,19 @@ export function Composer({
                   : "What’s on your mind?"
           }
           value={body}
-          onChange={(e) => setBody(e.target.value)}
+          onChange={(e) => edit({ body: e.target.value })}
           maxLength={2000}
         />
       </div>
       <div className={`kind-tabs ${styles.formats}`} role="group" aria-label="Post format">
-        {(["text", "build", "poll", "clip"] as Kind[]).map((k) => (
+        {(["text", "build", "poll", "clip"] as PostKind[]).map((k) => (
           <button
             key={k}
             type="button"
             aria-pressed={kind === k}
             disabled={action.busy}
             className={`kind-tab${kind === k ? " active" : ""}`}
-            onClick={() => setKind(k)}
+            onClick={() => edit({ kind: k })}
           >
             {k === "text" ? "Text" : k === "build" ? "Build" : k === "poll" ? "Poll" : "Clip"}
           </button>
@@ -189,10 +228,11 @@ export function Composer({
             <input
               className="inline"
               aria-label="Champion"
+              maxLength={100}
               list={champListId}
               placeholder="Champion"
               value={champion}
-              onChange={(e) => setChampion(e.target.value)}
+              onChange={(e) => edit({ champion: e.target.value })}
               style={{ flex: "1 1 150px" }}
             />
             <datalist id={champListId}>
@@ -203,9 +243,10 @@ export function Composer({
             <input
               className="inline"
               aria-label="Runes"
+              maxLength={240}
               placeholder="Runes (e.g. Conqueror · Triumph…)"
               value={runes}
-              onChange={(e) => setRunes(e.target.value)}
+              onChange={(e) => edit({ runes: e.target.value })}
               style={{ flex: "2 1 220px" }}
             />
           </div>
@@ -213,9 +254,10 @@ export function Composer({
             <input
               className="inline"
               aria-label="Search items"
+              maxLength={120}
               placeholder="Search items to add (up to 6)"
               value={itemQuery}
-              onChange={(e) => setItemQuery(e.target.value)}
+              onChange={(e) => edit({ itemQuery: e.target.value })}
               style={{ flex: 1 }}
             />
           </div>
@@ -236,8 +278,7 @@ export function Composer({
                   disabled={items.length >= 6 || action.busy}
                   className="chip"
                   onClick={() => {
-                    if (items.length < 6) setItems([...items, itemMap[n]]);
-                    setItemQuery("");
+                    if (items.length < 6) edit({ items: [...items, itemMap[n]], itemQuery: "" });
                   }}
                 >
                   {n}
@@ -253,7 +294,7 @@ export function Composer({
                 className="text-btn"
                 disabled={action.busy}
                 aria-label={`Remove ${Object.keys(itemMap).find((name) => itemMap[name] === id) ?? "item " + id}`}
-                onClick={() => setItems(items.filter((_, j) => j !== i))}
+                onClick={() => edit({ items: items.filter((_, j) => j !== i) })}
               >
                 <Image
                   src={`https://ddragon.leagueoflegends.com/cdn/${patch}/img/item/${id}.png`}
@@ -266,7 +307,7 @@ export function Composer({
             ))}
           </div>
           <label style={{ display: "flex", gap: 7, alignItems: "center", fontWeight: 600, fontSize: 14 }}>
-            <input type="checkbox" checked={offMeta} onChange={(e) => setOffMeta(e.target.checked)} /> This is an
+            <input type="checkbox" checked={offMeta} onChange={(e) => edit({ offMeta: e.target.checked })} /> This is an
             off-meta build
           </label>
         </div>
@@ -274,7 +315,7 @@ export function Composer({
       {kind === "poll" && (
         <div className="composer-extra" style={{ marginTop: 4, display: "grid", gap: 8 }}>
           <label>
-            <input type="checkbox" checked={baronCall} onChange={e => setBaronCall(e.target.checked)} /> Make it a Baron call
+            <input type="checkbox" checked={baronCall} onChange={e => edit({ baronCall: e.target.checked })} /> Make it a Baron call
           </label>
           {baronCall ? <ul>{BARON_CALL_OPTIONS.map(option => <li key={option}>{option}</li>)}</ul> : options.map((o, i) => (
             <input
@@ -287,12 +328,12 @@ export function Composer({
               onChange={(e) => {
                 const next = [...options];
                 next[i] = e.target.value;
-                setOptions(next);
+                edit({ options: next });
               }}
             />
           ))}
           {!baronCall && options.length < 4 && (
-            <button type="button" className="text-btn" onClick={() => setOptions([...options, ""])}>
+            <button type="button" className="text-btn" onClick={() => edit({ options: [...options, ""] })}>
               + Add option
             </button>
           )}
@@ -303,10 +344,11 @@ export function Composer({
           <input
             className="inline"
             aria-label="Clip link"
+            maxLength={2048}
             type="url"
             placeholder="YouTube, Twitch, Medal or Streamable clip URL"
             value={clipUrl}
-            onChange={(e) => setClipUrl(e.target.value)}
+            onChange={(e) => edit({ clipUrl: e.target.value })}
             style={{ width: "100%" }}
           />
           <p className="meta" style={{ margin: "6px 0 0" }}>
@@ -316,7 +358,7 @@ export function Composer({
         </div>
       )}
       {attempted === submissionKey && <ActionFeedback error={action.error} />}
-      {action.authStep && <button type="button" className="text-btn" onClick={resumeAfterAuth}>
+      {action.authStep && attempted === submissionKey && <button type="button" className="text-btn" onClick={resumeAfterAuth}>
         {action.authStep === "enrol" ? "Confirm eligibility and return to draft" : "Sign in and return to draft"}
       </button>}
       {reconsider && (
@@ -342,13 +384,26 @@ export function Composer({
         </div>
       )}
       {msg && (
-        <div role="status" className={`notice ${msg.tone}`} style={{ marginLeft: 52 }}>
-          {msg.text} {msg.tone !== "err" && <a href="/me#submissions">My submissions</a>}
+        <div role="status" className={`notice ${msg.tone} ${composerStyles.feedback}`}>
+          {msg.text} {msg.href && <Link href={msg.href}>{msg.label}</Link>}
         </div>
       )}
-      <div className="composer-foot">
+      {storageError && <small role="status">Draft saving is unavailable in this browser. Copy your text before leaving.</small>}
+      {confirmDiscard && <div className={composerStyles.discard} role="group" aria-label="Discard draft">
+        <span>Discard this draft? </span>
+        <button type="button" className="text-btn" onClick={() => setConfirmDiscard(false)}>Keep editing</button>{" "}
+        <button type="button" className="text-btn" onClick={discard}>Discard draft</button>
+      </div>}
+      <div className={`composer-foot ${composerStyles.footer}`}>
         <span className="meta">
-          <a href="/guidelines">Community guidelines</a>{body.length >= 1800 && ` · ${2000 - body.length} characters left`}
+          <a href="/guidelines">Community guidelines</a>
+          <span id={countId} className={body.length ? undefined : composerStyles.srOnly}>
+            {body.length > 0 ? ` · ${2000 - body.length} characters left` : "2,000 character limit."}
+          </span>
+          <span aria-live="polite" className={composerStyles.srOnly}>
+            {body.length === 2000 ? "Character limit reached." : body.length >= 1980 ? "20 characters or fewer remaining." : ""}
+          </span>
+          {hasPostDraft(draft) && !confirmDiscard && <> · <button type="button" className="text-btn" onClick={() => setConfirmDiscard(true)}>Discard</button></>}
         </span>
         <button
           type="button"

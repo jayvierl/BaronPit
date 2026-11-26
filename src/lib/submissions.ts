@@ -10,9 +10,7 @@ export type SubmissionResult =
   | { ok: true; postId: number; status: SubmissionStatus }
   | { ok: false; error: string; reconsider?: boolean };
 
-export function validSubmissionId(value: unknown): value is string {
-  return typeof value === "string" && /^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(value);
-}
+export { validSubmissionId } from "./ids";
 
 export function submissionHash(payload: unknown): string {
   const normalized = JSON.stringify(payload, (_, value) =>

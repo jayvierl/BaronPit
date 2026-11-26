@@ -69,11 +69,13 @@ describe("moderated decision questions", () => {
     if (!posted.ok) throw Error("fixture unavailable");
     question = posted.postId;
     expect(
-      await decisions(null, { mode: "unanswered", opponent: "Caitlyn", role: "Bot", patch: "16.23" }),
+      await decisions(null, { mode: "unanswered", opponent: "Caitlyn", role: "Bot", patch: "16.23", topic: "Objective" }),
     ).toMatchObject([{ postId: question, champion: "Ashe", answer: null }]);
     const held = await askDecision({ ...owner, id: 4, createdAt: new Date().toISOString() }, draft);
     expect(held).toMatchObject({ ok: true, status: "held" });
     expect(await decisions(null)).toHaveLength(1);
+    expect(await decisions(null, { topic: "Objective" })).toMatchObject([{ postId: question }]);
+    expect(await decisions(null, { topic: "Laning" })).toEqual([]);
   });
   it("saves and clears a private responder queue, including after a return and a scope change", async () => {
     expect(await questionPreference(2)).toBeNull();
@@ -123,6 +125,7 @@ describe("moderated decision questions", () => {
     expect(await decisions(null, { postId: result.postId })).toMatchObject([
       { topic: "Build choice", patch: "26.22", itemId: 3031, itemName: "Infinity Edge" },
     ]);
+    expect(await decisions(null, { mode: "unanswered", topic: "Build choice" })).toMatchObject([{ postId: result.postId }]);
     await q`DELETE FROM wp_posts WHERE id=${result.postId}`;
     const legacy = { ...match, gamePatch: undefined };
     await q`UPDATE wp_players SET snapshot=${JSON.stringify({ matches: [legacy] })}::jsonb WHERE puuid='player'`;
@@ -147,11 +150,12 @@ describe("moderated decision questions", () => {
     expect(await acceptDecision(1, question, self.ok ? self.postId : 0)).toBe(false);
     expect(await acceptDecision(1, question, answer)).toBe(true);
     expect(
-      await decisions(null, { mode: "answered", q: "cover the river", opponent: "Caitlyn" }),
+      await decisions(null, { mode: "answered", q: "cover the river", opponent: "Caitlyn", topic: "Objective" }),
     ).toMatchObject([{ answer: { id: answer, name: "Helper" } }]);
     expect(await decisions(null, { mode: "unanswered" })).toEqual([]);
     await q`INSERT INTO wp_mutes(muter_id,muted_id) VALUES (3,2)`;
     expect(await decisions(3, { mode: "answered" })).toEqual([]);
+    expect(await decisions(3, { mode: "answered", topic: "Objective" })).toEqual([]);
     expect(await decisions(3, { q: "cover the river" })).toEqual([]);
   });
   it("verifies game ownership and time for optional evidence, preserves a chosen result, and suppresses hidden answers", async () => {

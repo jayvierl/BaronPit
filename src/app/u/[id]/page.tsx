@@ -14,6 +14,8 @@ import { PlayerStats } from "@/components/player-stats";
 import { EndorseRow, FollowButton, UserSafetyMenu } from "@/components/social-ui";
 import { publicAvatarIdentity } from "@/lib/author-identity";
 import { PostCard } from "@/components/post-card";
+import { SafetyReport } from "@/components/safety-report";
+import styles from "./profile.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -27,10 +29,12 @@ export default async function ProfilePage({ params, searchParams }: {
   const today = new Date().toISOString().slice(0, 10);
   const profile = await publicProfile(userId, viewer?.id ?? null, today);
   if (!profile) notFound();
+  const links = readLinkedPlayers(userId);
+  const loadPosts = () => feedByAuthor(userId,viewer,20).catch(() => null);
   const [patch,counts,endorsements,linkedPlayers,following,posts,featuredLink] = await Promise.all([
-    currentPatch(), followCounts(userId), endorsementCounts(userId), readLinkedPlayers(userId),
+    currentPatch(), followCounts(userId), endorsementCounts(userId), links,
     viewer && viewer.id !== userId ? isFollowing(viewer.id,userId) : false,
-    feedByAuthor(userId,viewer,20).catch(() => null),
+    tab === "players" ? links.then(players => players.length ? [] : loadPosts()) : loadPosts(),
     profile.link ? readProfileLink(profile.link, viewer?.id ?? null) : null,
   ]);
   const player = linkedPlayers[0] ?? null;
@@ -44,69 +48,48 @@ export default async function ProfilePage({ params, searchParams }: {
   return (
     <div>
       {isSelf && updated === "1" && <p className="notice ok" role="status">Profile updated.</p>}
-      <div style={{ padding: "6px 2px 0" }}>
-        <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
+      <header className={styles.identity}>
+        <div className={styles.byline}>
+          <div>
             <h1 className="profile-name">{profile.name}</h1>
-            <div style={{ fontSize: 14.5, marginTop: 2 }}>
-              {player ? (
-                <>{player.gameName}#{player.tagLine} · {player.verified ? "Verified Riot link" : "Unverified Riot link"}</>
-              ) : (
-                <span className="meta">No Riot ID linked yet</span>
-              )}
-            </div>
-            {badges.length > 0 && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                {badges.map((b) => <span key={b} className="chip badge">{b}</span>)}
-              </div>
-            )}
+            {player && <p className={styles.riotId}>{player.gameName}#{player.tagLine}
+              <span> · {player.verified ? "Verified Riot link" : "Unverified Riot link"}</span></p>}
+            {!player && isSelf && <Link href="/me" className={styles.link}>Link a Riot ID</Link>}
           </div>
-          <Avatar name={profile.name} hue={profile.hue} avatar={profile.avatar} size={84} />
+          <Avatar name={profile.name} hue={profile.hue} avatar={profile.avatar} size={76} />
         </div>
-
-        {player?.verified && lookupHref && <PlayerStats player={player} lookupHref={lookupHref} />}
-        {player && !player.verified && lookupHref && (
-          <p className="meta"><Link href={lookupHref}>View stats for {player.gameName}#{player.tagLine} →</Link></p>
-        )}
-        {!player && isSelf && <p className="meta"><Link href="/me">Link a Riot ID to your profile →</Link></p>}
-        {profile.bio && <p style={{ margin: "12px 0 0", fontSize: 15 }}>{profile.bio}</p>}
-        {featuredLink && <p><Link href={featuredLink.href}>{featuredLink.label} <span aria-hidden="true">↗</span></Link></p>}
-
-        <div className="meta" style={{ marginTop: 10, fontSize: 14 }}>
-          {counts.followers} follower{counts.followers === 1 ? "" : "s"} · {counts.following} following · joined{" "}
-          {new Date(profile.createdAt).toLocaleDateString(undefined, { month: "short", year: "numeric" })}
+        {profile.bio && <p className={styles.bio}>{profile.bio}</p>}
+        {featuredLink && <Link className={styles.link} href={featuredLink.href}>{featuredLink.label} <span aria-hidden="true">↗</span></Link>}
+        <p className={styles.socialProof}>
+          <span>{counts.followers} follower{counts.followers === 1 ? "" : "s"}</span>
+          <span>{counts.following} following</span>
+          <span>Joined {new Date(profile.createdAt).toLocaleDateString("en-US", {month:"short", year:"numeric", timeZone:"UTC"})}</span>
+        </p>
+        <div className={styles.actions}>
+          {isSelf ? <>
+            <Link href="/profile/edit" className="btn secondary">Edit profile</Link>
+            <Link href="/lfg" className="btn secondary">My duo preferences</Link>
+          </> : viewer ? <FollowButton userId={userId} initial={following} />
+            : <Link className="btn small" href={signInHref(`/u/${userId}`)}>Sign in to follow</Link>}
+          {!isSelf && (viewer ? <UserSafetyMenu userId={userId}/> : <SafetyReport kind="user" targetId={userId}/>)}
         </div>
-
-        <div className="meta" style={{ marginTop: 10 }}>Endorsements · last 90 days</div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-          {ENDORSE_KINDS.map((k) => (
-            <span key={k.id} className="chip">{k.label}: {endorsements[k.id] ?? 0}</span>
-          ))}
-        </div>
-
-        {!viewer && <div className="profile-actions"><Link className="btn small" href={signInHref(`/u/${userId}`)}>Sign in to follow</Link></div>}
-        {(viewer || isSelf) && (
-          <div className="profile-actions">
-            {isSelf && <><Link href="/profile/edit" className="btn secondary">Edit profile</Link><Link href="/lfg" className="btn secondary">My duo preferences</Link></>}
-            {viewer && !isSelf && <FollowButton userId={userId} initial={following} />}
-          </div>
-        )}
-        {viewer && !isSelf && (
-          <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-            <UserSafetyMenu userId={userId} />
-          </div>
-        )}
-        {viewer && !isSelf && (
-          <div style={{ marginTop: 12 }}>
-            <div className="meta" style={{ marginBottom: 6 }}>Endorse {profile.name.split(" ")[0]}</div>
-            <EndorseRow userId={userId} />
-          </div>
-        )}
-      </div>
-
+        {badges.length > 0 && <div className={styles.badges}>
+          {badges.map(b => <span key={b} className="chip badge">{b}</span>)}
+        </div>}
+        {ENDORSE_KINDS.some(k => endorsements[k.id] > 0) && <div className={styles.endorsements}>
+          <span>Teammate endorsements · last 90 days</span>
+          {ENDORSE_KINDS.filter(k => endorsements[k.id] > 0).map(k => <span key={k.id} className="chip">{k.label} · {endorsements[k.id]}</span>)}
+        </div>}
+        {viewer && !isSelf && <details className={styles.endorse}>
+          <summary>Endorse a teammate</summary>
+          <EndorseRow userId={userId}/>
+        </details>}
+      </header>
+      {player?.verified && lookupHref && <PlayerStats player={player} lookupHref={lookupHref} />}
+      {player && !player.verified && lookupHref && <p className="meta"><Link href={lookupHref}>View stats for {player.gameName}#{player.tagLine} →</Link></p>}
       {highlight && player && (
         <div className="highlight-row">
-          <ChampionPortrait id={highlight.champion} patch={patch} size={46} />
+          <ChampionPortrait id={highlight.champion} patch={patch} size={46} compact />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, color: "var(--accent-ink)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
               Today’s highlight
@@ -122,12 +105,12 @@ export default async function ProfilePage({ params, searchParams }: {
         </div>
       )}
 
-      <div className="tabs" style={{ marginTop: 6 }}>
-        <Link href={`/u/${userId}`} className={activeTab === "posts" ? "active" : ""}>Posts</Link>
+      <nav aria-label="Profile sections" className="tabs" style={{ marginTop: 6 }}>
+        <Link href={`/u/${userId}`} aria-current={activeTab === "posts" ? "page" : undefined} className={activeTab === "posts" ? "active" : ""}>Posts</Link>
         {linkedPlayers.length > 0 && (
-          <Link href={`/u/${userId}?tab=players`} className={activeTab === "players" ? "active" : ""}>Players</Link>
+          <Link href={`/u/${userId}?tab=players`} aria-current={activeTab === "players" ? "page" : undefined} className={activeTab === "players" ? "active" : ""}>Players</Link>
         )}
-      </div>
+      </nav>
 
       {activeTab === "players" ? (
         <div>
@@ -147,7 +130,10 @@ export default async function ProfilePage({ params, searchParams }: {
       ) : posts === null ? (
         <div className="empty">This player’s posts are temporarily unavailable.</div>
       ) : posts.length === 0 ? (
-        <div className="empty">No posts yet.</div>
+        <div className={styles.empty}>
+          <h2>{isSelf ? "Start your first thread" : "No posts yet"}</h2>
+          <Link className={styles.link} href={isSelf ? "/#compose" : "/rooms"}>{isSelf ? "Write a post" : "Browse community rooms"} →</Link>
+        </div>
       ) : (
         posts.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(viewer)} viewerId={viewer?.id ?? null} viewerIdentity={publicAvatarIdentity(viewer)} />)
       )}

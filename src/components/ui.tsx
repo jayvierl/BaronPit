@@ -5,7 +5,7 @@ export function Avatar({ name, hue, size = 40, imageUrl, avatar }: {
 }) {
   const ref = publicAvatar(avatar);
   const url = avatarImageUrl(ref) ?? (imageUrl && isOfficialRiotIcon(imageUrl) ? imageUrl : undefined);
-  const art = ref.kind === "champion" ? championAvatarArt(ref.id) : url ? { backgroundImage: `url("${url}")` } : undefined;
+  const art = ref.kind === "champion" ? championAvatarArt(ref.id, true) : url ? { backgroundImage: `url("${url}")` } : undefined;
   const initials = name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("") || "?";
   return (
     <span

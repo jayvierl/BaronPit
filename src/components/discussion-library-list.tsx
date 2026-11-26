@@ -16,7 +16,6 @@ export function DiscussionList({ page, view }: { page: LibraryPage; view: View }
   const base = view === "playbook" ? "/playbook?" : view === "replies" ? "/activity?" : "/activity?tab=" + view + "&";
   return <>
     {page.entries.length === 0 && <p className="meta">{emptyText[view]}</p>}
-    {view === "replies" && <Link href="/activity?tab=muted">Manage muted threads</Link>}
     <ul className="library-list">
       {page.entries.map(item => <li key={item.cursor}>
         <div className="meta">

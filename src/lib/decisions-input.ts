@@ -1,5 +1,8 @@
 export const decisionRoles = ["Top", "Jungle", "Mid", "Bot", "Support"] as const;
 export const decisionTopics = ["Laning", "Build choice", "Objective", "Teamfight", "Macro"] as const;
+export function knownDecisionTopic(value: unknown) {
+  return decisionTopics.find(topic => topic === value);
+}
 export const trialOutcomes = {
   helped: "It helped",
   mixed: "Mixed results",

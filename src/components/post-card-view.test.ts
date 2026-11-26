@@ -46,10 +46,11 @@ describe("thread controls", () => {
       signedIn:true,viewerId:2,viewerIdentity:viewer,threadPage:true,patch:"16.23.1",
     };
     const thread = renderToStaticMarkup(createElement(PostCard,props));
-    expect(thread).toContain(`/champions/${AVATAR_PATCH}.webp`);
+    expect(thread).toContain(`/champions/${AVATAR_PATCH}/Nami.webp`);
     expect(thread).toContain(photoPath);
-    const composer = renderToStaticMarkup(createElement(Composer, {champions:[],patch:props.patch,viewerIdentity:viewer}));
+    const composer = renderToStaticMarkup(createElement(Composer, {champions:[],patch:props.patch,viewerId:props.viewerId,viewerIdentity:viewer}));
     expect(composer).toContain(photoPath);
+    expect(composer).toContain("2,000 character limit.");
     expect(renderToStaticMarkup(createElement(PostCard,{...props,signedIn:false}))).not.toContain(photoPath);
     expect(render("text",{})).not.toContain('class="avatar-art"');
   });
@@ -61,6 +62,31 @@ describe("thread controls", () => {
     expect(html).toContain('href="/player?platform=euw1&amp;riotId=Un%20nom%23EUW"');
     expect(html).toContain('aria-label="View River’s verified Riot stats, Gold IV"');
     expect(render("text", {})).not.toContain('href="/player?');
+  });
+
+  it("renders initial thread replies in the first HTML and keeps unopened feed replies lazy", () => {
+    const post: PostView = { ...base, kind: "text", data: {}, pollResults: null, myVote: null, commentCount: 1 };
+    const comment = {
+      id: 5, postId: post.id, authorId: 2, authorName: "Support", authorHue: 20, parentId: null,
+      body: "Ward from the wave.", status: "visible", createdAt: post.createdAt, oneFix: false,
+      reactions: {}, myReactions: [], replies: [],
+    };
+    const props = { post, patch: "16.23.1", signedIn: false, initialComments: [comment] };
+    const detail = renderToStaticMarkup(createElement(PostCard, { ...props, threadPage: true }));
+    expect(detail).toContain(comment.body);
+    expect(detail).not.toContain("Loading replies");
+    expect(renderToStaticMarkup(createElement(PostCard, props))).not.toContain(comment.body);
+  });
+
+  it("links a room in the conversation byline and shows the player’s take before the attached build", () => {
+    const post: PostView = { ...base, kind: "build", data: { champion: "Ashe", offMeta: true },
+      roomSlug: "champ-ashe", roomName: "Ashe", roomId: 8, pollResults: null, myVote: null };
+    const html = renderToStaticMarkup(createElement(PostCard, { post, patch: "16.23.1", signedIn: false }));
+    const room = html.indexOf('href="/rooms/champ-ashe"');
+    const message = html.indexOf("A lane swap");
+    expect(room).toBeGreaterThan(0);
+    expect(message).toBeGreaterThan(room);
+    expect(html.indexOf("Ashe build")).toBeGreaterThan(message);
   });
 
   it("labels the server-designated patch briefing in feed and thread cards", () => {

@@ -6,6 +6,10 @@
   margin-block: .65rem;
 }
 .duo-page { max-width: 51rem; margin: 0 auto; }
+.duo-intro { display: flex; align-items: center; justify-content: space-between; gap: .9rem; padding: .75rem 0 1.15rem; }
+.duo-intro h1 { margin: 0; letter-spacing: -.045em; }
+.duo-intro p { margin: .35rem 0 0; max-width: 32ch; }
+.duo-intro img { width: clamp(4.8rem, 19vw, 7rem); height: auto; aspect-ratio: 4 / 3; border-radius: .85rem; object-fit: cover; }
 .duo-page h2 { font-size: 1.2rem; }
 .duo-page > header p { color: var(--ink-soft); }
 .duo-status { padding: .9rem 1.1rem; border-inline-start: 3px solid var(--accent); background: var(--hover); }

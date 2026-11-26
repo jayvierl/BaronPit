@@ -1,13 +1,30 @@
 import { q, queryRows } from "./db";
 import { HIDDEN_AUTHORS, BLOCKED_AUTHORS } from "./community-queries";
-import { playerFlair } from "./player-summary";
+import { playerFlair, readRankedEntries } from "./player-summary";
 import { playerFromRow, type Player } from "./riot";
 import { fnvHash } from "./pure";
 import { publicAvatar } from "./avatar";
 
+function linkedRows(userId: number, includeMatches: boolean) {
+  const columns = includeMatches ? "p.*, p.snapshot #> '{champPool,0,champion}' AS main"
+    : "p.puuid,p.platform,p.game_name,p.tag_line,p.profile_icon,p.rank_tier,p.rank_div,p.rank_lp,p.snapshot->'rankedEntries' AS entries";
+  return queryRows(`SELECT ${columns}, l.is_primary,
+    (l.verified AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.verified AND other.puuid=l.puuid AND other.user_id<>l.user_id)) AS verified
+    FROM wp_links l JOIN wp_players p ON p.puuid=l.puuid WHERE l.user_id=$1
+    ORDER BY verified DESC,l.is_primary DESC,l.created_at,l.puuid`, [userId]);
+}
+
+export async function linkedPlayerIdentities(userId: number) {
+  return (await linkedRows(userId, false)).map(row => ({
+    puuid: String(row.puuid), platform: String(row.platform), gameName: String(row.game_name), tagLine: String(row.tag_line),
+    profileIcon: Number(row.profile_icon ?? 0), primary: row.is_primary === true, verified: row.verified === true,
+    rankTier: typeof row.rank_tier === "string" ? row.rank_tier : null, rankDiv: typeof row.rank_div === "string" ? row.rank_div : null,
+    rankLp: row.rank_lp == null ? null : Number(row.rank_lp), rankedEntries: readRankedEntries(row.entries),
+  }));
+}
+
 export async function linkedPlayers(userId: number) {
-  const rows = await q`SELECT p.*, l.is_primary, p.snapshot #> '{champPool,0,champion}' AS main, (l.verified AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.verified AND other.puuid=l.puuid AND other.user_id<>l.user_id)) AS verified FROM wp_links l JOIN wp_players p ON p.puuid=l.puuid
-    WHERE l.user_id=${userId} ORDER BY verified DESC,l.is_primary DESC,l.created_at,l.puuid`;
+  const rows = await linkedRows(userId, true);
   return rows.map(row => {
     const player = playerFromRow(row);
     return { ...player, primary: row.is_primary === true, verified: row.verified === true,

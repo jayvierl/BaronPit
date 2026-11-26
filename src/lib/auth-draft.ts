@@ -1,4 +1,5 @@
 import { safeReturnTo, signInHref } from "./signin-return";
+import { clearTabDrafts, COMPOSER_SIGNOUT } from "./composer-draft";
 
 const PREFIX = "discussion-signin-draft:";
 const TTL = 30 * 60_000;
@@ -79,6 +80,8 @@ export function currentAppPath() {
 }
 
 export function clearBrowserAuthDrafts() {
+  try { clearTabDrafts(window.sessionStorage); } catch { /* Tab storage is optional. */ }
+  try { window.localStorage.setItem(COMPOSER_SIGNOUT, crypto.randomUUID()); } catch { /* Keep clearing sign-in drafts if storage is full. */ }
   try {
     const storage = window.localStorage;
     for (let i = storage.length - 1; i >= 0; i--) {

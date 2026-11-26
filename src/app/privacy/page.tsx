@@ -34,6 +34,7 @@ export default function PrivacyPage() {
       </ul>
       <h2 className="section">Drafts during sign-in</h2>
       <p>If you start a post or reply before signing in, this browser can hold the draft while you use your email link. The app restores it once, for up to 30 minutes. Your email contains a sign-in link. Draft text stays in this browser until you submit it. Signing out clears saved sign-in drafts from the device.</p>
+      <p>While you are signed in, this tab can remember an unfinished post for 30 minutes so you can visit another thread and return. Drafts belong to the account and room where you wrote them. Posting or discarding clears the draft. Signing out invalidates these drafts across tabs.</p>
       <h2 className="section">Your choices</h2>
       <p>In My submissions, you can withdraw a post or reply at any time. Other players lose access to that conversation branch immediately. We clear ordinary withdrawn text and attachments from the post record. We retain the original when needed for a safety case and keep a private receipt showing its status.</p>
       <p>You can unlink a Riot ID at any time from your profile, which removes its association with your account. To delete your account and social content, email <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> from your account email. Some case records may need to be preserved to address ongoing abuse, review an appeal or meet a legal obligation. Contact us about a suspected under-13 account so we can review it and remove data as required.</p>

@@ -6,10 +6,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, isAdmin } from "@/lib/auth";
 import { myNotices, myReports, followCounts } from "@/lib/social";
-import { linkedPlayers } from "@/lib/player-insights";
+import { linkedPlayerIdentities } from "@/lib/player-insights";
 import { socialRankLabel } from "@/lib/player-summary";
 import { Avatar } from "@/components/ui";
 import { LinkForm, SignOutButton, UnlinkButton, PrimaryPlayerButton } from "@/components/me-ui";
+import styles from "./welcome.module.css";
 
 const verificationMessages: Record<string,string> = {
   verified: "Riot confirmed ownership of your linked profile.",
@@ -25,7 +26,7 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
   const [sp,user] = await Promise.all([searchParams,getCurrentUser()]);
   if (!user) redirect("/signin");
   const [counts,reports,notices,linked,receipts] = await Promise.all([
-    followCounts(user.id),myReports(user.id),myNotices(user.id),linkedPlayers(user.id),recentSubmissions(user.id,sp.beforeSubmission),
+    followCounts(user.id),myReports(user.id),myNotices(user.id),linkedPlayerIdentities(user.id),recentSubmissions(user.id,sp.beforeSubmission),
   ]);
 
   return (
@@ -33,7 +34,14 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
       {sp.updated === "1" && <p className="notice ok" role="status">Profile updated.</p>}
       {sp.verification && <p className="notice" role="status">{(Object.hasOwn(verificationMessages,sp.verification) && verificationMessages[sp.verification]) || "Check your Riot links below."}</p>}
       {!user.termsCurrent && <p className="notice"><Link href="/signin?enrol=1">Confirm your age group and accept the community terms</Link> before posting.</p>}
-      {sp.welcome && <div className="notice ok">🎉 You&apos;re in! Link a Riot ID to follow its recent form and find champion rooms.</div>}
+      {user.termsCurrent && !linked.length && !receipts.entries.length && counts.following === 0 && !sp.beforeSubmission && (
+        <nav className={styles.welcome} aria-labelledby="welcome-heading">
+          <h2 id="welcome-heading">Where do you play?</h2>
+          <p>Introduce yourself in the Pit or choose the kind of duo you’re looking for.</p>
+          <div><Link className="btn" href="/rooms/general#compose">Introduce yourself</Link>
+            <Link className="btn secondary" href="/lfg#duo-plan">Set duo preferences</Link></div>
+        </nav>
+      )}
       <div className="card">
         <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
           <Avatar name={user.displayName} hue={user.avatarHue} avatar={user.avatar} size={58} />

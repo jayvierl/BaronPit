@@ -7,11 +7,18 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TERMS_VERSION, isAgeBand } from "@/lib/account-policy";
 import { AgeField, TermsField } from "./declaration";
+import styles from "./signin.module.css";
 
 function SignInForm() {
   const params = useSearchParams();
   const router = useRouter();
   const returnTo = safeReturnTo(params.get("next"));
+  const path = returnTo.split(/[?#]/, 1)[0];
+  const purpose = path === "/lfg" ? "Sign in to return to Duo Finder with your choices."
+    : path === "/profile/edit" ? "Your link will take you back to the profile editor."
+    : path.startsWith("/rooms/") ? "Your link will take you back to this room."
+    : path.startsWith("/post/") ? "Your link will take you back to this discussion."
+    : "We’ll email you a one-time link. No password needed.";
   const enrol = params.get("enrol") === "1";
   const [signup,setSignup] = useState(params.get("mode") === "signup");
   const [ageBand,setAgeBand] = useState("");
@@ -33,8 +40,9 @@ function SignInForm() {
     } catch (err) { setError(err instanceof Error ? err.message : "Check your connection and try again."); }
     finally { setBusy(false); }
   }
-  return <div style={{maxWidth:460,margin:"30px auto"}} className="card">
+  return <div className={styles.sheet}>
     <h1>{enrol ? "Community eligibility" : signup ? "Create your account" : "Sign in"}</h1>
+    {!enrol && !sent && <p className={styles.purpose}>{purpose}</p>}
     {!enrol && hasDraftContinuation(returnTo) && <DraftHelp destination={returnTo}/>}
     {error && <p role="alert" className="notice err">{error}</p>}
     {sent ? <><p role="status" className="notice ok">{signup ? "Check your inbox for a welcome link." : "If you have an account, check your inbox for your sign-in link."} Open it within 15 minutes.</p>

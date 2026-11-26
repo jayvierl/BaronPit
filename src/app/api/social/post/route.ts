@@ -7,7 +7,9 @@ export async function POST(req: Request) {
   const access = await requireUser(req);
   if (!access.ok) return access.response;
   const { user } = access;
-  const input = (await readObject(req)) as CreatePostInput;
+  const input = (await readObject(req)) as CreatePostInput & { expectedAuthorId?: number };
+  if (input.expectedAuthorId !== undefined && input.expectedAuthorId !== user.id)
+    return NextResponse.json({ ok: false, error: "Your signed-in account changed. Refresh before posting." }, { status: 409 });
   if (typeof input.body !== "string" || input.body.length > 2000 || (input.roomId != null && !validId(input.roomId))
       || (input.data != null && (typeof input.data !== "object" || Array.isArray(input.data) || JSON.stringify(input.data).length > 16384))) {
     return NextResponse.json({ ok:false,error:"Check the post text, room and attachment." }, {status:400});

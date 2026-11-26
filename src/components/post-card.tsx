@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { ItemIcons } from "./item-icons";
 import { useRouter } from "next/navigation";
-import type { PostView } from "@/lib/social";
+import type { PostView, CommentView } from "@/lib/social";
 import type { AvatarIdentity } from "@/lib/author-identity";
 import { REACTION_EMOJIS, samePatch } from "@/lib/pure";
 import { clipLink } from "@/lib/clip-link";
@@ -31,6 +31,7 @@ export function PostCard({
   signedIn,
   viewerId,
   threadPage = false,
+  initialComments,
   viewerIdentity,
 }: {
   post: PostView;
@@ -38,6 +39,7 @@ export function PostCard({
   signedIn: boolean;
   viewerId?: number | null;
   threadPage?: boolean;
+  initialComments?: CommentView[] | null;
   viewerIdentity?: AvatarIdentity | null;
 }) {
   const router = useRouter();
@@ -102,42 +104,36 @@ export function PostCard({
           <a href={`/post/${post.id}`}>this {post.kind === "build" ? "build" : "discussion"}</a>
         </div>}
         <div className={`thread-head ${styles.byline}`}>
-          <Link className="post-author" href={`/u/${post.authorId}`}>
-            {post.authorName}
-          </Link>
-          {post.authorFlair && (post.authorStatsHref
-            ? <Link href={post.authorStatsHref} prefetch={false} className="flair"
-                aria-label={`View ${post.authorName}’s verified Riot stats, ${post.authorFlair}`}>{post.authorFlair}</Link>
-            : <span className="flair">{post.authorFlair}</span>)}
-          <a className={styles.permalink} href={`/post/${post.id}`} aria-label={`Open thread by ${post.authorName}`}>
-            <time className="time" dateTime={post.createdAt} title={post.createdAt} suppressHydrationWarning>{timeAgo(post.createdAt)}</time>
-          </a>
+          <div className={styles.bylineText}>
+            <Link className="post-author" href={`/u/${post.authorId}`}>
+              {post.authorName}
+            </Link>
+            <a className={styles.permalink} href={`/post/${post.id}`} aria-label={`Open thread by ${post.authorName}`}>
+              <time className="time" dateTime={post.createdAt} title={post.createdAt} suppressHydrationWarning>{timeAgo(post.createdAt)}</time>
+            </a>
+            {post.roomName && post.roomSlug && <span className={styles.topic}>
+              <span aria-hidden="true">›</span> <Link href={`/rooms/${post.roomSlug}`}>{post.roomName}</Link>
+            </span>}
+          </div>
           <div className={styles.report}>{signedIn && viewerId === post.authorId
             ? <WithdrawSubmission kind="post" id={post.id} onWithdraw={()=>setWithdrawn(true)}/>
             : <SafetyReport kind="post" targetId={post.id}/>}</div>
         </div>
-        {(d.briefing === true || post.roomName || post.status === "held") && (
+        {(post.authorFlair || d.briefing === true || post.status === "held") && (
           <div className={styles.context}>
-            {d.briefing === true && <span>Automated patch update{post.roomName ? " · " : ""}</span>}
-            {post.roomName && (
-              <>
-                in <a href={`/rooms/${post.roomSlug}`}>{post.roomName}</a>
-              </>
-            )}
-            {post.status === "held" && (
-              <strong>Awaiting moderator review</strong>
-            )}
+            {post.authorFlair && (post.authorStatsHref
+              ? <Link href={post.authorStatsHref} prefetch={false} className="flair"
+                  aria-label={`View ${post.authorName}’s verified Riot stats, ${post.authorFlair}`}>{post.authorFlair}</Link>
+              : <span className="flair">{post.authorFlair}</span>)}
+            {d.briefing === true && <span>Automated patch update</span>}
+            {post.status === "held" && <strong>Awaiting moderator review</strong>}
           </div>
         )}
-
-        {post.lastReplyAt && <p className="meta"><a href={`/post/${post.id}`}>Latest player reply</a>{" "}
-          <time dateTime={post.lastReplyAt} suppressHydrationWarning>{timeAgo(post.lastReplyAt)}</time>
-        </p>}
-        {post.isQuestion && !threadPage && <a className="text-btn" href={`/post/${post.id}`}>Discuss this decision →</a>}
+        {post.body && <RichBody body={post.body} />}
         {post.kind === "build" && (
           <div style={{ marginTop: 8 }}>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              {typeof d.champion === "string" && <ChampionPortrait id={d.champion} patch={patch} size={36}/>}
+              {typeof d.champion === "string" && <ChampionPortrait compact id={d.champion} patch={patch} size={36}/>}
               <div>
                 <strong>{String(d.champion ?? "")} build</strong>
                 <div className="meta">
@@ -185,7 +181,6 @@ export function PostCard({
           </div>
         )}
 
-        {post.body && <RichBody body={post.body} />}
         {d.briefing === true && typeof d.notesUrl === "string" && (
           <p><a href={d.notesUrl} rel="noopener noreferrer" target="_blank">
             {d.notesUrl === PATCH_NOTES_INDEX ? "Browse Riot’s official patch notes" : `Read Riot’s patch ${publicPatch(d.patch)} notes`}
@@ -221,18 +216,30 @@ export function PostCard({
         {post.kind === "card" && <MatchCard data={d} patch={patch} itemPatch={post.itemPatch} itemDetails={post.itemDetails} />}
 
         {destination && (
-          <p>
-            <a href={destination.href} target="_blank" rel="noopener noreferrer nofollow ugc">
-              Watch clip on {destination.hostname.replace(/^www\./, "")} ↗
-            </a>
-          </p>
+          <a className={styles.clip} href={destination.href} target="_blank" rel="noopener noreferrer nofollow ugc">
+            <span className={styles.play} aria-hidden="true">▶</span>
+            <span>Watch clip on {destination.hostname.replace(/^www\./, "")}</span>
+            <span aria-hidden="true">↗</span>
+          </a>
         )}
+        {(post.isQuestion && !threadPage || post.lastReplyAt) && <div className={styles.discussionLinks}>
+          {post.isQuestion && !threadPage && <Link href={`/post/${post.id}`}>Discuss this decision →</Link>}
+          {post.lastReplyAt && <Link href={`/post/${post.id}#replies-${post.id}`}>Latest player reply{" "}
+            <time dateTime={post.lastReplyAt} suppressHydrationWarning>{timeAgo(post.lastReplyAt)}</time>
+          </Link>}
+        </div>}
         <ActionFeedback error={action.error} />
         <div className={styles.tools} role="group" aria-label="Post actions">
           <button type="button" className={`action-btn${mine.includes("❤️") ? " mine" : ""}`}
             aria-label={`Like, ${likeCount} ${likeCount === 1 ? "like" : "likes"}`} title="Like" aria-pressed={mine.includes("❤️")}
             disabled={action.busy} onClick={() => react("❤️")}>
             <ThreadIcon name="heart" filled={mine.includes("❤️")} />{likeCount || ""}
+          </button>
+          <button type="button" className="action-btn"
+            onClick={() => { if (!showComments) setReplyVisit(n => n + 1); setShowComments(!showComments); }}
+            aria-expanded={showComments} aria-controls={`thread-replies-${post.id}`} title="Replies"
+            aria-label={`${showComments ? "Hide" : "Show"} replies, ${replyCount} ${replyCount === 1 ? "reply" : "replies"}`}>
+            <ThreadIcon name="reply" />{replyCount || ""}
           </button>
           <details className={styles.reactionPicker} ref={reactionPicker}
             onBlur={event => {
@@ -261,21 +268,17 @@ export function PostCard({
               ))}
             </div>
           </details>
-          <button type="button" className="action-btn"
-            onClick={() => { if (!showComments) setReplyVisit(n => n + 1); setShowComments(!showComments); }}
-            aria-expanded={showComments} aria-controls={`thread-replies-${post.id}`} title="Replies"
-            aria-label={`${showComments ? "Hide" : "Show"} replies, ${replyCount} ${replyCount === 1 ? "reply" : "replies"}`}>
-            <ThreadIcon name="reply" />{replyCount || ""}
-          </button>
           {post.canRepost && <RepostControl key={String(post.myRepost)} postId={post.id} initial={post.myRepost === true} signedIn={signedIn}/>}
           {post.status === "visible" && <PostLibraryActions postId={post.id} signedIn={signedIn}/>}
         </div>
 
-        <div id={`thread-replies-${post.id}`} hidden={!showComments}>
+      </div>
+      <div id={`thread-replies-${post.id}`} className={styles.replyPanel} hidden={!showComments}>
           {replyVisit > 0 && <CommentSection
             key={viewerId ?? "guest"}
             active={showComments}
             visit={replyVisit}
+            initialComments={initialComments}
             postId={post.id}
             signedIn={signedIn}
             viewerId={viewerId}
@@ -284,7 +287,6 @@ export function PostCard({
             decisionQuestion={post.isQuestion}
             allowOneFix={post.kind === "card"}
           />}
-        </div>
       </div>
     </article>
   );

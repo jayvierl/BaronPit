@@ -5,7 +5,7 @@ import { dbAvailable } from "@/lib/db";
 import { DecisionPreference } from "@/components/decision-preference";
 import { signInHref } from "@/lib/signin-return";
 import { decisions, questionPreference, type DecisionFilter } from "@/lib/decisions";
-import { decisionRoles, trialOutcomes } from "@/lib/decisions-input";
+import { decisionRoles, decisionTopics, knownDecisionTopic, trialOutcomes } from "@/lib/decisions-input";
 import { validId } from "@/lib/ids";
 import { championList } from "@/lib/riot";
 import styles from "./questions.module.css";
@@ -19,7 +19,8 @@ export default async function Questions({ searchParams }: { searchParams: Promis
   const [params, viewer, catalog] = await Promise.all([searchParams, getCurrentUser(), championList()]);
   const saved = viewer && dbAvailable() ? await questionPreference(viewer.id) : null;
   const requested = value(params, "mode");
-  const publicFilters = ["q", "champion", "opponent", "role", "patch"].some((key) => value(params, key));
+  const topic = knownDecisionTopic(value(params, "topic"));
+  const publicFilters = topic || ["q", "champion", "opponent", "role", "patch"].some((key) => value(params, key));
   const mode =
     requested === "answered"
       ? "answered"
@@ -28,6 +29,10 @@ export default async function Questions({ searchParams }: { searchParams: Promis
         : "unanswered";
   const filters: DecisionFilter = { mode };
   const query = new URLSearchParams();
+  if (topic && mode !== "mine") {
+    filters.topic = topic;
+    query.set("topic", topic);
+  }
   for (const key of ["champion", "opponent", "role", "patch", "q"] as const) {
     const v = value(params, key);
     if (v && mode !== "mine") {
@@ -43,9 +48,10 @@ export default async function Questions({ searchParams }: { searchParams: Promis
       : dbAvailable()
         ? await decisions(viewer?.id ?? null, filters).catch(() => null)
         : null;
-  function href(m: string, cursor?: number) {
+  function href(m: string, cursor?: number, selectedTopic?: string) {
     const url = new URLSearchParams(query);
     url.set("mode", m);
+    if (selectedTopic) url.set("topic", selectedTopic);
     if (cursor) url.set("before", String(cursor));
     return "/questions?" + url.toString();
   }
@@ -105,6 +111,13 @@ export default async function Questions({ searchParams }: { searchParams: Promis
               </select>
             </label>
             <label>
+              Topic
+              <select name="topic" defaultValue={filters.topic ?? ""}>
+                <option value="">All topics</option>
+                {decisionTopics.map((topic) => <option key={topic}>{topic}</option>)}
+              </select>
+            </label>
+            <label>
               Patch at posting
               <input name="patch" defaultValue={filters.patch} placeholder="e.g. 26.23" maxLength={12} />
             </label>
@@ -135,7 +148,8 @@ export default async function Questions({ searchParams }: { searchParams: Promis
           <article key={d.postId} className={styles.entry}>
             <div className="meta">
               {d.champion}
-              {d.opponent && " vs " + d.opponent} · {d.role} · {d.topic}
+              {d.opponent && " vs " + d.opponent} · {d.role} · {knownDecisionTopic(d.topic)
+                ? <Link href={href(d.answer ? "answered" : "unanswered", undefined, d.topic)}>{d.topic}</Link> : d.topic}
               {d.patch && " · Patch " + d.patch}
               {d.itemName && " · " + d.itemName}
             </div>

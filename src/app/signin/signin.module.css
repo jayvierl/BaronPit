@@ -1,0 +1,6 @@
+.sheet { max-width: 27rem; margin: clamp(1rem, 5vh, 3.5rem) auto; padding: 1.25rem .5rem; }
+.sheet h1 { margin: 0; font-size: clamp(1.65rem, 5vw, 2rem); letter-spacing: -.045em; line-height: 1.15; }
+.purpose { margin: .55rem 0 1.4rem; color: var(--ink-mid); line-height: 1.48; }
+.sheet input[type=email], .sheet select { min-height: 46px; font-size: 1rem; }
+.sheet button[type=submit] { width: 100%; min-height: 45px; margin-top: .45rem; }
+.sheet p:last-child button { min-height: 44px; }

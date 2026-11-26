@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { checkSubmissions } from "./submissions.mjs";
 import { checkCommunityDuo } from "./community-duo.mjs";
 import { checkPlayerProfiles } from "./profiles.mjs";
+import { checkNavigation } from "./navigation.mjs";
 import { checkProfileEditor } from "./profile-editor.mjs";
 import { fixturePhotoEnv } from "./photo-scanner.mjs";
 import { checkImage, publicArtwork } from "../public-art.mjs";
@@ -162,6 +163,7 @@ try {
     await journey(signedOutPage, {status:307, signInReturn:signedOutPage});
   }
   await checkPlayerProfiles(journey);
+  await checkNavigation(journey);
   await journey("/rooms/general", {
     session: true,
     includes: [
@@ -231,8 +233,9 @@ try {
   const question = await journey("/api/questions", {session:true,method:"POST",status:201,
     body:{action:"ask",role:"Bot",topic:"Objective",champion:"Ashe",body:"Should Ashe rotate before the next dragon?",puuid:"fixture-owner",matchId:"NA1_999999"},includes:['"status":"visible"']});
   const postId=question.postId;
-  await journey("/post/"+postId, {includes:["Help me frame my answer", "Sign in to reply"]});
-  await journey("/questions?role=Bot", {includes:["Should Ashe rotate before the next dragon?"]});
+  await journey("/post/"+postId, {includes:["Help me frame my answer", "Sign in to reply", "topic=Objective"]});
+  await journey("/questions?role=Bot&topic=Objective", {includes:["Should Ashe rotate before the next dragon?","<option selected=\"\">Objective</option>"]});
+  await journey("/questions?role=Bot&topic=Laning", {excludes:["Should Ashe rotate before the next dragon?"]});
   await journey("/api/library?kind=post&id="+postId, {session:true,includes:['"replyMode":"direct"','"watching":false']});
   const reply=await journey("/api/social/comments", {session:"helper",method:"POST",
     body:{postId,body:"Spend the gold before dragon and coordinate the wave with your support."},includes:['"ok":true']});
@@ -247,7 +250,7 @@ try {
   await journey("/api/library", {session:true,method:"POST",body:{action:"save",kind:"comment",id:reply.commentId,active:true},includes:['"ok":true']});
   await journey("/playbook", {session:true,includes:["Spend the gold before dragon"]});
   await journey("/playbook", {session:"helper",excludes:["Spend the gold before dragon"]});
-  await journey("/questions?mode=answered&champion=Ashe", {includes:["Should Ashe rotate before the next dragon?"]});
+  await journey("/questions?mode=answered&champion=Ashe&topic=Objective", {includes:["Should Ashe rotate before the next dragon?"]});
   await journey("/post/"+postId, {includes:["Spend the gold before dragon","It helped"]});
   await journey("/builds/compare", {includes:["Compare"]});
   await journey("/api/account/riot/start",{session:true,method:"POST",status:503,body:{puuid:"fixture-owner"},includes:["awaiting provider configuration"]});

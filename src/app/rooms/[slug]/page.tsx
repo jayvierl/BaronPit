@@ -99,7 +99,7 @@ export default async function RoomPage({ params }: { params: Promise<{ slug: str
       )}
 
       {user
-        ? <Composer roomId={room.id} patch={patch} champions={champions.map((c) => c.id)} viewerIdentity={viewerIdentity} />
+        ? <Composer key={user.id + ":" + room.id} viewerId={user.id} roomId={room.id} patch={patch} champions={champions.map((c) => c.id)} viewerIdentity={viewerIdentity} />
         : <GuestPostDraft roomId={room.id} destination={`/rooms/${room.slug}#compose`} label={`Post in ${room.name}`}/>}
 
       <div>

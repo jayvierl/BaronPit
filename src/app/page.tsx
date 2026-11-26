@@ -21,11 +21,12 @@ import { dbAvailable } from "@/lib/db";
 import { trendingChampions } from "@/lib/player-insights";
 import { listFeaturedRooms } from "@/lib/rooms";
 import { feed, todaysSpotlight, dailyHighlight } from "@/lib/social";
-import { currentPatch, championList, championIconUrl } from "@/lib/riot";
+import { currentPatch, championList } from "@/lib/riot";
 import { PLATFORMS } from "@/lib/platforms";
 import { JoinButton, LookupForm } from "@/components/social-ui";
 import { Composer } from "@/components/composer";
 import { MatchCard } from "@/components/match-card";
+import { ChampionPortrait } from "@/components/champion-portrait";
 import { PostCard } from "@/components/post-card";
 import { socialRankLabel } from "@/lib/player-summary";
 
@@ -37,25 +38,24 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const activeTab = tab === "following" && user ? "following" : "everyone";
   const today = new Date().toISOString().slice(0, 10);
   const available = dbAvailable();
-  const [patch, champions, posts, rooms, trending, unread, duoInvite] = await Promise.all([
+  const rooms = available ? listFeaturedRooms(user?.id).catch(() => []) : Promise.resolve([]);
+  const trending = available ? trendingChampions().catch(() => []) : Promise.resolve([]);
+  const [patch, posts, champions, unread, duoInvite] = await Promise.all([
     currentPatch(),
-    user ? championList() : [],
     available ? feed(user,activeTab).catch(() => null) : null,
-    available ? listFeaturedRooms(user?.id).catch(() => []) : [],
-    available ? trendingChampions().catch(() => []) : [],
+    user ? championList() : [],
     user && available ? hasUnreadReplies(user.id).catch(() => false) : false,
     user && available ? hasIncomingDuoRequest(user.id).catch(() => false) : false,
   ]);
-  function renderPost(post: NonNullable<typeof posts>[number]) {
-    return <PostCard key={post.id} post={post} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} viewerIdentity={viewerIdentity} />;
-  }
-
   return (
     <div>
       {user?.pilotActive && <PilotVisit kind="social"/>}
       <header className={styles.heading}>
         <h1>Home</h1>
-        {user ? <Link href="/rooms">Browse rooms</Link> : <Link href={signInHref("/#compose","signup")}>Create account</Link>}
+        <div className={styles.headingLinks}>
+          <Link href="/lfg">Find a duo</Link>
+          {user ? <Link href="/rooms">Browse rooms</Link> : <Link className={styles.signup} href={signInHref("/#compose","signup")}>Create account</Link>}
+        </div>
       </header>
       <nav className="tabs" aria-label="Feed selection">
         <Link href="/?tab=everyone" aria-current={activeTab === "everyone" ? "page" : undefined} className={activeTab === "everyone" ? "active" : ""}>Everyone</Link>
@@ -67,30 +67,15 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       </div>}
 
       {user ? (
-        <Composer patch={patch} champions={champions.map((c) => c.id)} viewerIdentity={viewerIdentity} />
+        <Composer key={user.id} viewerId={user.id} patch={patch} champions={champions.map((c) => c.id)} viewerIdentity={viewerIdentity} />
       ) : (
-        <GuestPostDraft destination="/#compose" label="Start a conversation"/>
+        <details className={styles.draft}>
+          <summary>Start a conversation <span aria-hidden="true">＋</span></summary>
+          <GuestPostDraft destination="/#compose" label="Your post"/>
+        </details>
       )}
 
-      <div>
-        {posts === null ? (
-          <div className="empty" role="status">The feed is temporarily unavailable. Refresh to try again.</div>
-        ) : posts.length === 0 ? (
-          activeTab === "following" && user
-            ? <FollowingStarter userId={user.id} rooms={rooms}/>
-            : <div className="empty"><p>Start the first conversation.</p><Link href="/questions/new">Ask a match question</Link></div>
-        ) : (
-          posts.slice(0, 1).map(renderPost)
-        )}
-      </div>
-
-      <section className={styles.duo} aria-labelledby="duo-invite-title">
-        <div><h2 id="duo-invite-title">Find your duo</h2>
-          <p>{duoEnabled() ? "See who plays your hours and needs your role." : "Save your role and play times while verified matching is in the works."}</p>
-        </div>
-        <Link className="btn secondary small" href="/lfg">{duoEnabled() ? "Browse duos" : "Set duo preferences"}</Link>
-      </section>
-      {posts?.slice(1).map(renderPost)}
+      <HomeTimeline user={user} activeTab={activeTab} patch={patch} rooms={rooms} posts={posts} />
       <nav className={styles.destinations} aria-label="Community shortcuts">
         <Link href="/questions">Match questions</Link><Link href="/rooms">Rooms</Link><Link href="/player">Player lookup</Link>
       </nav>
@@ -101,6 +86,28 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
       {available && <Suspense fallback={null}><HomeSpotlight today={today} viewerId={user?.id ?? null} patch={patch}/></Suspense>}
 
+      <Suspense fallback={null}>
+        <HomeDiscovery roomsRead={rooms} trendsRead={trending} patch={patch} signedIn={!!user} />
+      </Suspense>
+      <details className="community-lookup">
+        <summary>Look up a player</summary>
+        <LookupForm platforms={PLATFORMS.map(({id,label}) => ({id,label}))}/>
+      </details>
+      <LobbyRally />
+      {!user && <CommunityWelcome/>}
+
+    </div>
+  );
+}
+
+async function HomeDiscovery({ roomsRead, trendsRead, patch, signedIn }: {
+  roomsRead: ReturnType<typeof listFeaturedRooms>;
+  trendsRead: ReturnType<typeof trendingChampions>;
+  patch: string;
+  signedIn: boolean;
+}) {
+  const [rooms, trending] = await Promise.all([roomsRead, trendsRead]);
+  return <>
       {rooms.length > 0 && (
         <>
           <h2 className="section">Featured rooms</h2>
@@ -108,13 +115,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             {rooms.map((r) => (
               <div key={r.id} className="list-row">
                 <span style={{ display: "inline-flex", gap: 9, alignItems: "center" }}>
-                  {r.championId && <Image unoptimized width={26} height={26} src={championIconUrl(patch, r.championId)} alt="" style={{ width: 26, height: 26, borderRadius: 7 }} />}
+                  {r.championId && <ChampionPortrait compact id={r.championId} patch={patch} size={26} />}
                   <span>
                     <Link href={`/rooms/${r.slug}`} style={{ fontWeight: 600 }}>{r.name}</Link>
                     <span className="meta">{r.host ? <> · Hosted by <Link href={`/u/${r.host.id}`}>{r.host.name}</Link></> : <> · {r.members} member{r.members === 1 ? "" : "s"}</>}</span>
                   </span>
                 </span>
-                {user && <JoinButton roomId={r.id} initial={r.joined} />}
+                {signedIn && <JoinButton roomId={r.id} initial={r.joined} />}
               </div>
             ))}
           </div>
@@ -128,7 +135,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingBottom: 8 }}>
             {trending.map((t) => (
               <Link key={t.champion} href={`/rooms/champ-${t.champion.toLowerCase()}`} className="chip" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                <Image unoptimized width={18} height={18} src={championIconUrl(patch, t.champion)} alt="" style={{ width: 18, height: 18, borderRadius: 5 }} />
+                <ChampionPortrait compact id={t.champion} patch={patch} size={18} />
                 {t.champion} · {gameCount(t.games)}
               </Link>
             ))}
@@ -136,15 +143,39 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         </>
       )}
 
-      <details className="community-lookup">
-        <summary>Look up a player</summary>
-        <LookupForm platforms={PLATFORMS.map(({id,label}) => ({id,label}))}/>
-      </details>
-      <LobbyRally />
-      {!user && <CommunityWelcome/>}
+  </>;
+}
 
-    </div>
-  );
+async function HomeTimeline({ user, activeTab, patch, rooms, posts }: {
+  user: Awaited<ReturnType<typeof getCurrentUser>>;
+  activeTab: "following" | "everyone";
+  patch: string;
+  rooms: ReturnType<typeof listFeaturedRooms>;
+  posts: Awaited<ReturnType<typeof feed>> | null;
+}) {
+  const viewerIdentity = publicAvatarIdentity(user);
+  const matching = duoEnabled();
+  function renderPost(post: NonNullable<typeof posts>[number]) {
+    return <PostCard key={post.id} post={post} patch={patch} signedIn={!!user}
+      viewerId={user?.id ?? null} viewerIdentity={viewerIdentity} />;
+  }
+
+  return <>
+    {posts === null ? (
+      <div className="empty" role="status">The feed is temporarily unavailable. Refresh to try again.</div>
+    ) : posts.length === 0 ? (
+      activeTab === "following" && user ? <FollowingStarter userId={user.id} rooms={await rooms}/> :
+        <div className="empty"><p>Start the first conversation.</p><Link href="/questions/new">Ask a match question</Link></div>
+    ) : posts.slice(0, 3).map(renderPost)}
+    <section className={styles.duo} aria-labelledby="duo-invite-title">
+      <Image unoptimized src="/baron-duo.webp" alt="" width={72} height={60} className={styles.duoArt} />
+      <div><h2 id="duo-invite-title">Find your duo</h2>
+        <p>{matching ? "Find a partner who plays your hours and needs your role." : "Save your role and play times for verified matching."}</p>
+        <Link href="/lfg">{matching ? "Browse duos" : "Set duo preferences"} <span aria-hidden="true">→</span></Link>
+      </div>
+    </section>
+    {posts?.slice(3).map(renderPost)}
+  </>;
 }
 
 async function HomeSpotlight({ today, viewerId, patch }: { today: string; viewerId: number | null; patch: string }) {
@@ -157,7 +188,7 @@ async function HomeSpotlight({ today, viewerId, patch }: { today: string; viewer
     <div className="spotlight">
       <div className="spot-label">Hand of Baron · community spotlight</div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", margin: "9px 0 2px" }}>
-        <Image unoptimized width={48} height={48} className="champ-icon" src={championIconUrl(patch, spotlightGame.champion)} alt="" />
+        <ChampionPortrait compact id={spotlightGame.champion} patch={patch} size={48} />
         <div>
           <strong>{spotlight.player.gameName}#{spotlight.player.tagLine}</strong>
           <div className="meta">{socialRankLabel(spotlight.player, true)}</div>

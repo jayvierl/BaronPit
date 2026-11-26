@@ -23,9 +23,7 @@ export default async function RoomsPage() {
               <div>
                 <h3><Link href={`/rooms/${room.slug}`}>{room.name}</Link></h3>
                 <p className="meta">{room.description}</p>
-                {room.host
-                  ? <span className="meta">Hosted by <Link href={`/u/${room.host.id}`}>{room.host.name}</Link></span>
-                  : <span className="meta">No public host listed</span>}
+                {room.host && <span className="meta">Hosted by <Link href={`/u/${room.host.id}`}>{room.host.name}</Link></span>}
               </div>
               {user && <JoinButton roomId={room.id} initial={room.joined}/>}
             </div>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { SafetyReport } from "@/components/safety-report";
 import { decisions, trialOptions } from "@/lib/decisions";
-import { trialOutcomes } from "@/lib/decisions-input";
+import { knownDecisionTopic, trialOutcomes } from "@/lib/decisions-input";
 import { listComments } from "@/lib/social";
 import type { User } from "@/lib/auth";
 import { DecisionAuthorControls } from "./decision-author-controls";
@@ -27,7 +27,11 @@ export async function DecisionThread({ postId, user }: { postId: number; user: U
         {d.opponent && " vs " + d.opponent}
       </h2>
       <p className="meta">
-        {d.role} · {d.topic}
+        {d.role} · {knownDecisionTopic(d.topic) ? (
+          <Link href={"/questions?" + new URLSearchParams({ mode: d.answer ? "answered" : "unanswered", topic: d.topic })}>
+            {d.topic}
+          </Link>
+        ) : d.topic}
         {d.patch && " · Patch " + d.patch}
         {d.itemId && (
           <span>

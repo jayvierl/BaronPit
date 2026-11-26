@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { RouteLoading } from "@/components/route-loading";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { replyActivity, watchedDiscussions, pageCursor } from "@/lib/discussion-library";
@@ -19,58 +21,45 @@ export default async function Activity({
   const duos = params.tab === "duos";
   const listTab = params.tab === "muted" || params.tab === "watching" ? params.tab : null;
   const before = duos ? null : pageCursor(params.before);
-  if (!user) {
-    const query = new URLSearchParams();
-    if (duos) query.set("tab", "duos");
-    if (listTab) query.set("tab", listTab);
-    if (before) query.set("before", before);
-    redirect(signInHref(query.size ? "/activity?" + query : "/activity"));
-  }
-  const [page, invites, pending] = await Promise.all([
-    duos
-      ? null
-      : (listTab ? watchedDiscussions(user.id, before, listTab === "muted" ? "muted" : "all") : replyActivity(user.id, before)).catch(() => null),
-    duos ? privateDuoActivity(user.id).catch(() => null) : null,
-    duos ? false : hasIncomingDuoRequest(user.id).catch(() => false),
+  const tab = duos ? "duos" : listTab ?? "replies";
+  const latest = tab === "replies" ? "/activity" : "/activity?tab=" + tab;
+  const query = new URLSearchParams();
+  if (tab !== "replies") query.set("tab",tab);
+  if (before) query.set("before",before);
+  if (!user) redirect(signInHref(query.size ? "/activity?" + query : "/activity"));
+
+  return <section>
+    <h1 className="page-title">Activity</h1>
+    <nav className="tabs" aria-label="Activity">
+      {([["replies","Replies"],["watching","Watching"],["muted","Muted"],["duos","Duos"]] as const).map(([value,label]) =>
+        <Link key={value} href={value === "replies" ? "/activity" : "/activity?tab=" + value}
+          className={tab === value ? "active" : undefined} aria-current={tab === value ? "page" : undefined}
+          aria-label={value === "duos" ? "Duo invitations" : undefined}>{label}</Link>)}
+    </nav>
+    {before && <Link className="text-btn" href={latest}>Back to latest {tab === "replies" ? "replies" : "threads"}</Link>}
+    <Suspense key={tab + (before ?? "")} fallback={<RouteLoading label="Loading activity…"/>}>
+      <ActivityResults tab={tab} userId={user.id} before={before}/>
+    </Suspense>
+  </section>;
+}
+
+async function ActivityResults({ tab, userId, before }: {
+  tab: "replies" | "watching" | "muted" | "duos"; userId: number; before: string | null;
+}) {
+  if (tab === "duos") return <InvitationList invites={await privateDuoActivity(userId).catch(() => null)}/>;
+  const [page, pending] = await Promise.all([
+    (tab === "replies" ? replyActivity(userId,before) : watchedDiscussions(userId,before,tab === "muted" ? "muted" : "all")).catch(() => null),
+    hasIncomingDuoRequest(userId).catch(() => false),
   ]);
-  return (
-    <section className="card">
-      <h1>Activity</h1>
-      <nav className="tabs" aria-label="Activity">
-        <Link
-          href="/activity"
-          aria-current={!duos && !listTab ? "page" : undefined}
-          className={!duos && !listTab ? "active" : undefined}
-        >
-          Replies
-        </Link>
-        <Link
-          href="/activity?tab=watching"
-          aria-current={listTab === "watching" ? "page" : undefined}
-          className={listTab === "watching" ? "active" : undefined}
-        >
-          Watching
-        </Link>
-        {(duoEnabled() || duos) && (
-          <Link
-            href="/activity?tab=duos"
-            aria-current={duos ? "page" : undefined}
-            className={duos ? "active" : undefined}
-          >
-            Duo invitations{pending ? " · waiting" : ""}
-          </Link>
-        )}
-      </nav>
-      {duos ? (
-        <InvitationList invites={invites} />
-      ) : page ? (
-        <>{listTab === "muted" && <h2>Muted threads</h2>}
-          <DiscussionList page={page} view={listTab ?? "replies"} /></>
-      ) : (
-        <p role="alert">Your activity couldn’t load. Please try again.</p>
-      )}
-    </section>
-  );
+  if (!page) return <p role="alert">Your activity couldn’t load. Please try again.</p>;
+  return <>
+    {pending && <p><Link href="/activity?tab=duos">Review a waiting duo invitation</Link></p>}
+    {tab === "muted" && <h2 className="section">Muted threads</h2>}
+    {before && !page.entries.length ? <p className="meta">You’ve reached the end.</p> :
+      <DiscussionList page={page} view={tab}/>}
+    {!before && !page.entries.length && (tab === "replies" || tab === "watching") &&
+      <Link className="text-btn" href={tab === "replies" ? "/questions" : "/"}>{tab === "replies" ? "Explore match questions" : "Browse discussions"}</Link>}
+  </>;
 }
 
 function InvitationList({ invites }: { invites: DuoActivityItem[] | null }) {

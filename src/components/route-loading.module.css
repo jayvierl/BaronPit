@@ -1,0 +1,4 @@
+.loading { padding: 1.1rem 0; color: var(--ink-mid); font-size: .9rem; }
+.row { display: grid; gap: .45rem; min-height: 65px; align-content: center; border-bottom: 1px solid var(--border); }
+.row i { display: block; width: min(15rem,55%); height: .65rem; border-radius: 999px; background: var(--border); }
+.row i + i { width: min(24rem,85%); height: .5rem; background: var(--field); }

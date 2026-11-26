@@ -1,3 +1,5 @@
+import { RouteLoading } from "@/components/route-loading";
+
 export default function PlayerLoading() {
-  return <p className="meta" role="status">Looking up player stats…</p>;
+  return <RouteLoading label="Looking up player stats…"/>;
 }

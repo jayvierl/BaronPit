@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { CommentView } from "@/lib/social";
 import type { AvatarIdentity } from "@/lib/author-identity";
+import { PostCardLoading } from "./post-card-loading";
 import { WithdrawSubmission } from "./withdraw-submission";
 import { Avatar, timeAgo } from "./ui";
 import { ActionFeedback, usePostAction } from "./post-action";
@@ -24,6 +25,7 @@ export function CommentSection({
   postId,
   active = true,
   visit = 1,
+  initialComments,
   signedIn,
   viewerId,
   viewerIdentity,
@@ -34,6 +36,7 @@ export function CommentSection({
   postId: number;
   active?: boolean;
   visit?: number;
+  initialComments?: CommentView[] | null;
   signedIn: boolean;
   viewerId?: number | null;
   viewerIdentity?: AvatarIdentity | null;
@@ -76,8 +79,9 @@ export function CommentSection({
         {body: draft, rootId: replyTo?.rootId, name: replyTo?.name, oneFix}, mode));
     } catch { setNotice("This browser couldn’t save your reply. Copy it before signing in."); }
   }
+  const useInitial = initialComments != null && visit === 1 && revision === 0;
   useEffect(() => {
-    if (!active) return;
+    if (!active || useInitial) return;
     const controller = new AbortController();
     async function load() {
       try {
@@ -94,18 +98,22 @@ export function CommentSection({
     }
     void load();
     return () => controller.abort();
-  }, [active, postId, revision, visit]);
+  }, [active, postId, revision, visit, useInitial]);
 
+  const current: ThreadLoad | null = useInitial
+    ? { postId, revision, visit, comments: initialComments }
+    : thread?.postId === postId && thread.revision === revision && thread.visit === visit ? thread : null;
+  const renderedComments = current?.comments;
   const lastAnchor = useRef("");
   useEffect(() => {
-    if (thread?.comments && lastAnchor.current !== window.location.hash && /^#reply-\d+$/.test(window.location.hash)) {
+    if (renderedComments && lastAnchor.current !== window.location.hash && /^#reply-\d+$/.test(window.location.hash)) {
       const target = document.getElementById(window.location.hash.slice(1));
       if (target) {
         target.scrollIntoView({block:"center"});
         lastAnchor.current = window.location.hash;
       }
     }
-  },[thread]);
+  },[renderedComments]);
 
   const payload = {
     postId,
@@ -149,7 +157,7 @@ export function CommentSection({
             {c.replies.length > 0 && <span className="line" />}
           </div>
           <div className="comment-main">
-            <div>
+            <div className={threadStyles.replyByline}>
               <Link href={`/u/${c.authorId}`} className="post-author">
                 {c.authorName}
               </Link>{" "}
@@ -188,14 +196,11 @@ export function CommentSection({
     );
   }
 
-  const current = thread?.postId === postId && thread.revision === revision && thread.visit === visit ? thread : null;
   return (
     <section id={`replies-${postId}`} className="comments" aria-labelledby={`replies-title-${postId}`}>
       <h2 className={threadStyles.repliesTitle} id={`replies-title-${postId}`}>Replies</h2>
       {!current ? (
-        <p className="meta" role="status">
-          Loading replies…
-        </p>
+        <PostCardLoading label="Loading replies…" />
       ) : current.comments ? (
         current.comments.length ? (
           current.comments.map((c) => showComment(c, c.id, 0))

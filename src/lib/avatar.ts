@@ -41,9 +41,14 @@ export function avatarImageUrl(value: unknown) {
 }
 
 /** Shared with the champion directory. All source URLs and sprite positions come from the bundled atlas. */
-export function championAvatarArt(id: string) {
+export function championAvatarArt(id: string, compact = false) {
   const index = championIds.get(id);
   if (index === undefined) return undefined;
+  if (compact) return {
+    backgroundImage: `url("/champions/${atlas.patch}/${id}.webp")`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+  };
   return {
     backgroundImage: `url("/champions/${atlas.patch}.webp")`,
     backgroundSize: `${atlas.columns * 100}% ${atlas.rows * 100}%`,

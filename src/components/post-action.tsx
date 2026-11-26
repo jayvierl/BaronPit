@@ -34,11 +34,11 @@ export function usePostAction() {
     }
   }
   // A retry after a lost response or a moderation nudge must address the original submission.
-  async function sendDraft(path: string, body: Record<string, unknown>) {
+  async function sendDraft(path: string, body: Record<string, unknown>, restoredId?: string) {
     if (lock.current) return null;
     const signature = JSON.stringify([path, { ...body, submitForReview: undefined }]);
-    if (draft.current?.signature !== signature) {
-      draft.current = { signature, id: crypto.randomUUID() };
+    if (draft.current?.signature !== signature || (restoredId && draft.current.id !== restoredId)) {
+      draft.current = { signature, id: restoredId ?? crypto.randomUUID() };
     }
     const result = await send(path, { ...body, submissionId: draft.current.id });
     if (result) draft.current = null;
