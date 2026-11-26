@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 import ProfilePage from "./page";
 
 const { linkedPlayers, feedByAuthor } = vi.hoisted(() => ({
@@ -30,10 +31,18 @@ describe("profile tab queries", () => {
     expect(linkedPlayers).toHaveBeenCalledTimes(1);
     expect(feedByAuthor).not.toHaveBeenCalled();
   });
-  it("still loads posts for a player tab URL with no linked players", async () => {
+  it.each(["stats", "players"])("keeps an unlinked guest on the stats tab for ?tab=%s", async (tab) => {
     linkedPlayers.mockResolvedValue([]);
-    await visit("players");
-    expect(feedByAuthor).toHaveBeenCalledWith(42, null, 20);
+    const html = renderToStaticMarkup(await visit(tab));
+    expect(html).toContain("No Riot account linked");
+    expect(html).toMatch(/<a\b[^>]*href="\/player"[^>]*>Look up a Riot ID<\/a>/);
+    expect(html).not.toContain("No posts yet");
+    expect(feedByAuthor).not.toHaveBeenCalled();
+  });
+  it("keeps the profile post feed out of the public Replies tab", async () => {
+    await visit("replies");
+    expect(linkedPlayers).toHaveBeenCalledTimes(1);
+    expect(feedByAuthor).not.toHaveBeenCalled();
   });
   it("loads the post feed on the default tab even with linked players", async () => {
     await visit();

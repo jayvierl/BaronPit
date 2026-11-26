@@ -1,4 +1,4 @@
-import { rankLabel } from "./rank";
+import { leagueTier, rankLabel, type LeagueTier } from "./rank";
 import type { Player } from "./riot";
 
 const solo = "RANKED_SOLO_5x5";
@@ -13,7 +13,6 @@ export interface RankedEntry {
   losses: number;
 }
 
-const tiers = new Set(["IRON","BRONZE","SILVER","GOLD","PLATINUM","EMERALD","DIAMOND","MASTER","GRANDMASTER","CHALLENGER"]);
 const divisions = new Set(["IV","III","II","I"]);
 const isCount = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
 
@@ -26,7 +25,7 @@ export function readRankedEntries(payload: unknown): RankedEntry[] | undefined {
     if (!entry || typeof entry.queueType !== "string") return undefined;
     const { queueType, tier, rank, leaguePoints, wins, losses } = entry;
     if (queueType !== solo && queueType !== flex) continue;
-    if (entries.some(e => e.queueType === queueType) || !tiers.has(tier) || !divisions.has(rank) ||
+    if (entries.some(e => e.queueType === queueType) || !leagueTier(tier) || !divisions.has(rank) ||
         !Number.isSafeInteger(leaguePoints) || !isCount(wins) || !isCount(losses)) return undefined;
     entries.push({ queueType, tier, rank, leaguePoints, wins, losses });
   }
@@ -36,6 +35,7 @@ export function readRankedEntries(payload: unknown): RankedEntry[] | undefined {
 type Count = {name: string; games: number};
 export interface PublicPlayerSummary {
   rank: string;
+  tier: LeagueTier | null;
   rankStatus: "ranked" | "unranked" | "unavailable";
   queue: "Ranked Solo/Duo" | "Ranked Flex";
   wins: number | null;
@@ -64,17 +64,17 @@ function record(wins: unknown, losses: unknown) {
 
 type RankFields = Pick<Player, "rankTier" | "rankDiv" | "rankedEntries"> & {rankLp?: number | null};
 
-function placedRank(player: RankFields, withLp: boolean) {
+export function placedRank(player: RankFields, withLp = false) {
   const entries = player.rankedEntries;
   const chosen = entries?.find(e => e.queueType === solo) ?? entries?.[0];
-  const legacy = entries === undefined && tiers.has(player.rankTier ?? "");
-  const tier = chosen?.tier ?? (legacy ? player.rankTier : null);
+  const legacy = entries === undefined && leagueTier(player.rankTier) !== null;
+  const tier = leagueTier(chosen?.tier ?? (legacy ? player.rankTier : null));
   const rankStatus = tier ? "ranked" : entries !== undefined ? "unranked" : "unavailable";
   const apex = tier === "MASTER" || tier === "GRANDMASTER" || tier === "CHALLENGER";
   const rank = tier ? rankLabel(tier, apex ? null : chosen?.rank ?? player.rankDiv, withLp ? chosen?.leaguePoints ?? player.rankLp : null)
     : rankStatus === "unranked" ? "Unranked" : "Rank unavailable";
   const queue = chosen?.queueType === flex ? "Ranked Flex" as const : "Ranked Solo/Duo" as const;
-  return { chosen, legacy, rank, rankStatus, queue } as const;
+  return { chosen, legacy, rank, tier, rankStatus, queue } as const;
 }
 
 // Short social surfaces attribute a Flex rank to its queue. They need at most the
@@ -93,7 +93,7 @@ export function playerFlair(player: RankFields, champion: unknown) {
 // supplies only roles and champions. A missing entry can include a player still in placements.
 export function publicPlayerSummary(player: Player): PublicPlayerSummary {
   const entries = player.rankedEntries;
-  const { chosen, legacy, rank, rankStatus, queue } = placedRank(player, true);
+  const { chosen, legacy, rank, tier, rankStatus, queue } = placedRank(player, true);
   const selected = record(chosen?.wins ?? (legacy ? player.rankWins : null), chosen?.losses ?? (legacy ? player.rankLosses : null));
   const total = entries?.length ? record(entries.reduce((n, e) => n + e.wins, 0), entries.reduce((n, e) => n + e.losses, 0)) : selected;
 
@@ -107,7 +107,7 @@ export function publicPlayerSummary(player: Player): PublicPlayerSummary {
   const topRole = high ? { name: knownRoles.filter(([key]) => roles[key] === high).map(([, label]) => label).join(" / "), games: high } : null;
   const asOf = Date.parse(player.fetchedAt);
   return {
-    rank, rankStatus, queue, ...selected,
+    rank, tier, rankStatus, queue, ...selected,
     rankedGames: total.games, rankedWins: total.wins, rankedLosses: total.losses, rankedWinRate: total.winRate,
     rankedGamesScope: entries !== undefined ? "solo-and-flex" : "selected-queue", hasBothQueues: entries?.length === 2,
     topRole, champions, sampleGames, asOf: Number.isFinite(asOf) ? new Date(asOf).toISOString() : null,

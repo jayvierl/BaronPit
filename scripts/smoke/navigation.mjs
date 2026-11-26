@@ -12,6 +12,13 @@ export async function checkNavigation(journey) {
   for (const path of ["/", "/search", "/#compose", "/activity", "/lfg"]) assert.ok(primary.includes('href="' + path + '"'));
   assert.ok(search.includes('aria-label="My profile"'));
   assert.ok(search.includes('aria-label="Explore the community"'));
+  await journey("/search?scope=players", {includes:['aria-label="League region"', 'name="q"', "Player stats"]});
+  const cached = await journey("/search?scope=players&q=Fixture%20Support", {html:true});
+  assert.ok(cached.includes("Fixture Support#WAVE") && !cached.includes(">Community profiles</h2>"));
+  await journey("/search?scope=players&q=Fixture%20Support%23WAVE&region=na1", {redirectTo:"/player?platform=na1&riotId=Fixture+Support%23WAVE"});
+  await journey("/search?q=Fixture&scope=people", {includes:["Community profiles"], excludes:[">Riot players</h2>"]});
+  await journey("/rooms/general", {includes:['property="og:type" content="website"',"Share room"]});
+  await journey("/u/501", {includes:['property="og:type" content="profile"', "Share profile"]});
   await journey("/search?q=NothingMatchesThisName", {includes:["No matches for","browse rooms","Look up a Riot ID"]});
   await journey("/activity?tab=muted&before=77",{status:307,signInReturn:"/activity?tab=muted&before=77"});
   const muted = await journey("/activity?tab=muted&before=77", {session:true, html:true});

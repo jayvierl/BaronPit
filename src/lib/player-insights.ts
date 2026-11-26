@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { q, queryRows } from "./db";
 import { HIDDEN_AUTHORS, BLOCKED_AUTHORS } from "./community-queries";
 import { playerFlair, readRankedEntries } from "./player-summary";
@@ -112,7 +113,7 @@ export async function todaysSpotlight(dateStr: string, viewerId: number | null =
   return { player, ownerName: String(row.owner_name), ownerId: Number(row.owner_id), verified: true };
 }
 
-export async function publicProfile(userId: number, viewerId: number | null, dateStr: string) {
+export const publicProfile = cache(async function publicProfile(userId: number, viewerId: number | null, dateStr: string) {
   const [row] = await queryRows(`WITH ${HIDDEN_AUTHORS}, ${visibleSpotlight}
     SELECT u.display_name,u.avatar_hue,u.avatar_ref,u.bio,u.profile_link,u.created_at,
       EXISTS (SELECT 1 FROM featured f WHERE f.user_id=u.id) AS featured
@@ -121,4 +122,4 @@ export async function publicProfile(userId: number, viewerId: number | null, dat
       AND u.id NOT IN (${BLOCKED_AUTHORS})`, [viewerId,dateStr,userId]);
   return row ? { id: userId, name: String(row.display_name), hue: Number(row.avatar_hue), avatar: publicAvatar(row.avatar_ref),
     bio: String(row.bio ?? ""), link: typeof row.profile_link === "string" ? row.profile_link : null, createdAt: String(row.created_at), featured: row.featured === true } : null;
-}
+});

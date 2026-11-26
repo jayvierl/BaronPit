@@ -72,7 +72,7 @@ const signed = { cookie: "wp_session=" + session };
 let completed = 0;
 async function journey(
   path,
-  { status = 200, session = false, includes = [], excludes = [], method = "GET", body, base = origin, signInReturn, html = false, upload, expectWebp = false } = {},
+  { status = 200, session = false, includes = [], excludes = [], method = "GET", body, base = origin, signInReturn, redirectTo, html = false, upload, expectWebp = false } = {},
 ) {
   const res = await fetch(base + path, {
     method,
@@ -99,6 +99,15 @@ async function journey(
     const location = new URL(res.headers.get("location"), base);
     assert.equal(location.pathname, "/signin");
     assert.equal(location.searchParams.get("next"), signInReturn);
+  }
+  if (redirectTo) {
+    // Next can send a refresh tag after the route's loading boundary has streamed.
+    const location = res.status === 307 ? res.headers.get("location") :
+      res.status === 200 ? text.match(/<meta\b[^>]*http-equiv="refresh"[^>]*content="[^"]*?url=([^"]+)"/i)?.[1] : null;
+    assert.ok(location, path + " did not redirect to the player");
+    assert.equal(new URL(location.replaceAll("&amp;", "&"), base).href, new URL(redirectTo, base).href);
+    completed++;
+    return;
   }
   if (status === "missing") {
     // Next can flush a loading boundary before notFound(); its streamed fallback carries this digest.

@@ -1,0 +1,36 @@
+.badge {
+  --rank-ink: var(--ink-mid);
+  color: var(--rank-ink);
+  background-color: color-mix(in srgb, var(--rank-ink) 8%, var(--bg));
+  display: inline;
+  padding: .08em .38em;
+  border-radius: .28em;
+  font-weight: 650;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.badge[data-tier="IRON"] { --rank-ink: #584a45; }
+.badge[data-tier="BRONZE"] { --rank-ink: #87431e; }
+.badge[data-tier="SILVER"] { --rank-ink: #465b71; }
+.badge[data-tier="GOLD"] { --rank-ink: #795400; }
+.badge[data-tier="PLATINUM"] { --rank-ink: #00666a; }
+.badge[data-tier="EMERALD"] { --rank-ink: #13653d; }
+.badge[data-tier="DIAMOND"] { --rank-ink: #405cb2; }
+.badge[data-tier="MASTER"] { --rank-ink: #804092; }
+.badge[data-tier="GRANDMASTER"] { --rank-ink: #a03245; }
+.badge[data-tier="CHALLENGER"] { --rank-ink: #00638c; }
+@media (prefers-color-scheme: dark) {
+  .badge[data-tier="IRON"] { --rank-ink: #cbbab0; }
+  .badge[data-tier="BRONZE"] { --rank-ink: #eda978; }
+  .badge[data-tier="SILVER"] { --rank-ink: #c0cfdf; }
+  .badge[data-tier="GOLD"] { --rank-ink: #f0ce74; }
+  .badge[data-tier="PLATINUM"] { --rank-ink: #7ad5d2; }
+  .badge[data-tier="EMERALD"] { --rank-ink: #78d8a0; }
+  .badge[data-tier="DIAMOND"] { --rank-ink: #a4baff; }
+  .badge[data-tier="MASTER"] { --rank-ink: #d1a1eb; }
+  .badge[data-tier="GRANDMASTER"] { --rank-ink: #ff99a7; }
+  .badge[data-tier="CHALLENGER"] { --rank-ink: #7cd5ff; }
+}
+@media (forced-colors: active) {
+  .badge { color: CanvasText; background: Canvas; outline: 1px solid CanvasText; }
+}

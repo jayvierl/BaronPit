@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { checkMatchFilters } from "./match-filters.mjs";
 
 function visibleText(markup) {
   return markup.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -41,21 +42,33 @@ export async function checkPlayerProfiles(journey) {
   ];
   for (const session of [false, true]) {
     const options = { html: true, session };
+    const unlinked = await journey("/u/501?tab=stats", options);
+    assert.equal(linkFrom(unlinked, session ? /^Link a Riot ID$/ : /^Look up a Riot ID$/), session ? "/me" : "/player");
     const feed = await journey("/", options);
     const verified = await journey(linkFrom(feed, /^Fixture Other$/), options);
     assert.match(verified, /Verified Riot link/);
-    checkStats(verified, verifiedStats);
+    const statsTab = await journey(linkFrom(verified, /^Player stats$/), options);
+    checkStats(statsTab, verifiedStats);
+    assert.match(verified, /data-tier="PLATINUM"/);
+    checkStats(await journey("/u/504?tab=players", options), verifiedStats);
 
-    const history = linkFrom(verified, /match history/i);
+    const history = linkFrom(statsTab, /match history/i);
     sameLookup(linkFrom(feed, /^Platinum III · Nami main$/), history);
     const lookup = await journey(history, options);
     checkStats(lookup, verifiedStats);
+    if (!session) await checkMatchFilters(journey, history);
     assert.match(lookup, /Fixture Support/);
 
     const claim = await journey(linkFrom(feed, /^Fixture Teammate$/), options);
     assert.match(claim, /Unverified Riot link/);
     assert.match(claim, /Fixture win condition/);
     assert.doesNotMatch(claim, /aria-label="League stats"/);
+    const replies = await journey(linkFrom(claim, /^Replies$/), options);
+    assert.match(replies, /Fixture followup/);
+    assert.equal(linkFrom(replies, /View conversation/), "/post/521#reply-531");
+    const claimStats = await journey(linkFrom(claim, /^Player stats$/), options);
+    assert.match(claimStats, /Unverified Riot link/);
+    assert.doesNotMatch(claimStats, /aria-label="League stats"/);
     const teammate = linkFrom(lookup, /^Fixture Archer#NA1$/);
     sameLookup(linkFrom(claim, /View stats for Fixture Archer#NA1/), teammate);
     const legacy = await journey(teammate, options);

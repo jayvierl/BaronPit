@@ -6,31 +6,11 @@ import Link from "next/link";
 import type { LibraryAction, LibraryKind, ReplyMode } from "@/lib/discussion-library";
 import { signInHref } from "@/lib/signin-return";
 import { ActionFeedback, usePostAction } from "./post-action";
+import { ShareLink } from "./share-link";
 import { ThreadIcon } from "./thread-icon";
 
 export function ShareDiscussion({ postId }: { postId: number }) {
-  const [notice, setNotice] = useState("");
-  const [manual, setManual] = useState("");
-  async function share() {
-    const url = new URL(`/post/${postId}`, window.location.origin).href;
-    setNotice("");
-    try {
-      if (navigator.share) {
-        await navigator.share({ url });
-        return;
-      }
-      await navigator.clipboard.writeText(url);
-      setNotice("Link copied.");
-    } catch (e) {
-      if (e instanceof Error && e.name === "AbortError") return;
-      setManual(url);
-    }
-  }
-  return <>
-    <button type="button" className="action-btn" title="Share thread" aria-label="Share thread" onClick={share}><ThreadIcon name="share" /></button>
-    {notice && <span className="meta" role="status">{notice}</span>}
-    {manual && <input readOnly value={manual} aria-label="Discussion link to copy" onFocus={e => e.target.select()} />}
-  </>;
+  return <ShareLink path={`/post/${postId}`} kind="thread" />;
 }
 
 function PrivateActions({ kind, id, postId, signedIn }: { kind: LibraryKind; id: number; postId: number; signedIn: boolean }) {

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { beginDraftSignIn, restoreAfterMount } from "@/lib/auth-draft";
 import { signInHref } from "@/lib/signin-return";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { CommentView } from "@/lib/social";
 import type { AvatarIdentity } from "@/lib/author-identity";
@@ -51,6 +51,8 @@ export function CommentSection({
   const [replyTo, setReplyTo] = useState<{ rootId: number; name: string } | null>(null);
   const [oneFix, setOneFix] = useState(false);
   const [notice, setNotice] = useState("");
+  const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
+  const sectionRef = useRef<HTMLElement>(null);
   const action = usePostAction();
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const setInputRef = (el: HTMLInputElement | HTMLTextAreaElement | null) => { inputRef.current = el; };
@@ -104,16 +106,46 @@ export function CommentSection({
     ? { postId, revision, visit, comments: initialComments }
     : thread?.postId === postId && thread.revision === revision && thread.visit === visit ? thread : null;
   const renderedComments = current?.comments;
+  const replyCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    function count(comment: CommentView): number {
+      const descendants = comment.replies.reduce((sum, child) => sum + 1 + count(child), 0);
+      counts.set(comment.id, descendants);
+      return descendants;
+    }
+    renderedComments?.forEach(count);
+    return counts;
+  }, [renderedComments]);
+
+  function setBranchOpen(id: number, open: boolean) {
+    setCollapsed(previous => {
+      if (previous.has(id) === !open) return previous;
+      const next = new Set(previous);
+      if (open) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const lastAnchor = useRef("");
   useEffect(() => {
-    if (renderedComments && lastAnchor.current !== window.location.hash && /^#reply-\d+$/.test(window.location.hash)) {
-      const target = document.getElementById(window.location.hash.slice(1));
-      if (target) {
-        target.scrollIntoView({block:"center"});
-        lastAnchor.current = window.location.hash;
+    if (!active || !renderedComments) return;
+    function revealAnchor() {
+      const hash = window.location.hash;
+      if (!/^#reply-\d+$/.test(hash)) { lastAnchor.current = ""; return; }
+      const target = document.getElementById(hash.slice(1));
+      if (!target || !sectionRef.current?.contains(target)) return;
+      for (let ancestor = target.parentElement; ancestor && ancestor !== sectionRef.current; ancestor = ancestor.parentElement) {
+        if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
       }
+      target.scrollIntoView({block:"center"});
+      target.focus({preventScroll:true});
+      lastAnchor.current = hash;
     }
-  },[renderedComments]);
+    if (lastAnchor.current !== window.location.hash) revealAnchor();
+    window.addEventListener("hashchange", revealAnchor);
+    return () => window.removeEventListener("hashchange", revealAnchor);
+  }, [active, renderedComments]);
 
   const payload = {
     postId,
@@ -147,8 +179,10 @@ export function CommentSection({
   }
 
   function showComment(c: CommentView, rootId: number, depth: number): React.ReactNode {
+    const count = replyCounts.get(c.id) ?? 0;
+    const replyLabel = count === 1 ? "1 reply" : `${count} replies`;
     return (
-      <div key={c.id} id={`reply-${c.id}`} className={threadStyles.replyBranch}>
+      <div key={c.id} id={`reply-${c.id}`} className={threadStyles.replyBranch} tabIndex={-1}>
         <div className="comment-row">
           <div className="comment-rail">
             <Link href={`/u/${c.authorId}`} className={threadStyles.avatarLink} aria-label={`${c.authorName}’s profile`}>
@@ -177,6 +211,7 @@ export function CommentSection({
                 className="text-btn"
                 aria-label={`Reply to ${c.authorName}`}
                 onClick={() => {
+                  setBranchOpen(rootId, true);
                   setReplyTo({ rootId, name: c.authorName });
                   setOneFix(false);
                   inputRef.current?.focus();
@@ -189,15 +224,21 @@ export function CommentSection({
             </div>
           </div>
         </div>
-        {c.replies.length > 0 && <div className={depth === 0 ? threadStyles.children : undefined}>
-          {c.replies.map((child) => showComment(child, rootId, depth + 1))}
-        </div>}
+        {count > 0 && <details className={threadStyles.replyGroup} open={!collapsed.has(c.id)}
+          onToggle={event => {
+            if (event.target === event.currentTarget) setBranchOpen(c.id, event.currentTarget.open);
+          }}>
+          <summary aria-label={`${replyLabel} under ${c.authorName}’s comment`}>{replyLabel}</summary>
+          <div className={depth === 0 ? threadStyles.children : undefined}>
+            {c.replies.map((child) => showComment(child, rootId, depth + 1))}
+          </div>
+        </details>}
       </div>
     );
   }
 
   return (
-    <section id={`replies-${postId}`} className="comments" aria-labelledby={`replies-title-${postId}`}>
+    <section ref={sectionRef} id={`replies-${postId}`} className="comments" aria-labelledby={`replies-title-${postId}`}>
       <h2 className={threadStyles.repliesTitle} id={`replies-title-${postId}`}>Replies</h2>
       {!current ? (
         <PostCardLoading label="Loading replies…" />
