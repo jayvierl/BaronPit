@@ -10,7 +10,7 @@ import type { CommentView } from "@/lib/social";
 import type { AvatarIdentity } from "@/lib/author-identity";
 import { PostCardLoading } from "./post-card-loading";
 import { WithdrawSubmission } from "./withdraw-submission";
-import { Avatar, PermalinkTime } from "./ui";
+import { Avatar, AvatarProfileLink, PermalinkTime } from "./ui";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SaveReply } from "./discussion-library-actions";
 import styles from "@/app/questions/questions.module.css";
@@ -197,9 +197,8 @@ export function CommentSection({
       <div key={c.id} id={`reply-${c.id}`} className={threadStyles.replyBranch} tabIndex={-1}>
         <div className="comment-row">
           <div className="comment-rail">
-            <Link href={`/u/${c.authorId}`} className={threadStyles.avatarLink} aria-label={`${c.authorName}’s profile`}>
-              <Avatar name={c.authorName} hue={c.authorHue} avatar={c.authorAvatar} size={32} />
-            </Link>
+            <AvatarProfileLink userId={c.authorId} className={threadStyles.avatarLink}
+              name={c.authorName} hue={c.authorHue} avatar={c.authorAvatar} size={32} />
             {c.replies.length > 0 && <span className="line" />}
           </div>
           <div className="comment-main">

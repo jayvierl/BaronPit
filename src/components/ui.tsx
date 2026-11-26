@@ -1,27 +1,42 @@
 import Image from "next/image";
+import Link from "next/link";
 import { publicAvatar, championAvatarArt, avatarImageUrl, isOfficialRiotIcon, type AvatarRef } from "@/lib/avatar";
 
-export function Avatar({ name, hue, size = 40, imageUrl, avatar }: {
+type AvatarProps = {
   name: string; hue: number; size?: number; imageUrl?: string; avatar?: AvatarRef;
-}) {
+};
+
+function avatarInitials(name: string) {
+  return name.trim().split(/\s+/, 2).map(word => Array.from(word)[0]).join("").toUpperCase() || "?";
+}
+
+export function Avatar({ name, hue, size = 40, imageUrl, avatar }: AvatarProps) {
   const ref = publicAvatar(avatar);
   const url = avatarImageUrl(ref) ?? (imageUrl && isOfficialRiotIcon(imageUrl) ? imageUrl : undefined);
   const officialIcon = url && isOfficialRiotIcon(url) ? url : undefined;
   const art = ref.kind === "champion" ? championAvatarArt(ref.id, true)
     : ref.kind === "upload" && url ? { backgroundImage: `url("${url}")` } : undefined;
-  const initials = name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("") || "?";
   return (
     <span
       className="avatar"
       style={{ width: size, height: size, background: `hsl(${hue} 16% 38%)`, fontSize: Math.round(size * 0.42) }}
       aria-hidden
     >
-      {initials}
+      {avatarInitials(name)}
       {officialIcon && <Image src={officialIcon} alt="" width={size} height={size}
         loading={imageUrl ? "eager" : "lazy"} fetchPriority={imageUrl ? "high" : undefined} />}
       {art && <span className="avatar-art" style={art} />}
     </span>
   );
+}
+
+export function AvatarProfileLink({ userId, className, ...avatar }: Omit<AvatarProps, "imageUrl"> & {
+  userId: number; className?: string;
+}) {
+  // The monogram is also the visible fallback while an image loads or if it fails.
+  return <Link href={`/u/${userId}`} className={className} aria-label={`${avatarInitials(avatar.name)}, ${avatar.name}’s profile`}>
+    <Avatar {...avatar} />
+  </Link>;
 }
 
 export function timeAgo(iso: string): string {
