@@ -13,6 +13,7 @@ import { WithdrawSubmission } from "./withdraw-submission";
 import { Avatar, AvatarProfileLink, PermalinkTime } from "./ui";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SaveReply } from "./discussion-library-actions";
+import { useHydrated } from "./use-hydrated";
 import styles from "@/app/questions/questions.module.css";
 import threadStyles from "./thread.module.css";
 import { SafetyReport } from "./safety-report";
@@ -77,6 +78,7 @@ export function CommentSection({
   onVisibleReply?: () => void;
 }) {
   const router = useRouter();
+  const hydrated = useHydrated();
   const [thread, setThread] = useState<ThreadLoad | null>(null);
   const [revision, setRevision] = useState(0);
   const [draft, setDraft] = useState("");
@@ -87,11 +89,13 @@ export function CommentSection({
   const sectionRef = useRef<HTMLElement>(null);
   const action = usePostAction();
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const oneFixRef = useRef<HTMLInputElement>(null);
   const linkedReply = useSyncExternalStore(threadPage ? subscribeToReplyAnchor : skipReplyAnchor,
     threadPage ? readReplyAnchor : noReplyAnchor, noReplyAnchor);
   const setInputRef = (el: HTMLInputElement | HTMLTextAreaElement | null) => { inputRef.current = el; };
 
   const scope = `reply:${postId}`;
+  const destination = `/post/${postId}#replies-${postId}`;
   useEffect(() => {
     if (!signedIn) return;
     return restoreAfterMount(scope, saved => {
@@ -152,12 +156,13 @@ export function CommentSection({
 
   function resumeAfterAuth() {
     if (unavailableTarget) return;
-    const destination = `/post/${postId}#replies-${postId}`;
+    // Guests can type into the first HTML before React receives input events.
+    const body = inputRef.current?.value ?? draft;
     const mode = action.authStep === "enrol" ? "enrol" : undefined;
-    if (!draft.trim() && !replyTarget) { router.push(signInHref(destination, mode)); return; }
+    if (!body.trim() && !replyTarget) { router.push(signInHref(destination, mode)); return; }
     try {
       router.push(beginDraftSignIn(window.localStorage, scope, destination,
-        {body: draft, parentId: replyTarget?.id, oneFix}, mode));
+        {body, parentId: replyTarget?.id, oneFix: oneFixRef.current?.checked === true}, mode));
     } catch { setNotice("This browser couldn’t save your reply. Copy it before signing in."); }
   }
 
@@ -337,7 +342,7 @@ export function CommentSection({
         >
           {allowOneFix && replyTo === null && (
             <label className="meta">
-              <input type="checkbox" checked={oneFix} onChange={(e) => setOneFix(e.target.checked)} /> Suggest one
+              <input type="checkbox" ref={oneFixRef} checked={signedIn ? oneFix : undefined} onChange={(e) => setOneFix(e.target.checked)} /> Suggest one
               fix for the next game
             </label>
           )}
@@ -360,21 +365,22 @@ export function CommentSection({
             {signedIn && viewerIdentity && <Avatar {...viewerIdentity} size={32} />}
             {decisionQuestion ? (
               <textarea ref={setInputRef} className={styles.replyInput} aria-label="Your reply" rows={3}
-                disabled={action.busy} placeholder="What would you try in this game?" value={draft}
-                onChange={e => setDraft(e.target.value)} maxLength={1000} />
+                disabled={action.busy} placeholder="What would you try in this game?" value={signedIn ? draft : undefined}
+                onChange={signedIn ? e => setDraft(e.target.value) : undefined} maxLength={1000} />
             ) : <input
               ref={setInputRef}
               disabled={action.busy}
               aria-label="Your reply"
               placeholder={oneFix ? "What would you change, and why?" : "Add your reply…"}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              value={signedIn ? draft : undefined}
+              onChange={signedIn ? e => setDraft(e.target.value) : undefined}
               maxLength={1000}
             />}
-            <button type="submit" className="btn small" disabled={action.busy || unavailableTarget || (signedIn && !draft.trim()) || reconsider}>
+            <button type="submit" className="btn small" disabled={action.busy || unavailableTarget || (signedIn ? !draft.trim() : !hydrated) || reconsider}>
               {action.busy ? "Sending…" : signedIn ? "Reply" : "Sign in to reply"}
             </button>
           </div>
+          {!signedIn && <noscript><p className="meta">Copy your reply before signing in. Draft saving requires JavaScript. <a href={signInHref(destination)}>Sign in</a></p></noscript>}
         </form>
     </section>
   );

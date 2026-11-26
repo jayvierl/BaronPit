@@ -14,7 +14,7 @@ it.each([null, 7])("provides one closed home compose anchor for viewer %s", (vie
   expect(html).toMatch(/^<details id="compose"[^>]*><summary/);
   expect(html).not.toMatch(/^<details[^>]*\bopen[=> ]/);
   expect(html.match(/<summary\b[^>]*>([\s\S]*?)<\/summary>/)?.[1]).toContain("Post to the Pit");
-  expect(html).toMatch(/<(form|fieldset)\b[^>]*aria-label="Post to the Pit"/);
+  expect(html).toMatch(/<(div|fieldset)\b[^>]*aria-label="Post to the Pit"/);
   expect(html).toContain("<textarea");
   if (viewerId === null) expect(html).toContain("Sign in to post");
   else for (const label of ["Text", "Build", "Poll", "Clip", "Post"]) expect(html).toContain(`>${label}</button>`);

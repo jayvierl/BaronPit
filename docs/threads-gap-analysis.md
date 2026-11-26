@@ -124,6 +124,8 @@ A read-only crawl of Baron Pit before the changes followed links from Home up to
 | Save → find again | Saved has separate Posts and Replies views. The bookmark menu links directly to the relevant view, and saved replies reopen at their specific reply. |
 | Start a post or recover from a bad link | Post to the Pit opens the current room’s composer where available. If the room is unavailable, the control opens the home composer. The footer and safety pages use US-English Safety Center. |
 
+The production retest at `d759fee` reached 120 destinations in 25 route families, checked 296 fragment links and 28 sign-in continuations, and found no broken destination in the sample. All four teammate profiles that had shown a generic error displayed ranked records. A separate browser test clicked as soon as the server-rendered forms appeared. It caught a reply that lost its text during sign-in and a duo form that reloaded the page. Tests for draft handoff need to exercise that interval before the browser attaches event handlers.
+
 ### Ten X ideas for Baron Pit
 
 X returned HTTP 403 to a direct signed-out request from the research environment. The feature descriptions below use X’s official documentation. These are product proposals. Existing Baron Pit features are named in the second column.
