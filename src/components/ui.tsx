@@ -1,4 +1,4 @@
-export function Avatar({ name, hue, size = 40 }: { name: string; hue: number; size?: number }) {
+export function Avatar({ name, hue, size = 40, imageUrl }: { name: string; hue: number; size?: number; imageUrl?: string }) {
   const initials = name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("") || "?";
   return (
     <span
@@ -7,6 +7,7 @@ export function Avatar({ name, hue, size = 40 }: { name: string; hue: number; si
       aria-hidden
     >
       {initials}
+      {imageUrl && <span className="avatar-art" style={{backgroundImage: `url("${imageUrl}")`}} />}
     </span>
   );
 }

@@ -1,4 +1,4 @@
-import { duoEnabled, duoPairsCte } from "./duo";
+import { duoEnabled, duoPairsCte, duoPeerId } from "./duo";
 import { TERMS_VERSION } from "./account-policy";
 import { getSql, q } from "./db";
 import type { User } from "./auth";
@@ -40,6 +40,7 @@ export async function endorse(
   from: User,
   toUserId: number,
   kind: string,
+  requestId: number | null = null,
 ): Promise<{ ok: boolean; error?: string }> {
   if (from.id === toUserId) return { ok: false, error: "You can't endorse yourself." };
   if (!ENDORSE_KINDS.some((k) => k.id === kind)) return { ok: false, error: "Unknown endorsement." };
@@ -59,10 +60,11 @@ export async function endorse(
         AND p.status='visible' AND p.kind NOT IN ('media','clip') AND c.parent_id IS NULL AND c.status='visible' AND c.created_at>now()-interval '30 days'
       ) ELSE EXISTS(
         ${duoPairsCte} SELECT 1 FROM pairs p WHERE p.status='accepted' AND p.can_thank
+          AND ($5::int IS NULL OR p.id=$5)
           AND (p.sender_id,p.owner_id) IN (($1,$4),($4,$1))
       ) END)
       ON CONFLICT(from_user,to_user,kind) DO UPDATE SET interaction_checked=true, created_at=now()
-      WHERE NOT wp_endorsements.interaction_checked OR wp_endorsements.created_at<=now()-interval '30 days' RETURNING id`,[from.id, TERMS_VERSION, kind, toUserId]),
+      WHERE NOT wp_endorsements.interaction_checked OR wp_endorsements.created_at<=now()-interval '30 days' RETURNING id`,[from.id, TERMS_VERSION, kind, toUserId, requestId]),
   ]);
   return rows.length
     ? { ok: true }
@@ -71,6 +73,11 @@ export async function endorse(
         error:
           "Endorse a recent reply to your post, or a verified duo you played with. You can endorse three players per day and each player once per month.",
       };
+}
+export async function endorseDuoRequest(from: User, requestId: number) {
+  const peer = await duoPeerId(from.id, "duo_request", requestId);
+  if (!peer) return { ok: false, error: "This duo request is unavailable." };
+  return endorse(from, peer, "good_teammate", requestId);
 }
 export async function endorsementCounts(userId: number): Promise<Record<string, number>> {
   const rows =

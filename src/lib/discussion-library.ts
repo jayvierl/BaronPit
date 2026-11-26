@@ -87,12 +87,12 @@ export async function changeLibrary(userId: number, kind: LibraryKind, id: numbe
 }
 
 export const LIBRARY_PAGE_SIZE = 25;
-export type LibraryEntry = { kind: LibraryKind; id: number; postId: number; author: string; excerpt: string; cursor: string; unread: boolean; replyReason?: "post" | "comment" | "watch" };
+export type LibraryEntry = { kind: LibraryKind; id: number; postId: number; authorId: number; author: string; excerpt: string; cursor: string; unread: boolean; replyReason?: "post" | "comment" | "watch" };
 
 function entries(rows: Record<string, unknown>[]) {
   const page: LibraryEntry[] = rows.slice(0, LIBRARY_PAGE_SIZE).map(row => ({
     kind: row.kind === "comment" ? "comment" : "post", id: Number(row.id), postId: Number(row.post_id),
-    author: String(row.author), excerpt: String(row.excerpt || "Open discussion"), cursor: String(row.cursor),
+    authorId: Number(row.author_id), author: String(row.author), excerpt: String(row.excerpt || "Open discussion"), cursor: String(row.cursor),
     unread: row.unread === true,
     replyReason: row.reason as LibraryEntry["replyReason"],
   }));
@@ -111,7 +111,7 @@ export async function savedPlaybook(userId: number, before: string | null) {
       WHERE s.user_id=$1 AND ($2::bigint IS NULL OR s.id < $2)),
     candidates AS (SELECT DISTINCT post_id FROM saves WHERE comment_id IS NOT NULL),
     ${visibleCommentsFor("posts", "candidates")}
-    SELECT s.cursor,coalesce(c.id,p.id) AS id,p.id AS post_id, u.display_name AS author,
+    SELECT s.cursor,coalesce(c.id,p.id) AS id,p.id AS post_id,u.id AS author_id,u.display_name AS author,
       CASE WHEN c.id IS NULL THEN 'post' ELSE 'comment' END AS kind, left(coalesce(c.body,nullif(p.body,''),p.kind || ' post'),220) AS excerpt
     FROM saves s JOIN wp_posts p ON p.id=s.post_id LEFT JOIN wp_comments c ON c.id=s.comment_id
     JOIN wp_users u ON u.id=coalesce(c.author_id,p.author_id)
@@ -130,7 +130,7 @@ export async function hasUnreadReplies(userId: number) {
 
 export async function replyActivity(userId: number, before: string | null) {
   const rows = await queryRows(`${activityCtes}
-    SELECT n.id AS cursor,n.id,n.post_id,'comment' AS kind,n.reason,u.display_name AS author,left(n.body,220) AS excerpt,
+    SELECT n.id AS cursor,n.id,n.post_id,'comment' AS kind,n.reason,u.id AS author_id,u.display_name AS author,left(n.body,220) AS excerpt,
       r.comment_id IS NULL AS unread FROM notices n JOIN wp_users u ON u.id=n.author_id
     LEFT JOIN wp_discussion_read_replies r ON r.user_id=$1 AND r.comment_id=n.id
     WHERE ($2::bigint IS NULL OR n.id < $2) ORDER BY n.id DESC LIMIT $3`, [userId, before, LIBRARY_PAGE_SIZE + 1]);
@@ -139,7 +139,7 @@ export async function replyActivity(userId: number, before: string | null) {
 
 export async function watchedDiscussions(userId: number, before: string | null, mode: "all" | "muted" = "all") {
   const rows = await queryRows(`WITH ${HIDDEN_AUTHORS} SELECT p.id AS cursor,p.id,p.id AS post_id,'post' AS kind,
-    u.display_name AS author,left(coalesce(nullif(p.body,''),p.kind || ' post'),220) AS excerpt
+    u.id AS author_id,u.display_name AS author,left(coalesce(nullif(p.body,''),p.kind || ' post'),220) AS excerpt
     FROM wp_thread_watches w JOIN wp_posts p ON p.id=w.post_id JOIN wp_users u ON u.id=p.author_id
     WHERE w.user_id=$1 AND w.reply_mode=$4 AND ($2::bigint IS NULL OR p.id < $2) AND ${visiblePostForInteraction}
     ORDER BY p.id DESC LIMIT $3`, [userId, before, LIBRARY_PAGE_SIZE + 1, mode]);

@@ -1,4 +1,6 @@
 .post { position: relative; }
+.avatarLink { display: inline-flex; min-height: 44px; min-width: 44px; align-items: center; justify-content: center; }
+.byline :global(a.flair) { text-decoration: underline; text-decoration-style: dotted; text-underline-offset: .2em; }
 .byline { display: flex; flex-wrap: wrap; align-items: center; }
 .byline :global(.time) { white-space: nowrap; }
 .byline a:hover, .context a:hover, .permalink:hover { text-decoration: underline; }

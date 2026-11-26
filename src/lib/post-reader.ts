@@ -4,7 +4,8 @@ import { hasBaronCallOptions } from "./poll";
 import { briefingText, PATCH_PUBLISHER, publicPatch, storedNotesUrl } from "./patch-notes";
 import { queryRows } from "./db";
 import { HIDDEN_AUTHORS, canDisplayPost, visibleCommentsFor } from "./community-queries";
-import { playerFlair } from "./rank";
+import { playerFlair, readRankedEntries } from "./player-summary";
+import { playerStatsHref } from "./platforms";
 import { teamBaronFields } from "./pure";
 import { followedReposts, repostableContent } from "./reposts";
 import type { PostView, CommentView } from "./post-types";
@@ -136,12 +137,14 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
       EXISTS (SELECT 1 FROM wp_reposts r WHERE r.user_id=$1 AND r.post_id=p.id AND r.active) AS my_repost,
       u.email=$11 AS is_publisher, rm.champion_id AS room_champion,
       EXISTS (SELECT 1 FROM wp_decisions d WHERE d.post_id=p.id) AS is_question,
-      u.display_name AS author_name, u.avatar_hue AS author_hue, rm.slug AS room_slug, rm.name AS room_name, flair.label
+      u.display_name AS author_name, u.avatar_hue AS author_hue, rm.slug AS room_slug, rm.name AS room_name,
+      flair.label, flair.platform, flair.riot_id
     FROM chosen p JOIN wp_users u ON u.id = p.author_id
     LEFT JOIN wp_users sh ON sh.id=p.sharer
     LEFT JOIN wp_rooms rm ON rm.id = p.room_id
     LEFT JOIN LATERAL (
-      SELECT jsonb_build_array(pl.rank_tier, pl.rank_div, pl.snapshot #> '{champPool,0,champion}') AS label
+      SELECT jsonb_build_array(pl.rank_tier, pl.rank_div, pl.snapshot #> '{champPool,0,champion}', pl.snapshot->'rankedEntries') AS label,
+        pl.platform, pl.game_name || '#' || pl.tag_line AS riot_id
       FROM wp_links l JOIN wp_players pl ON pl.puuid = l.puuid WHERE l.user_id = p.author_id AND l.verified
         AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.puuid = l.puuid AND other.verified AND other.user_id <> l.user_id)
       ORDER BY l.is_primary DESC, l.created_at, l.puuid LIMIT 1
@@ -178,13 +181,14 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
     const data = version
       ? { briefing: true, patch: version, notesUrl: storedNotesUrl(version, raw.notesUrl) }
       : publicPostData(r.kind, raw);
-    const flair = r.label as [string | null, string | null, unknown] | null;
+    const flair = r.label as [string | null, string | null, unknown, unknown] | null;
     return {
       id, authorId: Number(r.author_id), authorName: String(r.author_name), authorHue: Number(r.author_hue),
       isQuestion:r.is_question === true,
       canRepost: r.can_repost === true, myRepost: r.my_repost === true,
       ...(r.sharer != null ? {repostedBy: {id: Number(r.sharer), name: String(r.sharer_name), at: String(r.shared_at)}} : {}),
-      authorFlair: flair ? playerFlair(...flair) : null,
+      authorFlair: flair ? playerFlair({rankTier:flair[0], rankDiv:flair[1], rankedEntries:readRankedEntries(flair[3])}, flair[2]) : null,
+      ...(flair && r.platform && r.riot_id ? {authorStatsHref:playerStatsHref(String(r.platform), String(r.riot_id))} : {}),
       ...(r.answered_at ? { lastReplyAt: String(r.answered_at) } : {}),
       ...(catalog && (r.kind === "card" || r.kind === "build") ? {itemPatch:catalog.patch,itemDetails:cardItems(catalog,r.kind === "card" ? record(data.match).items : data.items)} : {}),
       kind: String(r.kind), body: version ? briefingText(version, r.room_champion as string | null) : String(r.body), data, status: String(r.status), createdAt: String(r.created_at),

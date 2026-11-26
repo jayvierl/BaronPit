@@ -2,6 +2,7 @@ import { validId } from "@/lib/ids";
 import { requireUser } from "@/lib/auth-http";
 import { closeDuoListing, createDuoListing, duoAction, duoPeerId, setRequeue, thankDuo } from "@/lib/duo";
 import { setBlock } from "@/lib/social";
+import { endorseDuoRequest } from "@/lib/relationships";
 
 function reply(result: { ok: boolean; error?: string }, status?: number) {
   return Response.json(result, {
@@ -23,10 +24,10 @@ export async function POST(req: Request) {
   if (action === "create") return reply(await createDuoListing(user, input));
   const id = input.id;
   if (!validId(id)) return reply({ ok: false, error: "Invalid selection." });
-  if (action === "thank") {
+  if (action === "thank" || action === "endorse") {
     if (Object.keys(input).some(key => key !== "action" && key !== "id"))
-      return reply({ ok: false, error: "This action sends a free thank-you only." });
-    return reply(await thankDuo(user.id, id));
+      return reply({ ok: false, error: "This action only accepts a duo request ID." });
+    return reply(action === "thank" ? await thankDuo(user.id, id) : await endorseDuoRequest(user, id));
   }
   if (action === "requeue" || action === "withdraw-requeue") return reply(await setRequeue(user.id, id, action === "requeue"));
   if (action === "close") return reply(await closeDuoListing(user.id, id));

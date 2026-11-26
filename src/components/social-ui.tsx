@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ENDORSE_KINDS } from "@/lib/pure";
-import { splitRiotId } from "@/lib/platforms";
+import { playerStatsHref, splitRiotId } from "@/lib/platforms";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SafetyReport } from "./safety-report";
 
@@ -52,8 +52,9 @@ export function JoinButton({ roomId, initial }: { roomId: number; initial: boole
 }
 
 export function EndorseRow({ userId }: { userId: number }) {
-  const [done, setDone] = useState<string[]>([]);
+  const [done, setDone] = useState<string | null>(null);
   const action = usePostAction();
+  const router = useRouter();
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
       {ENDORSE_KINDS.map((k) => (
@@ -61,16 +62,19 @@ export function EndorseRow({ userId }: { userId: number }) {
           key={k.id}
           type="button"
           className="chip"
-          disabled={action.busy || done.includes(k.id)}
+          disabled={action.busy || done !== null}
           onClick={async () => {
-            if (await action.send("/api/social/endorse", { userId, kind: k.id }))
-              setDone((current) => [...current, k.id]);
+            if (await action.send("/api/social/endorse", { userId, kind: k.id })) {
+              setDone(k.id);
+              router.refresh();
+            }
           }}
         >
           {k.label}
-          {done.includes(k.id) ? " ✓" : ""}
+          {done === k.id ? " ✓" : ""}
         </button>
       ))}
+      {done && <span role="status" className="meta">Endorsement added.</span>}
       <ActionFeedback error={action.error} />
     </div>
   );
@@ -131,7 +135,7 @@ export function LookupForm({
           return;
         }
         setError("");
-        router.push("/player?" + new URLSearchParams({ platform, riotId: gameName + "#" + tagLine }));
+        router.push(playerStatsHref(platform, gameName + "#" + tagLine));
       }}
     >
       <input

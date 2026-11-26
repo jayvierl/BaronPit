@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { checkSubmissions } from "./submissions.mjs";
 import { checkCommunityDuo } from "./community-duo.mjs";
+import { checkPlayerProfiles } from "./profiles.mjs";
 import { checkImage, publicArtwork } from "../public-art.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -69,7 +70,7 @@ const signed = { cookie: "wp_session=" + session };
 let completed = 0;
 async function journey(
   path,
-  { status = 200, session = false, includes = [], excludes = [], method = "GET", body, base = origin, signInReturn } = {},
+  { status = 200, session = false, includes = [], excludes = [], method = "GET", body, base = origin, signInReturn, html = false } = {},
 ) {
   const res = await fetch(base + path, {
     method,
@@ -107,6 +108,10 @@ async function journey(
   for (const word of includes) assert.ok(text.includes(word), path + " missing " + word);
   for (const word of excludes) assert.ok(!text.includes(word), path + " exposed " + word);
   completed++;
+  if (html) {
+    assert.match(res.headers.get("content-type") ?? "", /text\/html/);
+    return text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<!--[\s\S]*?-->/g, "");
+  }
   return res.headers.get("content-type")?.includes("json") ? JSON.parse(text) : res.status;
 }
 try {
@@ -125,9 +130,9 @@ try {
       "Fixture win condition", "Fixture offrole question", "Fixture blocked discussion",
       "Never take Baron alone.", "/baron-emblem-96.webp", "/baron-icon-32.png",
       "Lobby rally clock", "Community objective progress", "Resets at 00:00 UTC",
+      "Hand of Baron · community spotlight", "Fixture Support",
     ],
-    // The fixture has a lookup-based claim and no verified spotlight candidate.
-    excludes: ["Hand of Baron · community spotlight", "BARON IS UP", "Objective progress is temporarily unavailable"],
+    excludes: ["BARON IS UP", "Objective progress is temporarily unavailable"],
   });
   await journey("/?tab=following", {
     session: true,
@@ -145,14 +150,7 @@ try {
   for (const signedOutPage of ["/activity?tab=duos", "/activity?tab=watching&before=42", "/playbook?before=42"]) {
     await journey(signedOutPage, {status:307, signInReturn:signedOutPage});
   }
-  await journey("/u/502", {
-    session: true,
-    includes: ["Fixture Teammate", "Fixture win condition", "Unverified Riot link"],
-  });
-  await journey("/player?name=Fixture%20Archer&platform=na1", {
-    session: true,
-    includes: ["Fixture Archer", "Gold IV", "Ashe"],
-  });
+  await checkPlayerProfiles(journey);
   await journey("/rooms/general", {
     session: true,
     includes: [

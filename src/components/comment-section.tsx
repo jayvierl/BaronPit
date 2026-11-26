@@ -144,7 +144,7 @@ export function CommentSection({
       <div key={c.id} id={`reply-${c.id}`} className={threadStyles.replyBranch}>
         <div className="comment-row">
           <div className="comment-rail">
-            <Link href={`/u/${c.authorId}`} aria-label={`${c.authorName}’s profile`}>
+            <Link href={`/u/${c.authorId}`} className={threadStyles.avatarLink} aria-label={`${c.authorName}’s profile`}>
               <Avatar name={c.authorName} hue={c.authorHue} size={32} />
             </Link>
             {c.replies.length > 0 && <span className="line" />}

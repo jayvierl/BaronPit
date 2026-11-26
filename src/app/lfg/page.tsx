@@ -16,7 +16,7 @@ type BoardState =
   | { status: "guest" | "error" }
   | { status: "paused"; readiness?: DuoReadiness }
   | { status: "ineligible"; asOf: number; earlierRequests?: DuoRequest[]; readiness: Extract<DuoReadiness,{ready:false}> }
-  | { status: "ready"; riotId: string; listings: DuoListing[]; requests: DuoRequest[]; asOf: number };
+  | { status: "ready"; riotId: string; rankedPilot: boolean; listings: DuoListing[]; requests: DuoRequest[]; asOf: number };
 
 async function loadBoard(userId: number | undefined, onlyFit: boolean): Promise<BoardState> {
   const enabled = duoEnabled();
@@ -29,7 +29,7 @@ async function loadBoard(userId: number | undefined, onlyFit: boolean): Promise<
       status: "ineligible", readiness, asOf,
       ...(readiness.regionOutsidePilot ? { earlierRequests: (await readDuoBoard(userId)).requests } : {}),
     };
-    return { status: "ready", riotId: readiness.riotId, asOf, ...(await readDuoBoard(userId, onlyFit, asOf)) };
+    return { status: "ready", riotId: readiness.riotId, rankedPilot: readiness.rankedPilot, asOf, ...(await readDuoBoard(userId, onlyFit, asOf)) };
   } catch {
     return { status: "error" };
   }
@@ -50,7 +50,7 @@ export default async function LfgPage({ searchParams }: { searchParams: Promise<
       {measuring && fit && state.status === "ready" && <PilotVisit kind="duo-board"/>}
       <header>
         <h1 className="page-title">Find a duo</h1>
-        <p>Find someone who plays your partner role, likes your pace and queues when you do.</p>
+        <p>Climb with a partner who plays your role pairing and queues when you do.</p>
       </header>
       {state.status === "paused" && (
         <aside className="duo-status">
@@ -75,9 +75,9 @@ export default async function LfgPage({ searchParams }: { searchParams: Promise<
       {state.status === "ready" && (
         <>
           <p>Matching as <strong>{state.riotId}</strong> · NA · <Link href="/me">Manage Riot accounts</Link></p>
-          <p className="meta">The pilot offers one-hour Normal Draft sessions on NA. Invitations close when the session starts. Accepting shares your Riot IDs until the session ends and lets either player check for a shared game.</p>
+          <p className="meta">Choose an hour of Ranked Solo/Duo or Normal Draft on NA. Ranked listings match compatible Solo/Duo placements from Iron through Emerald. League confirms final queue eligibility.</p>
           <LfgBoard listings={state.listings} requests={state.requests} fit={fit} onlyFit={onlyFit} asOf={state.asOf} />
-          {!state.listings.some(l => l.own) && <LfgForm key={JSON.stringify(fit)} fit={fit} asOf={state.asOf} />}
+          {!state.listings.some(l => l.own) && <LfgForm key={JSON.stringify([fit,state.riotId,state.rankedPilot])} fit={fit} asOf={state.asOf} rankedPilot={state.rankedPilot} />}
           <p className="meta"><Link href="/pilot#duo-study">Volunteer for the Duo Finder study</Link></p>
         </>
       )}

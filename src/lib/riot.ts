@@ -1,5 +1,6 @@
 import { q, dbAvailable } from "./db";
 import bundledCatalog from "./champion-catalog.json";
+import { readRankedEntries, type RankedEntry } from "./player-summary";
 
 /**
  * Riot API access — on-demand recent form ONLY (build brief §2/§8).
@@ -34,6 +35,8 @@ export interface Player {
   rankLp: number | null;
   rankWins: number | null;
   rankLosses: number | null;
+  /** Published entries from the same lookup. Legacy rows contain only Solo/Duo columns. */
+  rankedEntries?: RankedEntry[];
   snapshot: PlayerSnapshot;
   fetchedAt: string;
 }
@@ -130,6 +133,7 @@ export function playerFromRow(r: Record<string, unknown>): Player {
     rankLp: r.rank_lp == null ? null : Number(r.rank_lp),
     rankWins: r.rank_wins == null ? null : Number(r.rank_wins),
     rankLosses: r.rank_losses == null ? null : Number(r.rank_losses),
+    rankedEntries: readRankedEntries((r.snapshot as { rankedEntries?: unknown } | null)?.rankedEntries),
     snapshot: readSnapshot(r.snapshot),
     fetchedAt: String(r.fetched_at),
   };
@@ -208,23 +212,10 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string): 
   const level = summ.body ? Number((summ.body as { summonerLevel: number }).summonerLevel ?? 0) : 0;
   const icon = summ.body ? Number((summ.body as { profileIconId: number }).profileIconId ?? 0) : 0;
 
-  let tier: string | null = null,
-    div: string | null = null,
-    lp: number | null = null,
-    wins: number | null = null,
-    losses: number | null = null;
-  if (Array.isArray(league.body)) {
-    const solo = league.body.find((e) => (e as { queueType: string }).queueType === "RANKED_SOLO_5x5") as
-      | { tier: string; rank: string; leaguePoints: number; wins: number; losses: number }
-      | undefined;
-    if (solo) {
-      tier = solo.tier;
-      div = solo.rank;
-      lp = solo.leaguePoints;
-      wins = solo.wins;
-      losses = solo.losses;
-    }
-  }
+  const rankedEntries = readRankedEntries(league.body);
+  if (!rankedEntries) return unavailable(502);
+  // Existing rank columns continue to mean Solo/Duo to all matching and eligibility checks.
+  const solo = rankedEntries.find(entry => entry.queueType === "RANKED_SOLO_5x5");
 
   const matchIds = Array.from(new Set(ids.body.filter((id): id is string => typeof id === "string"))).slice(
     0,
@@ -334,7 +325,8 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string): 
       (puuid, platform, game_name, tag_line, summoner_level, profile_icon,
        rank_tier, rank_div, rank_lp, rank_wins, rank_losses, snapshot, fetched_at)
     VALUES (${puuid}, ${platform}, ${realName}, ${realTag}, ${level}, ${icon},
-       ${tier}, ${div}, ${lp}, ${wins}, ${losses}, ${JSON.stringify(snapshot)}::jsonb, ${observedAt})
+       ${solo?.tier ?? null}, ${solo?.rank ?? null}, ${solo?.leaguePoints ?? null},
+       ${solo?.wins ?? null}, ${solo?.losses ?? null}, ${JSON.stringify({...snapshot,rankedEntries})}::jsonb, ${observedAt})
     ON CONFLICT (puuid) DO UPDATE SET
       platform = EXCLUDED.platform, game_name = EXCLUDED.game_name, tag_line = EXCLUDED.tag_line,
       summoner_level = EXCLUDED.summoner_level, profile_icon = EXCLUDED.profile_icon,

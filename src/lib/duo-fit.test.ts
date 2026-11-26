@@ -6,7 +6,7 @@ import { loadDuoFit, saveDuoFit } from "./duo-fit-store";
 import { q } from "./db";
 import { getCurrentUser, type User } from "./auth";
 import { readDuoBoard } from "./duo";
-import { sessionOptions, sessionWindow, SESSION_QUEUE } from "./duo-session";
+import { sessionOptions, sessionWindow, RANKED_QUEUE } from "./duo-session";
 import { SCHEDULE_BLOCKS } from "./pure";
 import { TERMS_VERSION } from "./account-policy";
 import { POST } from "../app/api/lfg/preferences/route";
@@ -30,8 +30,8 @@ beforeAll(async () => {
   await q`INSERT INTO wp_users(id,email,display_name,age_band,terms_version,terms_accepted_at,created_at)
     SELECT i,'u'||i||'@ward.invalid','Player',CASE WHEN i=5 THEN 'teen' ELSE 'adult' END,
       ${TERMS_VERSION},now(),now()-interval '2 days' FROM generate_series(1,5) i`;
-  await q`INSERT INTO wp_players(puuid,platform,game_name,tag_line,rank_tier,snapshot)
-    SELECT 'account-'||i,'na1','Riot'||i,'NA1','GOLD','{"matches":[{"matchId":"NA1_20"}]}'::jsonb
+  await q`INSERT INTO wp_players(puuid,platform,game_name,tag_line,rank_tier,rank_div,snapshot)
+    SELECT 'account-'||i,'na1','Riot'||i,'NA1','GOLD','II','{"matches":[{"matchId":"NA1_20"}]}'::jsonb
     FROM generate_series(1,5) i`;
   await q`INSERT INTO wp_links(user_id,puuid,verified)
     SELECT i,'account-'||i,i<>4 FROM generate_series(1,5) i`;
@@ -94,10 +94,10 @@ it("filters before the listing limit, preserves a player's own controls, and enf
   // Place an eligible session behind forty later nonmatching listings.
   await q`INSERT INTO wp_lfg(user_id,puuid,roles,vibe,voice,safe_listing)
     SELECT 3,'account-3',ARRAY['Mid'],'tryhard',true,true FROM generate_series(1,41)`;
-  await q`UPDATE wp_lfg SET partner_role='Support',session_start=${new Date(start).toISOString()},session_queue=${SESSION_QUEUE},
+  await q`UPDATE wp_lfg SET partner_role='Support',session_start=${new Date(start).toISOString()},session_queue=${RANKED_QUEUE},
     play_windows=${available}::int4multirange WHERE user_id<>1`;
   await q`INSERT INTO wp_lfg(user_id,puuid,roles,partner_role,play_windows,vibe,voice,safe_listing,session_start,session_queue)
-    VALUES(3,'account-3',ARRAY['ADC'],'Jungle',${available}::int4multirange,'chill',false,true,${new Date(start).toISOString()},${SESSION_QUEUE}),
+    VALUES(3,'account-3',ARRAY['ADC'],'Jungle',${available}::int4multirange,'chill',false,true,${new Date(start).toISOString()},${RANKED_QUEUE}),
       (3,'account-3',ARRAY['ADC'],'Support',NULL,'chill',false,true,NULL,NULL)`;
   const eligible = await readDuoBoard(1, true, asOf);
   expect(eligible.listings).toHaveLength(2);
@@ -127,6 +127,6 @@ it("uses the player's selected verified account and keeps others' accounts priva
   expect((await selectPrimary(request({puuid:"primary-euw"}))).status).toBe(200);
   expect(await privateDuoReadiness(1)).toMatchObject({ready:false,regionOutsidePilot:true});
   expect((await selectPrimary(request({puuid:"account-1"}))).status).toBe(200);
-  expect(await privateDuoReadiness(1)).toEqual({ready:true,riotId:"Riot1#NA1"});
+  expect(await privateDuoReadiness(1)).toEqual({ready:true,riotId:"Riot1#NA1",rankedPilot:true});
   expect(await q`SELECT puuid FROM wp_links WHERE user_id=1 AND is_primary`).toEqual([{puuid:"account-1"}]);
 });

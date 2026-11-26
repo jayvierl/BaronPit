@@ -2,17 +2,18 @@ import { TERMS_VERSION } from "./account-policy";
 import { queryRows } from "./db";
 import { duoEligibilityCte } from "./duo";
 import { riotSignOnConfig } from "./riot-ownership";
+import { playerStatsHref } from "./platforms";
 import { signInHref } from "./signin-return";
 
 type NextStep = { regionOutsidePilot?: true; title: string; detail: string; href?: string; action?: string; availableAt?: string };
-export type DuoReadiness = { ready: true; riotId: string } | ({ ready: false } & NextStep);
+export type DuoReadiness = { ready: true; riotId: string; rankedPilot: boolean } | ({ ready: false } & NextStep);
 
 /** The caller supplies only the current session's user ID. The eligibility CTE is also used by every matching action. */
 export async function privateDuoReadiness(userId: number): Promise<DuoReadiness> {
   const [row] = await queryRows(
     duoEligibilityCte +
       `
-    SELECT (SELECT platform FROM me) AS eligible_platform, (SELECT game_name||'#'||tag_line FROM me) AS own_riot_id,
+    SELECT (SELECT platform FROM me) AS eligible_platform, (SELECT pilot_tier IS NOT NULL FROM me) AS ranked_pilot, (SELECT game_name||'#'||tag_line FROM me) AS own_riot_id,
       u.safety_status <> 'visible' OR coalesce(u.banned_until > now(),false) AS restricted,
       u.age_band IN ('teen','adult') AND u.terms_version=$2 AND u.terms_accepted_at IS NOT NULL AS consent,
       CASE WHEN u.created_at>now()-interval '24 hours' THEN u.created_at+interval '24 hours' END AS opens_at,
@@ -28,7 +29,7 @@ export async function privateDuoReadiness(userId: number): Promise<DuoReadiness>
     [userId, TERMS_VERSION],
   );
   if (!row) throw new Error("Account unavailable");
-  if (row.eligible_platform === "na1") return { ready: true, riotId:String(row.own_riot_id) };
+  if (row.eligible_platform === "na1") return { ready: true, riotId:String(row.own_riot_id), rankedPilot:row.ranked_pilot === true };
   if (row.eligible_platform) return {
     ready: false, regionOutsidePilot: true, title: "The first sessions are on North America",
     detail: "Your verified account plays on another server. You can save a private plan or choose a verified NA account.",
@@ -89,12 +90,7 @@ export async function privateDuoReadiness(userId: number): Promise<DuoReadiness>
       href: "/safety",
       action: "Contact safety",
     };
-  const href =
-    "/player?" +
-    new URLSearchParams({
-      platform: String(row.platform),
-      riotId: String(row.game_name) + "#" + String(row.tag_line),
-    });
+  const href = playerStatsHref(String(row.platform), String(row.game_name) + "#" + String(row.tag_line));
   if (!row.fresh)
     return {
       ready: false,

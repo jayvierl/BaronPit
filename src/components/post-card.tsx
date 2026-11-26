@@ -2,6 +2,7 @@
 
 import { signInHref } from "@/lib/signin-return";
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { ItemIcons } from "./item-icons";
 import { useRouter } from "next/navigation";
 import type { PostView } from "@/lib/social";
@@ -91,21 +92,24 @@ export function PostCard({
   return (
     <article className={`thread-post ${styles.post}`} aria-label={`Post by ${post.authorName}`}>
       <div className="thread-rail">
-        <a href={`/u/${post.authorId}`} aria-label={`${post.authorName}’s profile`}>
+        <Link href={`/u/${post.authorId}`} className={styles.avatarLink} aria-label={`${post.authorName}’s profile`}>
           <Avatar name={post.authorName} hue={post.authorHue} size={40} />
-        </a>
+        </Link>
         {showComments && <span className="line" />}
       </div>
       <div className="thread-main">
         {post.repostedBy && <div className="meta">
-          <a href={`/u/${post.repostedBy.id}`}>{post.repostedBy.name}</a> reposted{" "}
+          <Link href={`/u/${post.repostedBy.id}`}>{post.repostedBy.name}</Link> reposted{" "}
           <a href={`/post/${post.id}`}>this {post.kind === "build" ? "build" : "discussion"}</a>
         </div>}
         <div className={`thread-head ${styles.byline}`}>
-          <a className="post-author" href={`/u/${post.authorId}`}>
+          <Link className="post-author" href={`/u/${post.authorId}`}>
             {post.authorName}
-          </a>
-          {post.authorFlair && <span className="flair" title="From the author’s verified Riot account">{post.authorFlair}</span>}
+          </Link>
+          {post.authorFlair && (post.authorStatsHref
+            ? <Link href={post.authorStatsHref} prefetch={false} className="flair"
+                aria-label={`View ${post.authorName}’s verified Riot stats, ${post.authorFlair}`}>{post.authorFlair}</Link>
+            : <span className="flair">{post.authorFlair}</span>)}
           <a className={styles.permalink} href={`/post/${post.id}`} aria-label={`Open thread by ${post.authorName}`}>
             <time className="time" dateTime={post.createdAt} title={post.createdAt} suppressHydrationWarning>{timeAgo(post.createdAt)}</time>
           </a>

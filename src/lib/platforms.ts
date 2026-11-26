@@ -19,6 +19,11 @@ export function isPlatform(v: string): v is PlatformId {
   return PLATFORMS.some((p) => p.id === v);
 }
 
+/** Keep the full Riot ID and its platform together when linking to recent form. */
+export function playerStatsHref(platform: string, riotId: string): string {
+  return "/player?" + new URLSearchParams({ platform, riotId });
+}
+
 /** A North America lookup can use its default tag. Explicit tags always take precedence. */
 export function splitRiotId(value: string, platform: string): { gameName: string; tagLine: string } {
   const input = value.trim();

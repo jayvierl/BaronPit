@@ -5,7 +5,7 @@ import { listFeaturedRooms } from "./rooms";
 import { PATCH_NOTES_INDEX, PATCH_PUBLISHER } from "./patch-notes";
 import { readPosts } from "./post-reader";
 import { publicProfile, linkedPlayers, trendingChampions, championRoomPulse } from "./player-insights";
-import { ensureRooms, getRoom, listRooms, runPatchWatch, todaysSpotlight } from "./social";
+import { ensureRooms, getRoom, listRooms, runPatchWatch, searchAll, todaysSpotlight } from "./social";
 import { summarize, type MatchSummary } from "./pure";
 
 vi.mock("@neondatabase/serverless", async () => ({ neon: (await import("../../test/postgres")).neonForTests }));
@@ -123,6 +123,19 @@ describe("bounded player and community data queries", () => {
       await q`UPDATE wp_players SET snapshot=${JSON.stringify(snapshot)}::jsonb WHERE puuid='flair'`;
       expect((await linkedPlayers(500))[0].flair).toBe(expected);
       expect((await readPosts(null,{postId:Number(post.id)},1))[0].authorFlair).toBe(expected);
+    }
+    const flex = {queueType:"RANKED_FLEX_SR", tier:"EMERALD", rank:"II", leaguePoints:77, wins:12, losses:5};
+    await q`UPDATE wp_players SET rank_tier=NULL,rank_div=NULL WHERE puuid='flair'`;
+    for (const [snapshot, expected] of [
+      [{ rankedEntries:[flex] }, "Emerald II (Flex)"],
+      [{ rankedEntries:[] }, "Unranked"],
+      [{}, "Rank unavailable"],
+    ] as const) {
+      await q`UPDATE wp_players SET snapshot=${JSON.stringify(snapshot)}::jsonb WHERE puuid='flair'`;
+      expect((await linkedPlayers(500))[0].flair).toBe(expected);
+      const [byline] = await readPosts(null, {postId:Number(post.id)}, 1);
+      expect(byline).toMatchObject({authorFlair:expected, authorStatsHref:"/player?platform=na1&riotId=Flair%23NA1"});
+      expect((await searchAll("Flair#NA1", null)).players).toMatchObject([{rank:expected}]);
     }
     await q`DELETE FROM wp_users WHERE id=500`;
   });

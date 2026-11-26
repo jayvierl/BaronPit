@@ -2,8 +2,10 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { searchAll } from "@/lib/social";
 import { currentPatch, PLATFORMS } from "@/lib/riot";
+import { playerStatsHref } from "@/lib/platforms";
 import { Avatar } from "@/components/ui";
 import { LookupForm, PostCard } from "@/components/social-ui";
+import styles from "./search.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -23,31 +25,31 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
       {term && !results && <p className="notice warn" role="status">Community search is temporarily unavailable. You can still look up a player below.</p>}
       <div className="card">
         <strong>Looking for a player?</strong>
-        <p className="meta">Search by exact Riot ID for full recent-form stats:</p>
-        <LookupForm platforms={PLATFORMS.map((p) => ({ id: p.id, label: p.label }))} />
+        <p className="meta">Enter a Riot ID and choose a server to see recent games.</p>
+        <LookupForm key={term} initialRiotId={term.startsWith("#") ? "" : term} platforms={PLATFORMS.map((p) => ({ id: p.id, label: p.label }))} />
       </div>
 
       {results && (
         <>
           {results.players.length > 0 && (
             <>
-              <h2 className="section">Players</h2>
+              <h2 className="section">Riot players</h2>
               {results.players.map((p) => (
-                <div key={p.puuid} className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <Link href={`/player?platform=${p.platform}&riotId=${encodeURIComponent(p.riotId)}`} style={{ fontWeight: 800, color: "var(--ink)" }}>{p.riotId}</Link>
+                <Link key={p.puuid} className={`card ${styles.result}`} href={playerStatsHref(p.platform, p.riotId)} prefetch={false}>
+                  <span className={styles.identity}><strong>{p.riotId}</strong><small>{PLATFORMS.find(region => region.id === p.platform)?.label ?? p.platform}</small></span>
                   <span className="chip">{p.rank}</span>
-                </div>
+                </Link>
               ))}
             </>
           )}
           {results.users.length > 0 && (
             <>
-              <h2 className="section">People</h2>
+              <h2 className="section">Community profiles</h2>
               {results.users.map((u) => (
-                <div key={u.id} className="card" style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <Link key={u.id} href={`/u/${u.id}`} className={`card ${styles.result}`}>
                   <Avatar name={u.name} hue={u.hue} size={36} />
-                  <Link href={`/u/${u.id}`} style={{ fontWeight: 800, color: "var(--ink)" }}>{u.name}</Link>
-                </div>
+                  <strong className={styles.identity}>{u.name}</strong>
+                </Link>
               ))}
             </>
           )}

@@ -1,19 +1,21 @@
+import { Suspense } from "react";
 import { PilotVisit } from "@/components/pilot-visit";
 import { buildCatalog, cardItems } from "@/lib/build-catalog";
 import { ItemIcons } from "@/components/item-icons";
 import { TeamBaronTag } from "@/components/team-baron-tag";
 import { MatchQuestionLinks } from "@/components/match-question-links";
-import Image from "next/image";
+import { ChampionPortrait } from "@/components/champion-portrait";
+import { Avatar } from "@/components/ui";
 import Link from "next/link";
 import { RefreshPlayer } from "@/components/refresh-player";
 import { getCurrentUser } from "@/lib/auth";
-import { lookupPlayer, isPlatform, PLATFORMS, currentPatch, championIconUrl, profileIconUrl } from "@/lib/riot";
+import { lookupPlayer, isPlatform, PLATFORMS, currentPatch, profileIconUrl } from "@/lib/riot";
 import { q } from "@/lib/db";
 import { publicRiotOwner } from "@/lib/player-insights";
-import { splitRiotId } from "@/lib/platforms";
+import { playerStatsHref, splitRiotId } from "@/lib/platforms";
 import { LinkPlayerButton, LookupForm, ShareCardButton } from "@/components/social-ui";
-import { rankLabel } from "@/components/ui";
-import { gameCount, earnedBadges, formReads, splashUrl } from "@/lib/pure";
+import { PlayerStats } from "@/components/player-stats";
+import { gameCount, earnedBadges, formReads, type MatchSummary } from "@/lib/pure";
 
 export const dynamic = "force-dynamic";
 
@@ -60,17 +62,14 @@ export default async function PlayerPage({ searchParams }: {
 
   const player = result.player;
   const snap = player.snapshot;
-  const [linked,owner,items] = await Promise.all([
+  const [linked,owner] = await Promise.all([
     user ? q`SELECT 1 FROM wp_links WHERE user_id=${user.id} AND puuid=${player.puuid}` : [],
     publicRiotOwner(player.puuid, user?.id ?? null),
-    buildCatalog(patch),
   ]);
   const linkedByMe = linked.length > 0;
   const badges = earnedBadges(snap);
   const last3 = snap.matches.slice(0, 3);
   const reads = formReads(snap);
-  const mainRole = Object.entries(snap.roles).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-  const topChamp = snap.champPool[0] ?? null;
 
   // Match history establishes shared games only. Older snapshots have names without tags.
   const mateCounts = new Map<string,number>();
@@ -89,13 +88,8 @@ export default async function PlayerPage({ searchParams }: {
               {player.gameName}
               <span style={{ color: "var(--ink-soft)", fontWeight: 500 }}>#{player.tagLine}</span>
             </h1>
-            <div style={{ fontSize: 14.5, marginTop: 2 }}>
-              <span className="display" style={{ fontWeight: 700, fontSize: 16.5 }}>{rankLabel(player.rankTier, player.rankDiv, player.rankLp)}</span>
-              {player.rankWins != null && <span className="meta"> · {player.rankWins}W – {player.rankLosses}L this season</span>}
-            </div>
             <div className="meta" style={{ marginTop: 3 }}>
-              {platform.toUpperCase()} · Level {player.summonerLevel}
-              {mainRole ? ` · mostly ${mainRole.toLowerCase()}` : ""} · updated <time dateTime={new Date(player.fetchedAt).toISOString()}>{new Date(player.fetchedAt).toLocaleString("en-US",{timeZone:"UTC"})} UTC</time>
+              {platform.toUpperCase()}{player.summonerLevel > 0 && ` · Level ${player.summonerLevel}`}
             </div>
             {owner && (
               <div className="meta" style={{ marginTop: 3 }}>
@@ -108,69 +102,29 @@ export default async function PlayerPage({ searchParams }: {
               </div>
             )}
           </div>
-          <Image unoptimized width={84} height={84} src={profileIconUrl(patch, player.profileIcon)} alt="" style={{ width: 84, height: 84, borderRadius: "50%", border: "1px solid var(--border)" }} />
+          <Avatar name={player.gameName} hue={265} size={84} imageUrl={profileIconUrl(patch, player.profileIcon)} />
         </div>
+        <PlayerStats player={player} source={result.source} />
         <div className="profile-actions">
           <RefreshPlayer />
           {user && !linkedByMe && <LinkPlayerButton platform={platform} gameName={player.gameName} tagLine={player.tagLine} />}
         </div>
-        {result.source === "stale" && <p className="notice" role="status">Riot could not refresh this profile. Showing the last successful lookup.</p>}
-        {snap.games > 0 && (
-          <div className="meta" style={{ marginTop: 12, fontSize: 14 }}>
-            Last {gameCount(snap.games)}:{" "}
-            <strong style={{ color: "var(--ink)" }}>{snap.wins}W – {snap.losses}L</strong> · avg KDA{" "}
-            <strong style={{ color: "var(--ink)" }}>{snap.kda.toFixed(2)}</strong>
-          </div>
-        )}
       </div>
 
       <h2 className="section">Last 3 games</h2>
       {last3.length === 0 && <p className="meta">No recent matches found for this player.</p>}
-      {last3.map((m, index) => (
-        <div key={m.matchId} className={`game-row ${m.win ? "win" : "loss"}`}>
-          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap:"wrap" }}>
-            <Image unoptimized width={48} height={48} className="champ-icon" src={championIconUrl(patch, m.champion)} alt="" />
-            <div style={{ flex: "1 1 120px", minWidth: 0 }}>
-              <span className={m.win ? "win" : "loss"}>{m.win ? "Victory" : "Defeat"}</span>
-              <span className="meta"> · {m.champion} · {Math.floor(m.durationSec / 60)}m {m.durationSec % 60}s · {new Date(m.playedAt).toLocaleDateString()}</span>
-              <TeamBaronTag match={m} />
-              <div className="kda" style={{ fontSize: 16.5 }}>
-                {m.kills} / {m.deaths} / {m.assists}
-                <span className="meta" style={{ fontWeight: 400, fontFamily: "Inter, sans-serif" }}>
-                  {" "}· {m.cs} CS ({(m.cs / Math.max(1, m.durationSec / 60)).toFixed(1)}/min)
-                  {m.gold != null ? ` · ${(m.gold / 1000).toFixed(1)}k gold` : ""}
-                  {m.role ? ` · ${m.role.toLowerCase()}` : ""}
-                </span>
-              </div>
-            </div>
-            <ItemIcons ids={m.items} details={cardItems(items,m.items)} patch={items.patch}/>
-          </div>
-          <MatchQuestionLinks showStarters={index === 0} puuid={player.puuid} matchId={m.matchId} items={cardItems(items,m.items)}/>
-          {(m.teammates ?? []).length > 0 && (
-            <div className="teammates">
-              <span className="meta" style={{ marginRight: 2 }}>Played with:</span>
-              {(m.teammates ?? []).map((t, i) => (
-                <span key={i} className="teammate">
-                  <Image unoptimized width={18} height={18} src={championIconUrl(patch, t.champion)} alt="" />
-                  {t.name && t.tag ? <Link href={`/player?platform=${platform}&riotId=${encodeURIComponent(t.name + "#" + t.tag)}`}>{t.name}#{t.tag}</Link> : t.name || t.champion}
-                </span>
-              ))}
-            </div>
-          )}
-          {user && (
-            <div style={{ marginTop: 9 }}>
-              <ShareCardButton puuid={player.puuid} match={m} />
-            </div>
-          )}
-        </div>
-      ))}
+      {last3.length > 0 && (
+        <Suspense fallback={<p className="meta" role="status">Loading recent games…</p>}>
+          <LatestGames matches={last3} patch={patch} platform={platform} puuid={player.puuid} signedIn={Boolean(user)} />
+        </Suspense>
+      )}
       {frequent.length > 0 && (
         <p className="meta">Also on the same team recently · {frequent.map(([name,games]) => `${name} (${games} games)`).join(", ")}</p>
       )}
       {snap.matches.length > 3 && <details className="card">
         <summary>See all {snap.matches.length} recent games</summary>
         {snap.matches.slice(3).map(m => <div key={m.matchId} className="match-row">
-          <Image unoptimized width={32} height={32} className="champ-icon sm" src={championIconUrl(patch,m.champion)} alt="" />
+          <ChampionPortrait id={m.champion} patch={patch} size={32} />
           <strong>{m.champion}</strong><span className={m.win ? "win" : "loss"}>{m.win ? "Victory" : "Defeat"}</span>
           <span className="meta">{m.kills}/{m.deaths}/{m.assists} · {new Date(m.playedAt).toLocaleDateString()}</span>
           <TeamBaronTag match={m} />
@@ -193,40 +147,71 @@ export default async function PlayerPage({ searchParams }: {
         </>
       )}
 
-      {snap.champPool.length > 1 && (
-        <>
-          <h2 className="section">Champion pool</h2>
-          {snap.champPool.slice(1).map((c) => (
+      {snap.champPool.length > 0 && (
+        <details className="card">
+          <summary>Champion pool · wins, losses and KDA</summary>
+          {snap.champPool.map((c) => (
             <div key={c.champion} className="match-row">
-              <Image unoptimized width={32} height={32} className="champ-icon sm" src={championIconUrl(patch, c.champion)} alt="" />
+              <ChampionPortrait id={c.champion} patch={patch} size={32} />
               <strong style={{ flex: 1 }}>{c.champion}</strong>
               <span className="meta">{gameCount(c.games)} · {c.wins}W–{c.games - c.wins}L</span>
               <span className="kda">{c.kda.toFixed(2)} KDA</span>
               <Link className="text-btn" href={`/rooms/champ-${c.champion.toLowerCase()}`}>Room →</Link>
             </div>
           ))}
-        </>
-      )}
-
-      {topChamp && (
-        <>
-          <h2 className="section">Most played</h2>
-          <div className="showcase">
-            <Image unoptimized width={1215} height={717} className="splash" src={splashUrl(topChamp.champion)} alt="" />
-            <div className="overlay">
-              <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#e9d9a8" }}>
-                The main
-              </div>
-              <div className="display" style={{ fontSize: 25, fontWeight: 700, lineHeight: 1.15 }}>{topChamp.champion}</div>
-              <div style={{ fontSize: 14.5 }}>
-                {gameCount(topChamp.games)} · {Math.round((topChamp.wins / Math.max(1, topChamp.games)) * 100)}% win rate · {topChamp.kda.toFixed(2)} KDA
-                {"  "}
-                <Link href={`/rooms/champ-${topChamp.champion.toLowerCase()}`} style={{ color: "#fff", fontWeight: 600 }}>Visit the {topChamp.champion} room →</Link>
-              </div>
-            </div>
-          </div>
-        </>
+        </details>
       )}
     </div>
   );
+}
+
+async function LatestGames({ matches, patch, platform, puuid, signedIn }: {
+  matches: MatchSummary[];
+  patch: string;
+  platform: string;
+  puuid: string;
+  signedIn: boolean;
+}) {
+  const catalog = await buildCatalog(patch);
+  return matches.map((m, index) => {
+    const details = cardItems(catalog, m.items);
+    return (
+      <div key={m.matchId} className={`game-row ${m.win ? "win" : "loss"}`}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap:"wrap" }}>
+          <ChampionPortrait id={m.champion} patch={patch} size={48} />
+          <div style={{ flex: "1 1 120px", minWidth: 0 }}>
+            <span className={m.win ? "win" : "loss"}>{m.win ? "Victory" : "Defeat"}</span>
+            <span className="meta"> · {m.champion} · {Math.floor(m.durationSec / 60)}m {m.durationSec % 60}s · {new Date(m.playedAt).toLocaleDateString()}</span>
+            <TeamBaronTag match={m} />
+            <div className="kda" style={{ fontSize: 16.5 }}>
+              {m.kills} / {m.deaths} / {m.assists}
+              <span className="meta" style={{ fontWeight: 400, fontFamily: "Inter, sans-serif" }}>
+                {" "}· {m.cs} CS ({(m.cs / Math.max(1, m.durationSec / 60)).toFixed(1)}/min)
+                {m.gold != null ? ` · ${(m.gold / 1000).toFixed(1)}k gold` : ""}
+                {m.role ? ` · ${m.role.toLowerCase()}` : ""}
+              </span>
+            </div>
+          </div>
+          <ItemIcons ids={m.items} details={details} patch={catalog.patch}/>
+        </div>
+        <MatchQuestionLinks showStarters={index === 0} puuid={puuid} matchId={m.matchId} items={details}/>
+        {(m.teammates ?? []).length > 0 && (
+          <div className="teammates">
+            <span className="meta" style={{ marginRight: 2 }}>Played with:</span>
+            {(m.teammates ?? []).map((t, i) => (
+              <span key={i} className="teammate">
+                <ChampionPortrait id={t.champion} patch={patch} size={18} />
+                {t.name && t.tag ? <Link prefetch={false} href={playerStatsHref(platform, t.name + "#" + t.tag)}>{t.name}#{t.tag}</Link> : t.champion}
+              </span>
+            ))}
+          </div>
+        )}
+        {signedIn && (
+          <div style={{ marginTop: 9 }}>
+            <ShareCardButton puuid={puuid} match={m} />
+          </div>
+        )}
+      </div>
+    );
+  });
 }

@@ -19,8 +19,11 @@ export function DiscussionList({ page, view }: { page: LibraryPage; view: View }
     {view === "replies" && <Link href="/activity?tab=muted">Manage muted threads</Link>}
     <ul className="library-list">
       {page.entries.map(item => <li key={item.cursor}>
-        <div className="meta">{item.replyReason ? item.author + replyLabels[item.replyReason] :
-          (item.kind === "comment" ? "Reply" : "Discussion") + " by " + item.author}{item.unread && <strong> · Unread</strong>}</div>
+        <div className="meta">
+          {!item.replyReason && (item.kind === "comment" ? "Reply by " : "Discussion by ")}
+          <Link href={`/u/${item.authorId}`}>{item.author}</Link>
+          {item.replyReason && replyLabels[item.replyReason]}{item.unread && <strong> · Unread</strong>}
+        </div>
         <Link href={`/post/${item.postId}${item.kind === "comment" ? "#reply-" + item.id : ""}`}>{item.excerpt}</Link>
         {(view !== "replies" || item.unread) && <div><LibraryRowAction kind={item.kind} id={item.id}
           action={rowAction[view]} /></div>}

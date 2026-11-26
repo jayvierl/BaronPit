@@ -2,12 +2,13 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { useBrowserTimeZone } from "./duo-time-zone";
 import { scheduleWindows, timeZoneName } from "@/lib/duo-schedule";
-import { coversSession, SESSION_QUEUE, SESSION_QUEUE_LABEL, sessionOptions, sessionTime, sessionWindow } from "@/lib/duo-session";
+import { coversSession, RANKED_QUEUE, NORMAL_QUEUE, sessionQueues, isSessionQueue, type SessionQueue, sessionOptions, sessionTime, sessionWindow } from "@/lib/duo-session";
 import { duoFitReasons, partnerRoles, playstyles, type DuoFit } from "@/lib/duo-fit";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DUO_ROLES } from "@/lib/pure";
 import type { DuoListing, DuoRequest } from "@/lib/duo";
+import { playerStatsHref } from "@/lib/platforms";
 import { postJson } from "@/lib/client";
 import { SafetyReport } from "./safety-report";
 
@@ -54,9 +55,10 @@ function DuoButton({ action, id, children }: { action: string; id: number; child
     </span>
   );
 }
-export function LfgForm({ fit, asOf }: { fit: DuoFit | null; asOf: number }) {
+export function LfgForm({ fit, asOf, rankedPilot }: { fit: DuoFit | null; asOf: number; rankedPilot: boolean }) {
   const router = useRouter();
   const browserZone = useBrowserTimeZone();
+  const [queue, setQueue] = useState<SessionQueue>(rankedPilot ? RANKED_QUEUE : NORMAL_QUEUE);
   const [partnerRole, setPartnerRole] = useState<string>(fit?.partnerRole ?? "Any");
   const timeZone = fit?.timeZone ?? browserZone;
   const now = useSessionClock(asOf);
@@ -76,7 +78,7 @@ export function LfgForm({ fit, asOf }: { fit: DuoFit | null; asOf: number }) {
     setBusy(true);
     setMessage("");
     try {
-      const { ok, data } = await postJson("/api/lfg", { action: "create", queue: SESSION_QUEUE, start, roles, partnerRole, voice, vibe, note });
+      const { ok, data } = await postJson("/api/lfg", { action: "create", queue, start, roles, partnerRole, voice, vibe, note });
       if (ok) {
         setMessage(data.held ? "Your listing is in review." : "Your session is open for requests.");
         setNote("");
@@ -111,7 +113,14 @@ export function LfgForm({ fit, asOf }: { fit: DuoFit | null; asOf: number }) {
           {partnerRoles.map(r => <option key={r} value={r}>{r === "Any" ? "Any role" : r}</option>)}
         </select>
       </label>
-      <label className="field">Normal Draft session · {timeZone}
+      <label className="field">Queue
+        <select value={queue} onChange={e => { if (isSessionQueue(e.target.value)) setQueue(e.target.value); }}>
+          {rankedPilot && <option value={RANKED_QUEUE}>{sessionQueues[RANKED_QUEUE]}</option>}
+          <option value={NORMAL_QUEUE}>{sessionQueues[NORMAL_QUEUE]}</option>
+        </select>
+      </label>
+      {!rankedPilot && <p className="meta">Ranked sessions currently support verified Iron–Emerald Solo/Duo placements. Normal Draft is available for your account.</p>}
+      <label className="field">Session time · {timeZone}
         <select value={start} required onChange={e => setStart(Number(e.target.value))}>
           <option value={0}>Choose one hour to play</option>
           {starts.map(t => <option value={t} key={t}>{sessionTime(t, timeZone)}</option>)}
@@ -138,7 +147,7 @@ export function LfgForm({ fit, asOf }: { fit: DuoFit | null; asOf: number }) {
           placeholder="Looking to practise bot-lane trades"
         />
       </label>
-      <p className="meta">Use the in-app request. Keep account details and contact handles private.</p>
+      <p className="meta">Only people you accept receive your Riot ID{queue === RANKED_QUEUE ? " and social profile link" : ""}. Invitations close at the start of the session.</p>
       <button className="btn" disabled={busy || !roles.length || !start}>
         {busy ? "Posting…" : "Post listing"}
       </button>
@@ -167,7 +176,7 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly 
               <p>
                 {r.rank} · {r.platform}
               </p>
-              {r.session && <p>{SESSION_QUEUE_LABEL} · {sessionTime(r.session.start, viewZone)}<br/>
+              {r.session && <p>{sessionQueues[r.session.queue]} · {sessionTime(r.session.start, viewZone)}<br/>
                 {r.session.roles.join(" / ")} · {playstyles[r.session.vibe as keyof typeof playstyles]} · {r.session.voice ? "Open to voice" : "Text only"}</p>}
               {r.requeue && (
                 <div>
@@ -204,22 +213,34 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly 
                 <section aria-label="Post-game appreciation">
                   {r.thanks.received && <p>Your duo thanked you for the game.</p>}
                   {r.thanks.sent ? <p>You sent your duo a private thank-you.</p> : r.thanks.canSend && (
-                    <DuoButton id={r.id} action="thank">Send a free thank-you</DuoButton>
+                    <DuoButton id={r.id} action="thank">Send a private thank-you</DuoButton>
                   )}
+                  {r.thanks.canSend && (r.thanks.recentlyEndorsed
+                    ? <p className="meta">You’ve endorsed this player in the past 30 days.</p>
+                    : <div>
+                      <DuoButton id={r.id} action="endorse">Endorse as a good teammate</DuoButton>
+                      <p className="meta">Adds one to their public profile count. Your name stays private.</p>
+                    </div>)}
                   {r.thanks.adultPair && <p className="meta"><Link href="/lfg/thanks">See how a future tip could be split</Link></p>}
                 </section>
               )}
-              {r.riotId && (
+              {r.riotId && (r.contactEndsAt === null || r.contactEndsAt > now) && (
                 <p>
-                  Both players agreed to connect. Add <strong>{r.riotId}</strong> in League. Either player can check recent games for this pairing.
+                  Add <strong>{r.riotId}</strong> in League.{" "}
+                  <Link prefetch={false} href={playerStatsHref(r.platform.toLowerCase(), r.riotId)}>View player stats</Link>
+                  {r.socialProfileId !== null && <> · <Link prefetch={false} href={"/u/"+r.socialProfileId}>Visit duo profile</Link></>}
                 </p>
               )}
               {r.status === "pending" && !r.session && <p>Earlier invitation. Ask for a new session to choose a time together.</p>}
               {r.status === "pending" && r.session && r.session.start <= now && <p>This session has started. You can choose another listing.</p>}
+              {r.status === "pending" && r.incoming && r.session?.compatible && r.session.start > now && (
+                <p className="meta">Accepting shares both Riot IDs{r.session.queue === RANKED_QUEUE ? " and social profile links" : ""} until the end of the session. Either player can check recent matches for a game together.</p>
+              )}
+              {r.status === "pending" && r.session && !r.session.compatible && <p>Your current Solo/Duo placements no longer match this session.</p>}
               <div className="duo-controls">
-                {r.status === "pending" && r.incoming && r.session && r.session.start > now && (
+                {r.status === "pending" && r.incoming && r.session?.compatible && r.session.start > now && (
                   <DuoButton action="accept" id={r.id}>
-                    Accept and share Riot IDs
+                    {r.session.queue === RANKED_QUEUE ? "Accept and share profiles" : "Accept and share Riot IDs"}
                   </DuoButton>
                 )}
                 {r.status === "pending" && (
@@ -243,7 +264,7 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly 
         <Link href="/lfg?view=all#open-listings" aria-current={!onlyFit || !fit ? "page" : undefined}>All eligible listings</Link>
         <Link href="#duo-plan">{fit ? "Edit my plan" : "Set my preferences"}</Link>
       </nav>
-      <p className="meta">One hour of {SESSION_QUEUE_LABEL} on NA. Times shown in {viewZone}.</p>
+      <p className="meta">Ranked sessions appear first. Times shown in {viewZone}.</p>
       {!displayed.some(listing => !listing.own) && (
         <p className="empty">
           {fit && onlyFit ? "No upcoming sessions match your plan. Browse all sessions or choose a time to host."
@@ -256,14 +277,17 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly 
         return (
           <article key={l.id} className="card">
             <strong>{l.own ? (l.held ? "Your listing is in review" : "Your listing") : l.rank}</strong>
+            <p className="meta">{l.queue && sessionQueues[l.queue]}{l.queue === RANKED_QUEUE && !l.own && " · Compatible Solo/Duo ranks"}</p>
             <p>
-              {l.roles.join(" / ")} · {l.partnerRole ? (l.partnerRole === "Any" ? "Open to any partner role" : "Looking for " + l.partnerRole) : "Partner role unspecified"} · {l.platform} · {l.form}
+              {l.roles.join(" / ")} · {l.partnerRole ? (l.partnerRole === "Any" ? "Open to any partner role" : "Looking for " + l.partnerRole) : "Partner role unspecified"} · {l.platform}
             </p>
             <p>
               {playTime} · {l.voice ? "Open to voice" : "Text only"} ·{" "}
               {l.vibe === "both" ? "Flexible" : l.vibe === "tryhard" ? "Competitive" : "Chill"}
             </p>
             {fit && !l.own && <FitReasons fit={fit} listing={l} sharedTime={hasSharedTime} />}
+            {l.soloRecord && <p>Ranked Solo/Duo this season · {l.soloRecord}</p>}
+            {l.form && <p>Recent form, all queues · {l.form}</p>}
             {!!l.champs.length && <p>Recent champions · {l.champs.join(", ")}</p>}
             {l.note && <p>{l.note}</p>}
             {l.own ? (
@@ -305,21 +329,21 @@ function SessionRequest({listing, fit, zone}: {listing: DuoListing; fit: DuoFit 
   const [vibe, setVibe] = useState(fit?.vibe ?? "both");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  if (listing.start === null) return null;
+  if (listing.start === null || listing.queue === null) return null;
   if (!open) return <button className="btn small secondary" type="button" onClick={() => setOpen(true)}>Request this session</button>;
   async function send(e: React.FormEvent) {
     e.preventDefault();
     if (!role || busy) return;
     setBusy(true);
     try {
-      const result = await postJson("/api/lfg", {action:"request", id:listing.id, queue:SESSION_QUEUE, start:listing.start, role, voice, vibe});
+      const result = await postJson("/api/lfg", {action:"request", id:listing.id, queue:listing.queue, start:listing.start, role, voice, vibe});
       setMessage(result.ok ? "Request sent." : String(result.data.error ?? "Please try again."));
       if (result.ok) router.refresh();
     } finally { setBusy(false); }
   }
   return <form className="card" onSubmit={send}>
     <h3>Request this session</h3>
-    <p>{SESSION_QUEUE_LABEL} · {sessionTime(listing.start,zone)}</p>
+    <p>{sessionQueues[listing.queue]} · {sessionTime(listing.start,zone)}</p>
     <label className="field">My role this game
       <select required value={role} onChange={e => setRole(e.target.value)}>
         <option value="">Choose a role</option>
@@ -332,7 +356,7 @@ function SessionRequest({listing, fit, zone}: {listing: DuoListing; fit: DuoFit 
       </select>
     </label>
     <label><input type="checkbox" checked={voice} onChange={e => setVoice(e.target.checked)} /> I’m open to voice</label>
-    <p className="meta">They’ll see these choices, your rank and server. Accepting shares both Riot IDs and lets either of you check for a shared game.</p>
+    <p className="meta">They’ll see these choices, your rank and server. Accepting shares your Riot IDs{listing.queue === RANKED_QUEUE ? " and links to your social profiles" : ""} until the session ends. Either player can check for a shared game.</p>
     <button className="btn small" disabled={busy || !role}>Send session request</button>{" "}
     <button className="text-btn" type="button" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
     {message && <p role="status">{message}</p>}

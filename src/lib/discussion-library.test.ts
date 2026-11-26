@@ -31,7 +31,7 @@ describe("private discussion library", () => {
     expect(await changeLibrary(1, "comment", 23, "save", true)).toBe(true);
     await changeLibrary(1, "comment", 23, "save", true);
     const page = await savedPlaybook(1, null);
-    expect(page.entries.map(x => [x.kind, x.id, x.postId])).toEqual([["comment", 23, 10], ["post", 10, 10]]);
+    expect(page.entries.map(x => [x.kind, x.id, x.postId, x.authorId])).toEqual([["comment", 23, 10, 3], ["post", 10, 10, 2]]);
     expect((await savedPlaybook(1, page.entries[0].cursor)).entries.map(x => x.id)).toEqual([10]);
     await changeLibrary(3, "comment", 23, "save", false);
     expect((await libraryState(1, "comment", 23))?.saved).toBe(true);
@@ -53,7 +53,10 @@ describe("private discussion library", () => {
   });
   it("delivers direct answers to authors and direct replies to commenters without an explicit watch", async () => {
     expect((await libraryState(1, "post", 10))?.replyMode).toBe("direct");
-    expect((await replyActivity(2, null)).entries.map(e => [e.id,e.replyReason])).toEqual([[23,"comment"],[22,"post"]]);
+    await postgres.exec("UPDATE wp_users SET display_name='Shared name' WHERE id IN (1,3)");
+    expect((await replyActivity(2, null)).entries.map(e => [e.id,e.replyReason,e.author,e.authorId])).toEqual([
+      [23,"comment","Shared name",3], [22,"post","Shared name",1],
+    ]);
     expect((await replyActivity(1, null)).entries).toEqual([]);
     await setReplyMode(2, 10, "all");
     await postgres.exec("INSERT INTO wp_comments(id,post_id,author_id,body,parent_id) VALUES(24,10,3,'Top level',NULL),(25,10,3,'An answer to you',22),(26,10,2,'A follow-up',23)");

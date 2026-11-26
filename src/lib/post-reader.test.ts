@@ -52,7 +52,7 @@ describe("feed and conversation read contracts", () => {
     expect(testQueries).toHaveLength(4);
     expect(rows.map(p => p.id)).toEqual([13,12,11]);
     expect(rows[0].commentCount).toBe(3);
-    expect(rows[1]).toMatchObject({authorName:"Main",authorFlair:"Gold IV · Ashe main", roomSlug:"general",
+    expect(rows[1]).toMatchObject({authorName:"Main",authorFlair:"Gold IV · Ashe main",authorStatsHref:"/player?platform=na1&riotId=Player%23NA1",roomSlug:"general",
       pollResults:[1,1],myVote:1,reactions:{GG:1},myReactions:["GG"]});
     expect((await feedByAuthor(2, viewer)).find(p=>p.id===12)).toEqual(rows[1]);
     expect(await getPost(12,viewer)).toEqual(rows[1]);
@@ -85,9 +85,11 @@ describe("feed and conversation read contracts", () => {
     await q`UPDATE wp_links SET verified=false WHERE user_id=2`;
     try {
       expect((await getPost(12,viewer))?.authorFlair).toBeNull();
+      expect((await getPost(12,null))?.authorStatsHref).toBeUndefined();
       await q`UPDATE wp_links SET verified=true WHERE user_id=2`;
       await q`INSERT INTO wp_links(user_id,puuid,verified) VALUES(3,'ref',true)`;
       expect((await getPost(12,viewer))?.authorFlair).toBeNull();
+      expect((await getPost(12,viewer))?.authorStatsHref).toBeUndefined();
     } finally {
       await q`DELETE FROM wp_links WHERE user_id=3 AND puuid='ref'`;
       await q`UPDATE wp_links SET verified=true WHERE user_id=2`;

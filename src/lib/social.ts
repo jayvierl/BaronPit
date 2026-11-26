@@ -5,7 +5,7 @@ import { validId } from "./ids";
 import type { DecisionContext } from "./decisions-input";
 import { preparePost, scoreSubmission, type CreatePostInput } from "./post-input";
 export type { CreatePostInput } from "./post-input";
-import { rankLabel } from "./rank";
+import { readRankedEntries, socialRankLabel } from "./player-summary";
 import { HIDDEN_AUTHORS, visibleCommentsFor, visiblePostForInteraction } from "./community-queries";
 import { readPosts, readComments } from "./post-reader";
 import type { PostView, CommentView } from "./post-types";
@@ -245,8 +245,9 @@ export async function searchAll(term: string, viewer: User | null) {
     t.length >= 2 ? queryRows(`WITH ${HIDDEN_AUTHORS} SELECT id, display_name, avatar_hue FROM wp_users
       WHERE safety_status = 'visible' AND id NOT IN (SELECT id FROM hidden) AND strpos(lower(display_name), lower($2)) > 0
       ORDER BY display_name, id LIMIT 8`, [viewer?.id ?? null, t]) : [],
-    t.length >= 2 ? q`SELECT puuid, platform, game_name, tag_line, rank_tier, rank_div FROM wp_players
-      WHERE strpos(lower(game_name), lower(${t})) > 0 ORDER BY game_name, platform, tag_line LIMIT 8` : [],
+    t.length >= 2 && !t.startsWith("#") ? q`SELECT puuid, platform, game_name, tag_line, rank_tier, rank_div, snapshot->'rankedEntries' AS ranked_entries FROM wp_players
+      WHERE strpos(lower(game_name || '#' || tag_line), lower(${t})) > 0
+      ORDER BY (lower(game_name || '#' || tag_line) = lower(${t})) DESC, game_name, platform, tag_line LIMIT 8` : [],
     listRooms(viewer?.id),
     tags.length >= 2 ? readPosts(viewer?.id ?? null, { tag: tags }, 50) : [],
   ]);
@@ -256,7 +257,7 @@ export async function searchAll(term: string, viewer: User | null) {
     players: players.map((p) => ({
       puuid: String(p.puuid), platform: String(p.platform),
       riotId: `${p.game_name}#${p.tag_line}`,
-      rank: rankLabel(p.rank_tier as string | null, p.rank_div as string | null),
+      rank: socialRankLabel({rankTier: p.rank_tier as string | null, rankDiv: p.rank_div as string | null, rankedEntries: readRankedEntries(p.ranked_entries)}),
     })),
     rooms: roomHits,
     tagPosts,

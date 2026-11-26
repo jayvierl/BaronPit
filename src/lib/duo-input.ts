@@ -1,4 +1,4 @@
-import { SESSION_QUEUE, validSessionStart } from "./duo-session";
+import { isSessionQueue, type SessionQueue, validSessionStart } from "./duo-session";
 import { partnerRoles } from "./duo-fit";
 import { timeZoneName } from "./duo-schedule";
 import { hasPaymentOffer } from "./duo-gratuity";
@@ -8,6 +8,7 @@ import { scoreContent, type ModResult } from "./moderation";
 type Choice = "chill" | "tryhard" | "both";
 export interface DuoPreferences {
   start: number;
+  queue: SessionQueue;
   roles: string[];
   partnerRole: string;
   timeZone: string | null;
@@ -32,8 +33,8 @@ export function duoPreferences(value: unknown): ListingInput {
   if (!value || typeof value !== "object" || Array.isArray(value))
     return { ok: false, error: "Choose your duo preferences." };
   const { queue, start, roles, blocks = [], voice, vibe, note, partnerRole, timeZone } = value as Record<string, unknown>;
-  if (queue !== SESSION_QUEUE || !validSessionStart(start))
-    return { ok: false, error: "Choose a Normal Draft session starting in the next three hours." };
+  if (!isSessionQueue(queue) || !validSessionStart(start))
+    return { ok: false, error: "Choose a queue and a session starting in the next three hours." };
   if (
     (timeZone != null && !timeZoneName(timeZone)) ||
     (partnerRole != null && !partnerRoles.some(r => r === partnerRole)) ||
@@ -65,7 +66,7 @@ export function duoPreferences(value: unknown): ListingInput {
     return { ok: false, error: "Revise the note to follow the community guidelines." };
   return {
     ok: true,
-    value: { start, roles, partnerRole: typeof partnerRole === "string" ? partnerRole : "Any", timeZone: timeZoneName(timeZone), blocks, voice, vibe, note: note.trim() },
+    value: { start, queue, roles, partnerRole: typeof partnerRole === "string" ? partnerRole : "Any", timeZone: timeZoneName(timeZone), blocks, voice, vibe, note: note.trim() },
     moderation: result,
   };
 }

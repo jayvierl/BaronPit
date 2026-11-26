@@ -10,6 +10,7 @@ import { SafetyReport } from "@/components/safety-report";
 import { feed, getRoom } from "@/lib/social";
 import { currentPatch, championIconUrl, championList } from "@/lib/riot";
 import { gameCount, splashUrl } from "@/lib/pure";
+import { playerStatsHref, PLATFORMS } from "@/lib/platforms";
 import { publicPatch } from "@/lib/patch-notes";
 import { JoinButton } from "@/components/social-ui";
 import { Composer } from "@/components/composer";
@@ -83,12 +84,12 @@ export default async function RoomPage({ params }: { params: Promise<{ slug: str
                 <div><b>{Math.round((brief.wins / Math.max(1, brief.games)) * 100)}%</b><span>Win rate</span></div>
               </div>
               {brief.topPlayers.map((p) => (
-                <div key={`${p.platform}/${p.name}#${p.tag}`} className="match-row">
-                  <Link href={`/player?platform=${p.platform}&riotId=${encodeURIComponent(`${p.name}#${p.tag}`)}`} style={{ flex: 1, fontWeight: 700, color: "var(--ink)" }}>
-                    {p.name}#{p.tag}
-                  </Link>
+                <Link key={`${p.platform}/${p.name}#${p.tag}`} className="match-row" prefetch={false}
+                  href={playerStatsHref(p.platform, p.name + "#" + p.tag)}>
+                  <span style={{ flex: 1, minWidth: 0, color: "var(--ink)", overflowWrap: "anywhere" }}><strong>{p.name}#{p.tag}</strong>
+                    <small className="meta" style={{ display: "block" }}>{PLATFORMS.find(region => region.id === p.platform)?.label ?? p.platform}</small></span>
                   <span className="meta">{gameCount(p.games)} · {p.wins}W–{p.games - p.wins}L</span>
-                </div>
+                </Link>
               ))}
             </>
           )}

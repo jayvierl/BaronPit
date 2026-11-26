@@ -5,8 +5,3 @@ export function rankLabel(tier: string | null, division?: string | null, lp?: nu
   const rank = division ? `${name} ${division}` : name;
   return lp == null ? rank : `${rank} · ${lp} LP`;
 }
-
-export function playerFlair(tier: string | null, division?: string | null, champion?: unknown) {
-  const rank = rankLabel(tier, division);
-  return typeof champion === "string" && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(champion) ? `${rank} · ${champion} main` : rank;
-}

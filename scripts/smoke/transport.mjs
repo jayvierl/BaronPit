@@ -63,18 +63,42 @@ async function seed(tx) {
         queueId: 420,
         role: "BOTTOM",
         items: [],
-        teammates: [],
+        teammates: [{ champion: "Nami", name: "Fixture Support", tag: "WAVE" }],
       },
     ],
   };
   await tx.query(
-    `INSERT INTO wp_players(puuid,platform,game_name,tag_line,rank_tier,rank_div,rank_lp,snapshot)
-    VALUES ('fixture-owner','na1','Fixture Archer','NA1','GOLD','IV',23,$1::jsonb)`,
+    `INSERT INTO wp_players(puuid,platform,game_name,tag_line,rank_tier,rank_div,rank_lp,rank_wins,rank_losses,snapshot)
+    VALUES ('fixture-owner','na1','Fixture Archer','NA1','GOLD','IV',23,62,38,$1::jsonb)`,
     [JSON.stringify(snapshot)],
   );
   await tx.exec(
     "INSERT INTO wp_links(user_id,puuid,is_primary,verified) VALUES(502,'fixture-owner',true,false)",
   );
+  // This verified player has a 30-game ranked record and a different, mixed-queue recent sample.
+  const supportSnapshot = {
+    games: 3, wins: 2, losses: 1, kda: 9, mainChamp: "Nami",
+    roles: { UTILITY: 2, JUNGLE: 1 },
+    champPool: [{ champion: "Nami", games: 2, wins: 1, kda: 9 }, { champion: "Vi", games: 1, wins: 1, kda: 9 }],
+    rankedEntries: [
+      { queueType: "RANKED_SOLO_5x5", tier: "PLATINUM", rank: "III", leaguePoints: 64, wins: 16, losses: 4 },
+      { queueType: "RANKED_FLEX_SR", tier: "SILVER", rank: "IV", leaguePoints: 11, wins: 1, losses: 9 },
+    ],
+    matches: [
+      { ...snapshot.matches[0], champion: "Nami", role: "UTILITY",
+        teammates: [{ champion: "Ashe", name: "Fixture Archer", tag: "NA1" }] },
+      { ...snapshot.matches[0], matchId: "NA1_777002", champion: "Nami", role: "UTILITY", queueId: 400,
+        playedAt: Date.now() - 3_600_000, win: false, teammates: [] },
+      { ...snapshot.matches[0], matchId: "NA1_777001", champion: "Vi", role: "JUNGLE", queueId: 440,
+        playedAt: Date.now() - 7_200_000, teammates: [] },
+    ],
+  };
+  await tx.query(
+    `INSERT INTO wp_players(puuid,platform,game_name,tag_line,rank_tier,rank_div,rank_lp,rank_wins,rank_losses,snapshot)
+    VALUES ('fixture-support','na1','Fixture Support','WAVE','PLATINUM','III',64,16,4,$1::jsonb)`,
+    [JSON.stringify(supportSnapshot)],
+  );
+  await tx.exec("INSERT INTO wp_links(user_id,puuid,is_primary,verified) VALUES(504,'fixture-support',true,true)");
 }
 
 async function query(tx, statement) {

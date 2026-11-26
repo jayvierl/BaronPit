@@ -1,4 +1,4 @@
-import { SESSION_QUEUE, SESSION_MINUTES, parseSessionOffer, sessionWindow } from "./duo-session";
+import { RANKED_QUEUE, NORMAL_QUEUE, isSessionQueue, type SessionQueue, SESSION_MINUTES, parseSessionOffer, sessionWindow } from "./duo-session";
 import { sharedGame } from "./verified-duo-game";
 import { getSql, q, queryRows } from "./db";
 import { decodeWindows, encodeWindows, scheduleWindows, type PlayWindow } from "./duo-schedule";
@@ -19,12 +19,14 @@ export interface DuoListing {
   blocks: string[];
   playWindows: PlayWindow[];
   start: number | null;
+  queue: SessionQueue | null;
   partnerRole: string | null;
   voice: boolean;
   vibe: string;
   note: string;
   rank: string;
-  form: string;
+  form: string | null;
+  soloRecord: string | null;
   expiresAt: string;
   platform: string;
   own: boolean;
@@ -37,18 +39,23 @@ export interface DuoRequest {
   status: string;
   rank: string;
   riotId: string | null;
+  socialProfileId: number | null;
+  contactEndsAt: number | null;
   platform: string;
   requeue: "available" | "waiting" | "mutual" | null;
   matchedAt: string | null;
-  session: { start: number; roles: string[]; voice: boolean; vibe: string } | null;
-  thanks: { sent: boolean; received: boolean; canSend: boolean; adultPair: boolean } | null;
+  session: { queue: SessionQueue; compatible: boolean; start: number; roles: string[]; voice: boolean; vibe: string } | null;
+  thanks: { sent: boolean; received: boolean; canSend: boolean; recentlyEndorsed: boolean; adultPair: boolean } | null;
 }
 
 // $1 is always the requesting user and $2 the current terms revision. Both participants are
 // rechecked at read/accept time. Unlinking Riot, changing bands or blocking withdraws access.
 function eligibility(fresh: boolean) {
   return `WITH eligible AS NOT MATERIALIZED (
-  SELECT u.id,u.age_band,p.puuid,p.platform,p.game_name,p.tag_line,p.rank_tier,p.rank_div,p.rank_lp,p.snapshot,p.fetched_at,k.is_primary
+  SELECT u.id,u.age_band,p.puuid,p.platform,p.game_name,p.tag_line,p.rank_tier,p.rank_div,p.rank_lp,p.rank_wins,p.rank_losses,p.snapshot,p.fetched_at,k.is_primary,
+    CASE WHEN p.rank_div IN ('I','II','III','IV') THEN
+      array_position(ARRAY['IRON','BRONZE','SILVER','GOLD','PLATINUM','EMERALD']::text[],p.rank_tier)
+    END AS pilot_tier
   FROM wp_users u JOIN wp_links k ON k.user_id=u.id AND k.verified
   JOIN wp_players p ON p.puuid=k.puuid
   WHERE u.terms_version=$2 AND u.safety_status='visible' AND u.age_band IN ('adult','teen') AND u.terms_accepted_at IS NOT NULL
@@ -61,21 +68,28 @@ function eligibility(fresh: boolean) {
 const eligible = eligibility(true);
 // An existing accepted pair may refresh its stale stats without gaining contact or board access.
 export const duoIdentityCte = eligibility(false);
+// Riot's published NA Solo/Duo bands through Emerald. The client decides final queue eligibility.
+// https://support.riotgames.com/en-us/league-of-legends/gameplay/ranked-tiers-divisions-and-queues
+function sessionCompatible(queue: string, first: string, second: string) {
+  return `(${queue}='${NORMAL_QUEUE}' OR (${queue}='${RANKED_QUEUE}'
+    AND ${first}.pilot_tier IS NOT NULL AND ${second}.pilot_tier IS NOT NULL
+    AND (abs(${first}.pilot_tier-${second}.pilot_tier)<=1 OR greatest(${first}.pilot_tier,${second}.pilot_tier)<=3)))`;
+}
 // Accepted sessions reserve both players until the end of the agreed hour.
 function bookedSession(listing: string, participant: string) {
   return `EXISTS(SELECT 1 FROM wp_duo_requests booking JOIN wp_lfg booked ON booked.id=booking.listing_id
-    WHERE booking.status='accepted' AND booked.safe_listing AND booked.session_queue='normal-draft'
+    WHERE booking.status='accepted' AND booked.safe_listing AND booked.session_queue IN ('${NORMAL_QUEUE}','${RANKED_QUEUE}')
       AND (${participant} IN (booking.sender_id,booked.user_id))
       AND booked.session_start < ${listing}.expires_at AND ${listing}.session_start < booked.expires_at)`;
 }
 const board = `${eligible}, board AS (
-  SELECT l.*,peer.platform,peer.rank_tier,peer.rank_div,peer.rank_lp,
+  SELECT l.*,peer.platform,peer.rank_tier,peer.rank_div,peer.rank_lp,peer.rank_wins,peer.rank_losses,
     peer.snapshot->>'wins' AS wins,peer.snapshot->>'games' AS games
   FROM me JOIN eligible peer ON peer.age_band=me.age_band AND peer.platform=me.platform
   JOIN wp_lfg l ON l.puuid=peer.puuid AND l.user_id=peer.id
   WHERE l.safe_listing AND l.expires_at>now()
     AND (l.status='open' OR (l.status='held' AND l.user_id=me.id))
-    AND (l.user_id=me.id OR (me.platform='na1' AND l.session_queue='normal-draft' AND l.session_start>now()
+    AND (l.user_id=me.id OR (me.platform='na1' AND ${sessionCompatible("l.session_queue","peer","me")} AND l.session_start>now()
       AND NOT ${bookedSession("l", "l.user_id")} AND NOT ${bookedSession("l", "me.id")}))
     AND NOT EXISTS(SELECT 1 FROM wp_blocks b WHERE (b.blocker_id,b.blocked_id) IN ((me.id,peer.id),(peer.id,me.id)))
     AND NOT EXISTS(SELECT 1 FROM wp_mutes m WHERE (m.muter_id,m.muted_id) IN ((me.id,peer.id),(peer.id,me.id)))
@@ -85,6 +99,7 @@ function pairScope(recentlyExpired = false) {
   return `${eligible}, pairs AS (
   SELECT r.id,r.status,r.sender_id,l.user_id AS owner_id,r.listing_id,r.created_at,r.accepted_at,l.expires_at,
     l.session_start,l.session_queue,r.offered_role,r.offered_voice,r.offered_vibe,l.roles,l.vibe,l.voice,
+    ${sessionCompatible("l.session_queue","owner","sender")} AS compatible,
     ${ownRequeue} AS my_choice,
     game.played AND NOT EXISTS (SELECT 1 FROM wp_reports f WHERE f.status='open'
       AND ((f.target_kind='duo_request' AND f.target_id=r.id) OR (f.target_kind='lfg' AND f.target_id=l.id))) AS can_thank,
@@ -131,14 +146,18 @@ function listing(row: Row, userId: number): DuoListing {
     champs: row.champs as string[],
     blocks: row.blocks as string[],
     playWindows: decodeWindows(row.play_windows),
-    start: row.session_queue === SESSION_QUEUE && row.session_start ? new Date(String(row.session_start)).getTime() : null,
+    queue: isSessionQueue(row.session_queue) ? row.session_queue : null,
+    start: isSessionQueue(row.session_queue) && row.session_start ? new Date(String(row.session_start)).getTime() : null,
     partnerRole: typeof row.partner_role === "string" ? row.partner_role : null,
     voice: row.voice === true,
     vibe: String(row.vibe),
     note: String(row.note),
     platform: String(row.platform).toUpperCase(),
     rank: rankLabel(String(row.rank_tier), row.rank_div as string | null),
-    form: `${wins}W · ${Math.max(0, games - wins)}L in ${games} games`,
+    form: row.wins != null && Number.isInteger(wins) && wins >= 0 && Number.isInteger(games) && games > 0 && games <= 20 && wins <= games
+      ? `${wins}W · ${games - wins}L in ${games} games` : null,
+    soloRecord: typeof row.rank_wins === "number" && row.rank_wins >= 0 && typeof row.rank_losses === "number" && row.rank_losses >= 0
+      ? `${row.rank_wins}W · ${row.rank_losses}L` : null,
     expiresAt: new Date(String(row.expires_at)).toISOString(),
     own: Number(row.user_id) === userId,
     requested: row.requested === true,
@@ -153,15 +172,21 @@ export async function readDuoBoard(userId: number, onlyFit = false, asOf = Date.
       const windows = fit?.blocks.length ? encodeWindows(scheduleWindows(fit.blocks, fit.timeZone, asOf, 1)) : null;
       return queryRows(
         board +
-          ` SELECT b.id,b.user_id,b.roles,b.champs,b.blocks,b.play_windows::text AS play_windows,b.session_queue,b.session_start,b.partner_role,b.voice,b.vibe,b.note,b.rank_tier,b.rank_div,b.wins,b.games,b.platform,b.expires_at,b.status,
+          ` SELECT b.id,b.user_id,b.roles,b.champs,b.blocks,b.play_windows::text AS play_windows,b.session_queue,b.session_start,b.partner_role,b.voice,b.vibe,b.note,b.rank_tier,b.rank_div,b.rank_wins,b.rank_losses,b.wins,b.games,b.platform,b.expires_at,b.status,
         EXISTS(SELECT 1 FROM wp_duo_requests r WHERE r.listing_id=b.id AND r.sender_id=$1) AS requested
-        FROM board b ${filterByDuoFit} ORDER BY (b.user_id=$1) DESC,b.created_at DESC,b.id DESC LIMIT 40`,
+        FROM board b ${filterByDuoFit} ORDER BY (b.user_id=$1) DESC,(b.session_queue='${RANKED_QUEUE}') DESC NULLS LAST,b.created_at DESC,b.id DESC LIMIT 40`,
         [...params(userId), fit ? JSON.stringify(fit) : null, windows],
       );
     })(),
     queryRows(
       pairs +
-        " SELECT id,status,sender_id,contact,rank_tier,rank_div,platform,accepted_at,can_requeue,my_choice,mutual,can_thank,sent_thanks,received_thanks,adult_pair,session_start,session_queue,offered_role,offered_voice,offered_vibe,roles,voice,vibe FROM pairs ORDER BY id DESC LIMIT 40",
+        ` SELECT id,status,sender_id,contact,expires_at,
+          CASE WHEN contact IS NOT NULL AND session_queue='${RANKED_QUEUE}'
+            THEN CASE WHEN sender_id=$1 THEN owner_id ELSE sender_id END END AS social_profile_id,
+          EXISTS(SELECT 1 FROM wp_endorsements e WHERE e.from_user=$1 AND e.interaction_checked AND
+            e.to_user=CASE WHEN pairs.sender_id=$1 THEN pairs.owner_id ELSE pairs.sender_id END
+            AND e.created_at>now()-interval '30 days') AS recently_endorsed,
+          compatible,rank_tier,rank_div,platform,accepted_at,can_requeue,my_choice,mutual,can_thank,sent_thanks,received_thanks,adult_pair,session_start,session_queue,offered_role,offered_voice,offered_vibe,roles,voice,vibe FROM pairs ORDER BY id DESC LIMIT 40`,
       params(userId),
     ),
   ]);
@@ -173,18 +198,22 @@ export async function readDuoBoard(userId: number, onlyFit = false, asOf = Date.
         incoming: Number(r.sender_id) !== userId,
         rank: rankLabel(String(r.rank_tier), r.rank_div as string | null),
         status: String(r.status),
-        session: r.session_queue === SESSION_QUEUE && r.session_start && typeof r.offered_role === "string" ? {
+        session: isSessionQueue(r.session_queue) && r.session_start && typeof r.offered_role === "string" ? {
+          queue: r.session_queue, compatible: r.compatible === true,
           start: new Date(String(r.session_start)).getTime(),
           roles: Number(r.sender_id) === userId ? r.roles as string[] : [r.offered_role],
           voice: (Number(r.sender_id) === userId ? r.voice : r.offered_voice) === true,
           vibe: String(Number(r.sender_id) === userId ? r.vibe : r.offered_vibe),
         } : null,
+        contactEndsAt: r.contact && !r.mutual ? new Date(String(r.expires_at)).getTime() : null,
+        socialProfileId: r.social_profile_id == null ? null : Number(r.social_profile_id),
         riotId: typeof r.contact === "string" ? r.contact : null,
         requeue: !r.can_requeue ? null : r.mutual ? "mutual" : r.my_choice ? "waiting" : "available",
         thanks: r.can_thank || r.sent_thanks || r.received_thanks ? {
           sent: r.sent_thanks === true,
           received: r.received_thanks === true,
           canSend: r.can_thank === true,
+          recentlyEndorsed: r.recently_endorsed === true,
           adultPair: r.adult_pair === true,
         } : null,
         matchedAt: r.accepted_at ? new Date(String(r.accepted_at)).toISOString() : null,
@@ -198,7 +227,7 @@ export async function createDuoListing(user: User, data: unknown) {
     return { ok: false, error: "Verified duo matching is waiting for Riot Sign On and safety coverage." };
   const parsed = duoPreferences(data);
   if (!parsed.ok) return parsed;
-  const { start, roles, partnerRole, blocks, voice, vibe, note } = parsed.value;
+  const { start, queue, roles, partnerRole, blocks, voice, vibe, note } = parsed.value;
   if (!(await duoEligible(user.id)))
     return { ok: false, error: "Duo listings require verified ownership and current ranked game data." };
   if (!(await rateLimit(user.id, "duo-list", 3, 24 * 60)))
@@ -218,9 +247,9 @@ export async function createDuoListing(user: User, data: unknown) {
       SELECT me.id,me.puuid,$3::text[],ARRAY(SELECT c->>'champion' FROM jsonb_array_elements(
         CASE WHEN jsonb_typeof(me.snapshot->'champPool')='array' THEN me.snapshot->'champPool' ELSE '[]'::jsonb END) c
         WHERE c->>'champion' ~ '^[A-Za-z0-9]{1,30}$' LIMIT 5),$4::text[],$5::bool,$6,$7,$8,true,$9,$10::int4multirange,$11,proposed.session_start,proposed.expires_at FROM me JOIN proposed ON proposed.id=me.id
-      WHERE me.platform='na1' AND proposed.session_start>clock_timestamp() AND NOT ${bookedSession("proposed","me.id")} AND NOT EXISTS (SELECT 1 FROM wp_lfg l WHERE l.user_id=$1 AND l.safe_listing AND l.status IN ('open','held') AND l.expires_at>now())
+      WHERE me.platform='na1' AND ($11='${NORMAL_QUEUE}' OR me.pilot_tier IS NOT NULL) AND proposed.session_start>clock_timestamp() AND NOT ${bookedSession("proposed","me.id")} AND NOT EXISTS (SELECT 1 FROM wp_lfg l WHERE l.user_id=$1 AND l.safe_listing AND l.status IN ('open','held') AND l.expires_at>now())
       RETURNING id`,
-      [...params(user.id), roles, blocks, voice, vibe, note, held ? "held" : "open", partnerRole, windows, SESSION_QUEUE, new Date(start).toISOString()],
+      [...params(user.id), roles, blocks, voice, vibe, note, held ? "held" : "open", partnerRole, windows, queue, new Date(start).toISOString()],
     ),
   ]);
   return rows.length
@@ -281,7 +310,7 @@ export async function duoAction(user: User, id: number, action: "request" | "acc
             `, changed AS (UPDATE wp_duo_requests r SET status=$4,accepted_at=CASE WHEN $4='accepted' THEN now() END FROM pairs p
         WHERE r.id=p.id AND p.id=$3 AND r.status='pending'
           AND (($4='declined' AND $1 IN (p.owner_id,p.sender_id)) OR
-               ($4='accepted' AND p.owner_id=$1 AND p.session_queue='normal-draft' AND p.platform='na1' AND p.session_start>clock_timestamp()
+               ($4='accepted' AND p.owner_id=$1 AND p.compatible AND p.platform='na1' AND p.session_start>clock_timestamp()
                  AND p.offered_role IS NOT NULL AND NOT ${bookedSession("p", "p.owner_id")} AND NOT ${bookedSession("p", "p.sender_id")}))
         RETURNING r.id,r.listing_id,r.sender_id), cleared AS (
         UPDATE wp_duo_requests other SET status='declined' FROM changed c,wp_lfg other_listing, pairs p

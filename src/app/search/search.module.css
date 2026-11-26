@@ -1,0 +1,5 @@
+.result { display: flex; align-items: center; gap: .75rem; color: var(--ink); min-height: 44px; }
+.result .identity { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.identity small { display: block; color: var(--ink-mid); }
+.result:hover, .result:focus-visible { background: var(--field); text-decoration: none; }
+.result:hover strong, .result:focus-visible strong { text-decoration: underline; }

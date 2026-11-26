@@ -1,6 +1,6 @@
 # Baron Pit
 
-This is the source for [baronpit.com](https://baronpit.com), Vercel project `ward-party`. The brand comes from `NEXT_PUBLIC_APP_NAME`. The app centers on community discussion and finding a compatible duo. Short, recent-form lookups give players material to discuss.
+This is the source for [baronpit.com](https://baronpit.com), Vercel project `ward-party`. The brand comes from `NEXT_PUBLIC_APP_NAME`. Players discuss their games and find compatible ranked duo partners. Verified community profiles and public player lookups show Riot’s ranked-year record by queue. Role and champion frequencies come from the most recent 20 available matches across queues.
 
 - [Muse’s original audit](AUDIT.md) records the initial problems. Some findings were already repaired when this source was recovered.
 - [Baron Pit round-two audit](BARON-ROUND-2-AUDIT.md) covers the production-source reconciliation and the six Baron feature checks. [Muse’s round-one handoff](CODEX-DEEP-AUDIT.md) is preserved for comparison.

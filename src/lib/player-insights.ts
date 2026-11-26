@@ -1,6 +1,6 @@
 import { q, queryRows } from "./db";
 import { HIDDEN_AUTHORS, BLOCKED_AUTHORS } from "./community-queries";
-import { playerFlair } from "./rank";
+import { playerFlair } from "./player-summary";
 import { playerFromRow, type Player } from "./riot";
 import { fnvHash } from "./pure";
 
@@ -10,7 +10,7 @@ export async function linkedPlayers(userId: number) {
   return rows.map(row => {
     const player = playerFromRow(row);
     return { ...player, primary: row.is_primary === true, verified: row.verified === true,
-      flair: row.verified === true ? playerFlair(player.rankTier, player.rankDiv, row.main) : null };
+      flair: row.verified === true ? playerFlair(player, row.main) : null };
   });
 }
 

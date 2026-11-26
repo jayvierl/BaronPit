@@ -1,9 +1,13 @@
 import { DUO_ROLES } from "./pure";
 import { SLOT_MS, type PlayWindow } from "./duo-schedule";
 
-export const SESSION_QUEUE = "normal-draft";
-export const SESSION_QUEUE_LABEL = "Normal Draft";
-export { SLOT_MS };
+export const RANKED_QUEUE = "ranked-solo-duo";
+export const NORMAL_QUEUE = "normal-draft";
+export const sessionQueues = { [RANKED_QUEUE]: "Ranked Solo/Duo", [NORMAL_QUEUE]: "Normal Draft" } as const;
+export type SessionQueue = keyof typeof sessionQueues;
+export function isSessionQueue(value: unknown): value is SessionQueue {
+  return value === RANKED_QUEUE || value === NORMAL_QUEUE;
+}
 export const SESSION_MINUTES = 60;
 const sessionSlots = SESSION_MINUTES / 15;
 const planningSlots = 12; // A one-hour session ending within the listing's four-hour horizon.
@@ -28,11 +32,11 @@ export function sessionTime(start: number, zone: string) {
   const format = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "short", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
   return format.formatRange(start, start + SESSION_MINUTES * 60_000);
 }
-export type SessionOffer = { queue: typeof SESSION_QUEUE; start: number; role: string; voice: boolean; vibe: "chill" | "tryhard" | "both" };
+export type SessionOffer = { queue: SessionQueue; start: number; role: string; voice: boolean; vibe: "chill" | "tryhard" | "both" };
 export function parseSessionOffer(value: unknown): SessionOffer | null {
   if (!value || typeof value !== "object") return null;
   const {queue, start, role, voice, vibe} = value as Record<string, unknown>;
-  if (queue !== SESSION_QUEUE || !validSessionStart(start) || !DUO_ROLES.some(r => r === role) ||
+  if (!isSessionQueue(queue) || !validSessionStart(start) || !DUO_ROLES.some(r => r === role) ||
       typeof voice !== "boolean" || (vibe !== "chill" && vibe !== "tryhard" && vibe !== "both")) return null;
   return {queue, start, role: String(role), voice, vibe};
 }

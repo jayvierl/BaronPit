@@ -26,7 +26,7 @@ import { JoinButton, LookupForm } from "@/components/social-ui";
 import { Composer } from "@/components/composer";
 import { MatchCard } from "@/components/match-card";
 import { PostCard } from "@/components/post-card";
-import { rankLabel } from "@/components/ui";
+import { socialRankLabel } from "@/lib/player-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -158,7 +158,7 @@ async function HomeSpotlight({ today, viewerId, patch }: { today: string; viewer
         <Image unoptimized width={48} height={48} className="champ-icon" src={championIconUrl(patch, spotlightGame.champion)} alt="" />
         <div>
           <strong>{spotlight.player.gameName}#{spotlight.player.tagLine}</strong>
-          <div className="meta">{rankLabel(spotlight.player.rankTier, spotlight.player.rankDiv, spotlight.player.rankLp)}</div>
+          <div className="meta">{socialRankLabel(spotlight.player, true)}</div>
         </div>
       </div>
       <MatchCard patch={patch} itemPatch={spotlightItems?.patch} itemDetails={spotlightItems ? cardItems(spotlightItems,spotlightGame.items) : []} data={{ puuid: spotlight.player.puuid, matchId: spotlightGame.matchId, riotId: `${spotlight.player.gameName}#${spotlight.player.tagLine}`, match: spotlightGame }} />

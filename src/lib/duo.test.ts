@@ -3,7 +3,7 @@ import { postgres } from "../../test/postgres";
 import { q } from "./db";
 import type { User } from "./auth";
 import { TERMS_VERSION } from "./account-policy";
-import { SESSION_QUEUE, sessionOptions } from "./duo-session";
+import { NORMAL_QUEUE, RANKED_QUEUE, sessionOptions } from "./duo-session";
 import { privateDuoReadiness } from "./duo-readiness";
 import { duoPreferences } from "./duo-input";
 import {
@@ -17,7 +17,7 @@ import {
   setRequeue,
   thankDuo,
 } from "./duo";
-import { endorse, endorsementCounts, setFollow } from "./relationships";
+import { endorse, endorseDuoRequest, endorsementCounts, setFollow } from "./relationships";
 import { createPost, getPost, setBlock } from "./social";
 import { POST as uploadToken } from "../app/api/social/upload/route";
 
@@ -37,9 +37,9 @@ const user = (id: number): User => ({
   termsCurrent: true,
 });
 const start = sessionOptions(Date.now())[2];
-const offer = { queue: SESSION_QUEUE, start, role: "ADC", vibe: "chill", voice: false };
+const offer = { queue: RANKED_QUEUE, start, role: "ADC", vibe: "chill", voice: false };
 const prefs = {
-  queue: SESSION_QUEUE, start,
+  queue: RANKED_QUEUE, start,
   roles: ["Support"],
   partnerRole: "ADC",
   timeZone: "America/Chicago",
@@ -54,13 +54,14 @@ beforeAll(async () => {
   vi.stubEnv("VERCEL_ENV", "development");
   vi.stubEnv("DUO_MATCHING_ENABLED", "true");
   await q`SELECT 1`;
-  for (const id of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+  for (const id of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]) {
     await q`INSERT INTO wp_users (id,email,display_name,created_at,age_band,terms_version,terms_accepted_at)
       VALUES (${id},${user(id).email},${"PRIVATE-SOCIAL-" + id},now()-interval '3 days',${id === 4 ? "teen" : "adult"},${TERMS_VERSION},now())`;
     await q`INSERT INTO wp_players (puuid,platform,game_name,tag_line,rank_tier,rank_div,snapshot) VALUES
       (${"private-puuid-" + id},${id === 5 ? "euw1" : "na1"},${"PRIVATE-RIOT-" + id},'TEST','GOLD','III',${JSON.stringify(sample)}::jsonb)`;
     await q`INSERT INTO wp_links(user_id,puuid,is_primary,verified) VALUES (${id},${"private-puuid-" + id},true,${id !== 3})`;
   }
+  await q`UPDATE wp_players SET rank_wins=42, rank_losses=37 WHERE puuid='private-puuid-1'`;
   await q`UPDATE wp_users SET created_at=now() WHERE id=6`;
 }, 30000);
 afterAll(async () => {
@@ -100,6 +101,7 @@ describe("verified duo and relationship controls", () => {
       champs: ["Ashe"],
       own: false,
       form: "6W · 4L in 10 games",
+      soloRecord: "42W · 37L",
     });
     expect(l.partnerRole).toBe("ADC");
     expect(l.playWindows.length).toBeGreaterThan(0);
@@ -114,10 +116,10 @@ describe("verified duo and relationship controls", () => {
     expect(await duoAction(user(2), l.id, "request", {...offer, start:sessionOptions(Date.now())[3]})).toMatchObject({ ok: false });
     expect(await duoAction(user(2), l.id, "request", offer)).toMatchObject({ ok: true });
     const req = (await readDuoBoard(1)).requests[0];
-    expect(req).toMatchObject({ incoming: true, riotId: null, session:{roles:["ADC"],vibe:"chill",voice:false,start} });
+    expect(req).toMatchObject({ incoming: true, riotId: null, socialProfileId: null, session:{roles:["ADC"],vibe:"chill",voice:false,start} });
     expect(await duoAction(user(2), req.id, "accept")).toMatchObject({ ok: false });
     expect(await duoAction(user(1), req.id, "accept")).toMatchObject({ ok: true });
-    expect((await readDuoBoard(2)).requests[0].riotId).toBe("PRIVATE-RIOT-1#TEST");
+    expect((await readDuoBoard(2)).requests[0]).toMatchObject({riotId:"PRIVATE-RIOT-1#TEST", socialProfileId:1});
     expect(await canReportDuo(7, "duo_request", req.id)).toBe(false);
     await setBlock(2, 1, true);
     expect((await readDuoBoard(2)).listings).toHaveLength(0);
@@ -128,6 +130,41 @@ describe("verified duo and relationship controls", () => {
     expect((await readDuoBoard(2)).requests).toHaveLength(0);
     expect(await closeDuoListing(2, l.id)).toMatchObject({ ok: false });
     expect(await closeDuoListing(1, l.id)).toMatchObject({ ok: true });
+  });
+  it("applies current visible Solo/Duo bands to ranked sessions and preserves consent on normal sessions", async () => {
+    async function tier(id: number, value: string) {
+      await q`UPDATE wp_players SET rank_tier=${value} WHERE puuid=${"private-puuid-" + id}`;
+    }
+    await tier(10, "IRON");
+    await tier(11, "SILVER");
+    await tier(12, "GOLD");
+    await tier(13, "DIAMOND");
+    expect(await privateDuoReadiness(13)).toMatchObject({ready:true,rankedPilot:false});
+    expect(await createDuoListing(user(13),prefs)).toMatchObject({ok:false});
+    expect(await createDuoListing(user(10),prefs)).toMatchObject({ok:true});
+    const ranked=(await readDuoBoard(10)).listings.find(l=>l.own)!;
+    expect((await readDuoBoard(11)).listings.map(l=>l.id)).toContain(ranked.id);
+    expect((await readDuoBoard(12)).listings.map(l=>l.id)).not.toContain(ranked.id);
+    expect(await duoAction(user(12),ranked.id,"request",offer)).toMatchObject({ok:false});
+    expect(await duoAction(user(11),ranked.id,"request",{...offer,queue:NORMAL_QUEUE})).toMatchObject({ok:false});
+    expect(await duoAction(user(11),ranked.id,"request",offer)).toMatchObject({ok:true});
+    const pending=(await readDuoBoard(10)).requests[0];
+    await tier(11,"GOLD");
+    expect((await readDuoBoard(10)).requests[0]).toMatchObject({socialProfileId:null,session:{compatible:false}});
+    expect(await duoAction(user(10),pending.id,"accept")).toMatchObject({ok:false});
+    await tier(11,"SILVER");
+    expect(await duoAction(user(10),pending.id,"accept")).toMatchObject({ok:true});
+    expect((await readDuoBoard(10)).requests[0]).toMatchObject({socialProfileId:11,session:{queue:RANKED_QUEUE}});
+    await q`INSERT INTO wp_mutes(muter_id,muted_id) VALUES(11,10)`;
+    expect((await readDuoBoard(10)).requests).toHaveLength(0);
+    expect((await readDuoBoard(11)).requests).toHaveLength(0);
+    await createDuoListing(user(13),{...prefs,queue:NORMAL_QUEUE});
+    const normal=(await readDuoBoard(14)).listings.find(l=>l.queue===NORMAL_QUEUE)!;
+    expect(await duoAction(user(14),normal.id,"request",{...offer,queue:NORMAL_QUEUE})).toMatchObject({ok:true});
+    const older=(await readDuoBoard(13)).requests[0];
+    expect(await duoAction(user(13),older.id,"accept")).toMatchObject({ok:true});
+    expect((await readDuoBoard(14)).requests[0]).toMatchObject({riotId:"PRIVATE-RIOT-13#TEST",socialProfileId:null,session:{queue:NORMAL_QUEUE}});
+    await q`UPDATE wp_lfg SET expires_at=now()-interval '1 second' WHERE id IN (${ranked.id},${normal.id})`;
   });
   it("honors the session deadline, region and one accepted partner per overlapping session", async () => {
     expect(await privateDuoReadiness(5)).toMatchObject({ ready:false, regionOutsidePilot:true });
@@ -154,6 +191,7 @@ describe("verified duo and relationship controls", () => {
     await duoAction(user(8), request.id, "accept");
     expect(await setRequeue(9, request.id, true)).toMatchObject({ ok: false });
     expect(await thankDuo(9, request.id)).toMatchObject({ ok: false });
+    expect(await endorseDuoRequest(user(9), request.id)).toMatchObject({ ok: false });
     await q`UPDATE wp_duo_requests SET accepted_at=now()-interval '6 hours' WHERE id=${request.id}`;
     await q`UPDATE wp_lfg SET expires_at=now()-interval '2 hours' WHERE id=${listing.id}`;
     const game = {
@@ -169,6 +207,7 @@ describe("verified duo and relationship controls", () => {
     await setSnapshot(9, game);
     expect(await thankDuo(9, request.id)).toMatchObject({ ok: false });
     expect((await readDuoBoard(8)).requests).toEqual([]); // An opposing player in the same game is insufficient.
+    expect(await endorseDuoRequest(user(9), request.id)).toMatchObject({ ok: false });
     await setSnapshot(8, { ...game, teammates: [{ name: "PRIVATE-RIOT-9", tag: "TEST" }] });
     await setSnapshot(9, { ...game, teammates: [{ name: "PRIVATE-RIOT-8", tag: "TEST" }] });
     const peerView = async () => (await readDuoBoard(9)).requests[0];
@@ -176,10 +215,18 @@ describe("verified duo and relationship controls", () => {
     expect(await thankDuo(7, request.id)).toMatchObject({ ok: false });
     await q`INSERT INTO wp_reports(reporter_id,target_kind,target_id) VALUES(9,'duo_request',${request.id})`;
     expect(await thankDuo(8, request.id)).toMatchObject({ ok: false });
+    expect(await endorseDuoRequest(user(8), request.id)).toMatchObject({ ok: false });
     await q`UPDATE wp_reports SET status='closed' WHERE reporter_id=9 AND target_kind='duo_request' AND target_id=${request.id}`;
     expect(await Promise.all([thankDuo(9, request.id), thankDuo(9, request.id)])).toEqual([{ ok: true }, { ok: true }]);
     expect(await peerView()).toMatchObject({ thanks: { sent: true, received: false }, riotId: null, requeue: "available" });
     expect((await readDuoBoard(8)).requests[0]).toMatchObject({ thanks: { sent: false, received: true }, riotId: null });
+    expect(await endorsementCounts(8)).toEqual({});
+    expect(await endorseDuoRequest(user(7), request.id)).toMatchObject({ok:false});
+    expect(await endorse(user(9),8,"good_teammate",request.id + 10000)).toMatchObject({ok:false});
+    expect(await endorseDuoRequest(user(9), request.id)).toEqual({ok:true});
+    expect(await endorse(user(9),8,"shot_caller")).toMatchObject({ok:false});
+    expect(await endorsementCounts(8)).toEqual({good_teammate:1});
+    expect(await peerView()).toMatchObject({thanks:{recentlyEndorsed:true},riotId:null,requeue:"available"});
     expect(await setRequeue(8, request.id, true)).toMatchObject({ ok: true });
     expect(await peerView()).toMatchObject({ requeue: "available", riotId: null });
     expect(await setRequeue(7, request.id, true)).toMatchObject({ ok: false });
@@ -192,6 +239,8 @@ describe("verified duo and relationship controls", () => {
     expect(await setRequeue(8, request.id, true)).toMatchObject({ ok: false });
     await q`UPDATE wp_users SET age_band='adult' WHERE id=9`;
     await setBlock(9, 8, true);
+    expect(await endorseDuoRequest(user(8), request.id)).toMatchObject({ok:false});
+    expect(await endorsementCounts(8)).toEqual({});
     expect(await thankDuo(8, request.id)).toMatchObject({ ok: false });
     expect(await peerView()).toBeUndefined();
     expect(await setRequeue(8, request.id, true)).toMatchObject({ ok: false });

@@ -1,13 +1,15 @@
-import Image from "next/image";
+import { ChampionPortrait } from "@/components/champion-portrait";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { currentPatch, championIconUrl } from "@/lib/riot";
+import { currentPatch } from "@/lib/riot";
 import { feedByAuthor, followCounts, isFollowing, endorsementCounts, dailyHighlight, ENDORSE_KINDS } from "@/lib/social";
-import { gameCount, earnedBadges } from "@/lib/pure";
+import { earnedBadges } from "@/lib/pure";
 import { linkedPlayers as readLinkedPlayers, publicProfile } from "@/lib/player-insights";
+import { playerStatsHref } from "@/lib/platforms";
 import { signInHref } from "@/lib/signin-return";
-import { Avatar, rankLabel } from "@/components/ui";
+import { Avatar } from "@/components/ui";
+import { PlayerStats } from "@/components/player-stats";
 import { EndorseRow, FollowButton, UserSafetyMenu } from "@/components/social-ui";
 import { PostCard } from "@/components/post-card";
 
@@ -31,7 +33,8 @@ export default async function ProfilePage({ params, searchParams }: {
   const player = linkedPlayers[0] ?? null;
   const badges = player?.verified ? earnedBadges(player.snapshot) : [];
   if (profile.featured && player?.verified) badges.unshift("Hand of Baron · featured today");
-  const highlight = player ? dailyHighlight(player, today) : null;
+  const highlight = player?.verified ? dailyHighlight(player, today) : null;
+  const lookupHref = player && playerStatsHref(player.platform, `${player.gameName}#${player.tagLine}`);
   const isSelf = viewer?.id === userId;
   const activeTab = tab === "players" && linkedPlayers.length > 0 ? "players" : "posts";
 
@@ -43,7 +46,7 @@ export default async function ProfilePage({ params, searchParams }: {
             <h1 className="profile-name">{profile.name}</h1>
             <div style={{ fontSize: 14.5, marginTop: 2 }}>
               {player ? (
-                <>{player.gameName}#{player.tagLine} · {player.verified ? "Verified Riot link" : "Unverified Riot link"}{player.verified && <> · <span className="flair">{player.flair}</span></>}</>
+                <>{player.gameName}#{player.tagLine} · {player.verified ? "Verified Riot link" : "Unverified Riot link"}</>
               ) : (
                 <span className="meta">No Riot ID linked yet</span>
               )}
@@ -57,6 +60,11 @@ export default async function ProfilePage({ params, searchParams }: {
           <Avatar name={profile.name} hue={profile.hue} size={84} />
         </div>
 
+        {player?.verified && lookupHref && <PlayerStats player={player} lookupHref={lookupHref} />}
+        {player && !player.verified && lookupHref && (
+          <p className="meta"><Link href={lookupHref}>View stats for {player.gameName}#{player.tagLine} →</Link></p>
+        )}
+        {!player && isSelf && <p className="meta"><Link href="/me">Link a Riot ID to your profile →</Link></p>}
         {profile.bio && <p style={{ margin: "12px 0 0", fontSize: 15 }}>{profile.bio}</p>}
 
         <div className="meta" style={{ marginTop: 10, fontSize: 14 }}>
@@ -64,7 +72,8 @@ export default async function ProfilePage({ params, searchParams }: {
           {new Date(profile.createdAt).toLocaleDateString(undefined, { month: "short", year: "numeric" })}
         </div>
 
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+        <div className="meta" style={{ marginTop: 10 }}>Endorsements · last 90 days</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
           {ENDORSE_KINDS.map((k) => (
             <span key={k.id} className="chip">{k.label}: {endorsements[k.id] ?? 0}</span>
           ))}
@@ -92,10 +101,10 @@ export default async function ProfilePage({ params, searchParams }: {
 
       {highlight && player && (
         <div className="highlight-row">
-          <Image unoptimized width={18} height={18} src={championIconUrl(patch, highlight.champion)} alt="" />
+          <ChampionPortrait id={highlight.champion} patch={patch} size={46} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, color: "var(--accent-ink)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              {player.verified ? "Today’s highlight" : `Recent game from ${player.gameName}#${player.tagLine}`}
+              Today’s highlight
             </div>
             <div style={{ fontSize: 15 }}>
               <strong>{highlight.champion}</strong> —{" "}
@@ -103,7 +112,7 @@ export default async function ProfilePage({ params, searchParams }: {
               · <span className="kda">{highlight.kills} / {highlight.deaths} / {highlight.assists}</span>
               <span className="meta"> · {highlight.cs} CS</span>
             </div>
-            <div className="meta">{player.verified ? "Selected daily from recent games." : "This Riot account was linked without ownership verification."}</div>
+            <div className="meta">Selected daily from recent games.</div>
           </div>
         </div>
       )}
@@ -120,14 +129,13 @@ export default async function ProfilePage({ params, searchParams }: {
           {linkedPlayers.map((p) => (
             <div key={p.puuid} className="list-row">
               <div style={{ flex: 1, minWidth: 0 }}>
-                <Link href={`/player?platform=${p.platform}&riotId=${encodeURIComponent(`${p.gameName}#${p.tagLine}`)}`} style={{ fontWeight: 600 }}>
+                <Link href={playerStatsHref(p.platform, `${p.gameName}#${p.tagLine}`)} style={{ fontWeight: 600 }}>
                   {p.gameName}#{p.tagLine}
                 </Link>
                 <div className="meta">
-                  {p.verified ? "Verified Riot link" : "Unverified Riot link"} · {rankLabel(p.rankTier, p.rankDiv, p.rankLp)} · last {gameCount(p.snapshot.games)}: {p.snapshot.wins}W–{p.snapshot.losses}L
+                  {p.verified ? "Verified Riot link" : "Unverified Riot link"}
                 </div>
               </div>
-              {p.snapshot.champPool[0] && <span className="chip">Main: {p.snapshot.champPool[0].champion}</span>}
             </div>
           ))}
         </div>

@@ -115,6 +115,24 @@ describe("recent-form refresh", () => {
     expect(JSON.stringify(result.player.snapshot)).not.toContain("HiddenEnemy");
     expect(transport).toHaveBeenCalledTimes(7);
   });
+  it("persists both placed queues with the current snapshot and keeps the legacy SQL columns Solo/Duo only", async () => {
+    const flex = {queueType:"RANKED_FLEX_SR",tier:"PLATINUM",rank:"I",leaguePoints:84,wins:37,losses:11};
+    const recorded: unknown[][] = [];
+    mocked.q.mockResolvedValueOnce([]).mockImplementationOnce(async (_sql, ...args) => {
+      recorded.push(args);
+      return [{...row(new Date()),snapshot:JSON.parse(args.at(-2))}];
+    });
+    const transport = vi.fn(async (url:string) => {
+      if (url.includes("/riot/account/")) return Response.json({puuid:"ref",gameName:"Fixture",tagLine:"NA1"});
+      if (url.includes("/summoner/")) return Response.json({summonerLevel:60,profileIconId:3});
+      if (url.includes("/league/v4/")) return Response.json([flex]);
+      return Response.json([]);
+    });
+    vi.stubGlobal("fetch",transport);
+    expect(await lookup()).toMatchObject({ok:true, player:{rankTier:null,rankedEntries:[flex]}});
+    expect(recorded[0].slice(6,11)).toEqual([null,null,null,null,null]);
+    expect(transport).toHaveBeenCalledTimes(4);
+  });
   it("preserves known good games if a successful ID-list response unexpectedly comes back empty", async () => {
     const previous = row(new Date(0));
     mocked.q.mockResolvedValue([

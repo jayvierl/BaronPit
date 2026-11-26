@@ -7,7 +7,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, isAdmin } from "@/lib/auth";
 import { myNotices, myReports, followCounts } from "@/lib/social";
 import { linkedPlayers } from "@/lib/player-insights";
-import { Avatar, rankLabel } from "@/components/ui";
+import { socialRankLabel } from "@/lib/player-summary";
+import { Avatar } from "@/components/ui";
 import { LinkForm, ProfileForm, SignOutButton, UnlinkButton, PrimaryPlayerButton } from "@/components/me-ui";
 
 const verificationMessages: Record<string,string> = {
@@ -56,7 +57,7 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
           <div key={p.puuid} className="match-row">
             <div style={{ flex: 1 }}>
               <strong>{p.gameName}#{p.tagLine}</strong>
-              <div className="meta">{rankLabel(p.rankTier, p.rankDiv, p.rankLp)} · {p.platform.toUpperCase()} · {p.verified ? "Verified link" : "Unverified link"}{p.primary && " · Primary"}</div>
+              <div className="meta">{socialRankLabel(p, true)} · {p.platform.toUpperCase()} · {p.verified ? "Verified link" : "Unverified link"}{p.primary && " · Primary"}</div>
             </div>
             <Link className="text-btn" href={`/player?platform=${p.platform}&riotId=${encodeURIComponent(`${p.gameName}#${p.tagLine}`)}`}>Stats →</Link>
             {!p.verified && riotSignOnConfig() && <VerifyRiotButton puuid={p.puuid}/>}

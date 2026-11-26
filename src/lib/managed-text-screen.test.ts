@@ -4,7 +4,7 @@ import { q } from "./db";
 import { createHash } from "node:crypto";
 import { TERMS_VERSION } from "./account-policy";
 import { createDuoListing } from "./duo";
-import { SESSION_QUEUE, sessionOptions } from "./duo-session";
+import { RANKED_QUEUE, sessionOptions } from "./duo-session";
 import { POST as updateProfile } from "../app/api/account/profile/route";
 import { managedTextVerdict } from "./managed-text-screen";
 import { addComment, createPost } from "./social";
@@ -73,6 +73,6 @@ it("preserves an existing profile on provider failure and holds an eligible duo 
   await q`INSERT INTO wp_links(user_id,puuid,verified) VALUES(1,'fixture-player',true)`;
   http.mockResolvedValueOnce(Response.json({results:[result(true)]}));
   const start = sessionOptions(Date.now())[1];
-  expect(await createDuoListing(author,{queue:SESSION_QUEUE,start,roles:["Support"],vibe:"chill",voice:false,note:"Practice with me"})).toMatchObject({ok:true,held:true});
+  expect(await createDuoListing(author,{queue:RANKED_QUEUE,start,roles:["Support"],vibe:"chill",voice:false,note:"Practice with me"})).toMatchObject({ok:true,held:true});
   expect(await q`SELECT status FROM wp_lfg WHERE user_id=1`).toEqual([{status:"held"}]);
 });

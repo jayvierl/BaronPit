@@ -35,6 +35,15 @@ function render(kind: string, data: Record<string, unknown>, status = "visible")
   );
 }
 describe("thread controls", () => {
+  it("links an author's public name to their community identity and verified rank to its Riot player", () => {
+    const post = { ...base, kind: "text", data: {}, authorFlair: "Gold IV", authorStatsHref: "/player?platform=euw1&riotId=Un%20nom%23EUW" };
+    const html = renderToStaticMarkup(createElement(PostCard, { post, patch: "16.23.1", signedIn: false }));
+    expect(html).toContain('href="/u/1"');
+    expect(html).toContain('href="/player?platform=euw1&amp;riotId=Un%20nom%23EUW"');
+    expect(html).toContain('aria-label="View River’s verified Riot stats, Gold IV"');
+    expect(render("text", {})).not.toContain('href="/player?');
+  });
+
   it("labels the server-designated patch briefing in feed and thread cards", () => {
     const briefing = { ...base, kind: "text", data: { briefing: true, patch: "16.23.1" } };
     for (const threadPage of [false, true]) {
