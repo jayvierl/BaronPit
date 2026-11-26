@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ItemIcons } from "./item-icons";
 import { useRouter } from "next/navigation";
 import type { PostView } from "@/lib/social";
+import type { AvatarIdentity } from "@/lib/author-identity";
 import { REACTION_EMOJIS, samePatch } from "@/lib/pure";
 import { clipLink } from "@/lib/clip-link";
 import { PATCH_NOTES_INDEX, publicPatch } from "@/lib/patch-notes";
@@ -30,16 +31,14 @@ export function PostCard({
   signedIn,
   viewerId,
   threadPage = false,
-  viewerName,
-  viewerHue,
+  viewerIdentity,
 }: {
   post: PostView;
   patch: string;
   signedIn: boolean;
   viewerId?: number | null;
   threadPage?: boolean;
-  viewerName?: string;
-  viewerHue?: number;
+  viewerIdentity?: AvatarIdentity | null;
 }) {
   const router = useRouter();
   const [withdrawn,setWithdrawn] = useState(false);
@@ -93,7 +92,7 @@ export function PostCard({
     <article className={`thread-post ${styles.post}`} aria-label={`Post by ${post.authorName}`}>
       <div className="thread-rail">
         <Link href={`/u/${post.authorId}`} className={styles.avatarLink} aria-label={`${post.authorName}’s profile`}>
-          <Avatar name={post.authorName} hue={post.authorHue} size={40} />
+          <Avatar name={post.authorName} hue={post.authorHue} avatar={post.authorAvatar} size={40} />
         </Link>
         {showComments && <span className="line" />}
       </div>
@@ -280,8 +279,7 @@ export function PostCard({
             postId={post.id}
             signedIn={signedIn}
             viewerId={viewerId}
-            viewerName={viewerName}
-            viewerHue={viewerHue}
+            viewerIdentity={viewerIdentity}
             onVisibleReply={() => setAddedReplies((n) => n + 1)}
             decisionQuestion={post.isQuestion}
             allowOneFix={post.kind === "card"}

@@ -6,6 +6,7 @@ import { signInHref } from "@/lib/signin-return";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { CommentView } from "@/lib/social";
+import type { AvatarIdentity } from "@/lib/author-identity";
 import { WithdrawSubmission } from "./withdraw-submission";
 import { Avatar, timeAgo } from "./ui";
 import { ActionFeedback, usePostAction } from "./post-action";
@@ -25,8 +26,7 @@ export function CommentSection({
   visit = 1,
   signedIn,
   viewerId,
-  viewerName,
-  viewerHue,
+  viewerIdentity,
   allowOneFix,
   decisionQuestion,
   onVisibleReply,
@@ -36,8 +36,7 @@ export function CommentSection({
   visit?: number;
   signedIn: boolean;
   viewerId?: number | null;
-  viewerName?: string;
-  viewerHue?: number;
+  viewerIdentity?: AvatarIdentity | null;
   allowOneFix?: boolean;
   decisionQuestion?: boolean;
   onVisibleReply?: () => void;
@@ -145,7 +144,7 @@ export function CommentSection({
         <div className="comment-row">
           <div className="comment-rail">
             <Link href={`/u/${c.authorId}`} className={threadStyles.avatarLink} aria-label={`${c.authorName}’s profile`}>
-              <Avatar name={c.authorName} hue={c.authorHue} size={32} />
+              <Avatar name={c.authorName} hue={c.authorHue} avatar={c.authorAvatar} size={32} />
             </Link>
             {c.replies.length > 0 && <span className="line" />}
           </div>
@@ -270,7 +269,7 @@ export function CommentSection({
             </details>
           )}
           <div className="reply-composer">
-            {viewerName && <Avatar name={viewerName} hue={viewerHue ?? 0} size={32} />}
+            {signedIn && viewerIdentity && <Avatar {...viewerIdentity} size={32} />}
             {decisionQuestion ? (
               <textarea ref={setInputRef} className={styles.replyInput} aria-label="Your reply" rows={3}
                 disabled={action.busy} placeholder="What would you try in this game?" value={draft}

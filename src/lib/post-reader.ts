@@ -6,6 +6,7 @@ import { queryRows } from "./db";
 import { HIDDEN_AUTHORS, canDisplayPost, visibleCommentsFor } from "./community-queries";
 import { playerFlair, readRankedEntries } from "./player-summary";
 import { playerStatsHref } from "./platforms";
+import { publicAvatar } from "./avatar";
 import { teamBaronFields } from "./pure";
 import { followedReposts, repostableContent } from "./reposts";
 import type { PostView, CommentView } from "./post-types";
@@ -137,7 +138,7 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
       EXISTS (SELECT 1 FROM wp_reposts r WHERE r.user_id=$1 AND r.post_id=p.id AND r.active) AS my_repost,
       u.email=$11 AS is_publisher, rm.champion_id AS room_champion,
       EXISTS (SELECT 1 FROM wp_decisions d WHERE d.post_id=p.id) AS is_question,
-      u.display_name AS author_name, u.avatar_hue AS author_hue, rm.slug AS room_slug, rm.name AS room_name,
+      u.display_name AS author_name, u.avatar_hue AS author_hue, u.avatar_ref, rm.slug AS room_slug, rm.name AS room_name,
       flair.label, flair.platform, flair.riot_id
     FROM chosen p JOIN wp_users u ON u.id = p.author_id
     LEFT JOIN wp_users sh ON sh.id=p.sharer
@@ -184,6 +185,7 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
     const flair = r.label as [string | null, string | null, unknown, unknown] | null;
     return {
       id, authorId: Number(r.author_id), authorName: String(r.author_name), authorHue: Number(r.author_hue),
+      authorAvatar: publicAvatar(r.avatar_ref),
       isQuestion:r.is_question === true,
       canRepost: r.can_repost === true, myRepost: r.my_repost === true,
       ...(r.sharer != null ? {repostedBy: {id: Number(r.sharer), name: String(r.sharer_name), at: String(r.shared_at)}} : {}),
@@ -203,7 +205,7 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
 export async function readComments(postId: number, viewerId: number | null): Promise<CommentView[]> {
   const rows = await queryRows(`WITH RECURSIVE ${HIDDEN_AUTHORS}, ${visibleCommentsFor("posts")}
     SELECT c.id, c.author_id, c.parent_id, c.body, c.status, c.created_at, c.one_fix,
-      u.display_name AS author_name, u.avatar_hue AS author_hue
+      u.display_name AS author_name, u.avatar_hue AS author_hue, u.avatar_ref
     FROM thread t JOIN wp_comments c ON c.id = t.id JOIN wp_users u ON u.id = c.author_id
     ORDER BY c.created_at, c.id`, [viewerId, [postId]]);
   if (!rows.length) return [];
@@ -213,6 +215,7 @@ export async function readComments(postId: number, viewerId: number | null): Pro
     const id = Number(r.id);
     byId.set(id, {
       id, postId, authorId: Number(r.author_id), authorName: String(r.author_name), authorHue: Number(r.author_hue),
+      authorAvatar: publicAvatar(r.avatar_ref),
       parentId: r.parent_id == null ? null : Number(r.parent_id), body: String(r.body),
       status: String(r.status), createdAt: String(r.created_at), oneFix: Boolean(r.one_fix),
       ...(groups.get(id) ?? { reactions: {}, myReactions: [] }), replies: [],

@@ -2,6 +2,7 @@
 // SQL queries, schema, signed cookies and route handlers. No test hooks are present in src/.
 import { createHash } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
+import { clearFixturePhoto, fixturePhotoEnv } from "./photo-scanner.mjs";
 
 const fixtureDsn = "postgresql://fixture:fixture@ep-fixture.invalid/ward_smoke";
 if (process.env.DATABASE_URL !== fixtureDsn || !/^[a-f0-9]{64}$/.test(process.env.SMOKE_SESSION || "")) {
@@ -31,7 +32,7 @@ async function seed(tx) {
       (521,502,'text','Fixture win condition',541), (522,503,'text','Fixture blocked discussion',541),
       (523,504,'text','Fixture offrole question',541);
     INSERT INTO wp_comments (id,post_id,author_id,body) VALUES
-      (531,521,502,'Fixture followup'),(532,521,503,'Fixture blocked reply');
+      (531,521,502,'Fixture followup'),(532,521,503,'Fixture blocked reply'),(550,521,501,'Fixture avatar reply');
     INSERT INTO wp_follows(follower_id,followee_id) VALUES (501,502);
     INSERT INTO wp_blocks(blocker_id,blocked_id) VALUES (503,501);
   `);
@@ -68,8 +69,8 @@ async function seed(tx) {
     ],
   };
   await tx.query(
-    `INSERT INTO wp_players(puuid,platform,game_name,tag_line,rank_tier,rank_div,rank_lp,rank_wins,rank_losses,snapshot)
-    VALUES ('fixture-owner','na1','Fixture Archer','NA1','GOLD','IV',23,62,38,$1::jsonb)`,
+    `INSERT INTO wp_players(puuid,platform,game_name,tag_line,profile_icon,rank_tier,rank_div,rank_lp,rank_wins,rank_losses,snapshot)
+    VALUES ('fixture-owner','na1','Fixture Archer','NA1',17,'GOLD','IV',23,62,38,$1::jsonb)`,
     [JSON.stringify(snapshot)],
   );
   await tx.exec(
@@ -114,6 +115,7 @@ async function query(tx, statement) {
 globalThis.fetch = async function fixtureFetch(input, init) {
   const req = new Request(input, init);
   const url = new URL(req.url);
+  if (req.url === fixturePhotoEnv.PROFILE_PHOTO_SCANNER_URL) return clearFixturePhoto(req);
   if (req.headers.get("neon-connection-string") === fixtureDsn && url.pathname === "/sql") {
     try {
       const input = await req.json();

@@ -5,6 +5,7 @@ import { setRoomMembership } from "./rooms";
 import type { User } from "./auth";
 import { addComment, buildFeed, feed, feedByAuthor, getPost, listComments, reconfirmBuild, toggleReaction, votePoll } from "./social";
 import { publicProfile, publicRiotOwner } from "./player-insights";
+import { publicAvatarIdentity } from "./author-identity";
 import { BARON_CALL_OPTIONS } from "./poll";
 
 vi.mock("@neondatabase/serverless", async () => ({ neon: (await import("../../test/postgres")).neonForTests }));
@@ -46,6 +47,31 @@ beforeAll(async () => {
 afterAll(async () => { await postgres.close(); vi.unstubAllEnvs(); });
 
 describe("feed and conversation read contracts", () => {
+  it("updates existing posts, nested replies and the public profile from the author's current avatar", async () => {
+    const champion = {kind: "champion", id: "Nami"} as const;
+    const current = async () => [
+      (await getPost(13,null))?.authorAvatar,
+      (await listComments(13,null))[0].replies[0].authorAvatar,
+      (await publicProfile(2,null,"2026-11-26"))?.avatar,
+    ];
+    const initials = {kind:"initials"};
+    expect(await current()).toEqual([initials,initials,initials]);
+    await q`UPDATE wp_users SET avatar_ref=${JSON.stringify(champion)}::jsonb WHERE id=2`;
+    try {
+      expect(await current()).toEqual([champion,champion,champion]);
+      const photo = {kind:"upload", id:"73dc486f-b034-456b-bc88-14c71c102245", hash:"a1".repeat(32)};
+      await q`UPDATE wp_users SET avatar_ref=${JSON.stringify(photo)}::jsonb WHERE id=2`;
+      expect(await current()).toEqual([photo,photo,photo]);
+      const signedIn = {...own, avatar:champion};
+      expect(publicAvatarIdentity(signedIn)).toEqual({name:signedIn.displayName,hue:signedIn.avatarHue,avatar:champion});
+      expect(publicAvatarIdentity(null)).toBeNull();
+      await q`UPDATE wp_users SET avatar_ref=NULL WHERE id=2`;
+      expect(await current()).toEqual([initials,initials,initials]);
+    } finally {
+      await q`UPDATE wp_users SET avatar_ref=NULL WHERE id=2`;
+    }
+  });
+
   it("returns consistent scoped cards with flair, counts and the viewer’s votes in four queries", async () => {
     testQueries.length = 0;
     const rows = await feed(viewer, "following");

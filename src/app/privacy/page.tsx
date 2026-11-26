@@ -7,12 +7,15 @@ export default function PrivacyPage() {
       <p className="meta">Last updated: November 26, 2026</p>
       <h2 className="section">What we store</h2>
       <ul>
-        <li><strong>Account:</strong> your email address (for sign-in links), display name, bio, avatar color, privately declared age band, and the terms version you accepted. Your public profile does not show your age group.</li>
+        <li><strong>Account:</strong> your sign-in email, display name, bio, picture choice, optional featured discussion or room, privately declared age band, and the terms version you accepted. Your public profile does not show your age group.</li>
         <li><strong>Social content:</strong> posts, comments, reactions, follows, room memberships, endorsements, time-limited duo listings, structured duo requests, private choices about playing together again, and reports you make or receive. After an eligible duo session, both players must opt in before either sees that the other wants another game.</li>
         <li><strong>Riot data:</strong> if you link or look up a Riot ID, we cache that player&apos;s <em>recent form only</em> — roughly the last 20 matches and current rank — refreshed on demand and overwritten on each refresh. We deliberately do <strong>not</strong> build a permanent archive of anyone&apos;s match history.</li>
         <li><strong>Moderation records:</strong> filter scores, held/removed content, reports, and sanctions, kept so enforcement is consistent and appealable. When U.S. law requires preservation after a qualifying CyberTipline report, the one-year period runs from the completed submission. A legal hold can require longer retention. Designated responders handle urgent evidence.</li>
         <li><strong>Safety signals:</strong> sign-in and participation rate limits use time-limited counters. Staff keep restricted records of enforcement and appeals. We use these records to review abuse and correct mistakes.</li>
       </ul>
+      <h2 className="section">Your profile picture</h2>
+      <p>Your saved picture appears alongside your name on your public profile, posts and replies. You can change it or return to your initials in Edit profile. Choosing a champion portrait or a linked League icon uses existing game artwork.</p>
+      <p>When personal photo uploads are available, the editor prepares the crop on your device. On save, it sends the cropped image for private safety screening. A processor checks the submitted image and its display copy. Some pictures also need human review. Only an approved picture you select can appear publicly. Safety evidence can be retained when a report or legal hold requires it.</p>
       <p>Your followers can see your name on a discussion you repost. Undo removes the attribution from their feed. We retain the original share date so repeated reposts keep their place. Deleting your account deletes that record.</p>
       <h2 className="section">Private community tools</h2>
       <p>Either person in an accepted duo can check both recent Riot profiles. For up to 30 days from acceptance we keep the check time, coverage and timestamps of the first shared game and a later-day repeat within seven days. This record contains no match IDs or replay data.</p>

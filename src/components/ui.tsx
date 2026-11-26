@@ -1,4 +1,11 @@
-export function Avatar({ name, hue, size = 40, imageUrl }: { name: string; hue: number; size?: number; imageUrl?: string }) {
+import { publicAvatar, championAvatarArt, avatarImageUrl, isOfficialRiotIcon, type AvatarRef } from "@/lib/avatar";
+
+export function Avatar({ name, hue, size = 40, imageUrl, avatar }: {
+  name: string; hue: number; size?: number; imageUrl?: string; avatar?: AvatarRef;
+}) {
+  const ref = publicAvatar(avatar);
+  const url = avatarImageUrl(ref) ?? (imageUrl && isOfficialRiotIcon(imageUrl) ? imageUrl : undefined);
+  const art = ref.kind === "champion" ? championAvatarArt(ref.id) : url ? { backgroundImage: `url("${url}")` } : undefined;
   const initials = name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("") || "?";
   return (
     <span
@@ -7,7 +14,7 @@ export function Avatar({ name, hue, size = 40, imageUrl }: { name: string; hue: 
       aria-hidden
     >
       {initials}
-      {imageUrl && <span className="avatar-art" style={{backgroundImage: `url("${imageUrl}")`}} />}
+      {art && <span className="avatar-art" style={art} />}
     </span>
   );
 }

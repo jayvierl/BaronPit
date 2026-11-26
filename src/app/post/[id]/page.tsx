@@ -8,6 +8,7 @@ import { ThreadIcon } from "@/components/thread-icon";
 import styles from "@/components/thread.module.css";
 import { notFound } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { publicAvatarIdentity } from "@/lib/author-identity";
 import { getPost } from "@/lib/social";
 import { currentPatch } from "@/lib/riot";
 import { DecisionThread } from "@/components/decision-thread";
@@ -54,8 +55,7 @@ export default async function PostPage({ params, searchParams }: { params: Promi
         patch={patch}
         signedIn={!!user}
         viewerId={user?.id}
-        viewerName={user?.displayName}
-        viewerHue={user?.avatarHue}
+        viewerIdentity={publicAvatarIdentity(user)}
         threadPage
       />
       {post.isQuestion && post.status === "visible" && <DecisionThread postId={postId} user={user} />}

@@ -1,6 +1,8 @@
 import type { CardItem } from "./build-catalog";
+import type { AvatarRef } from "./avatar";
 export interface PostView {
   id: number; authorId: number; authorName: string; authorHue: number;
+  authorAvatar?: AvatarRef;
   authorFlair: string | null;
   authorStatsHref?: string;
   kind: string; body: string; roomId: number | null; roomSlug: string | null; roomName: string | null;
@@ -17,6 +19,7 @@ export interface PostView {
 }
 export interface CommentView {
   id: number; postId: number; authorId: number; authorName: string; authorHue: number;
+  authorAvatar?: AvatarRef;
   parentId: number | null; body: string; status: string; createdAt: string; oneFix: boolean;
   reactions: Record<string, number>; myReactions: string[]; replies: CommentView[];
 }

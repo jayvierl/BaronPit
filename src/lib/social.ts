@@ -2,6 +2,7 @@ import { insertSubmission, priorSubmission, submissionHash, validSubmissionId, t
 import { includesRoomLink, roomWriteError } from "./room-safety";
 import { inProbation } from "./account-policy";
 import { validId } from "./ids";
+import { publicAvatar } from "./avatar";
 import type { DecisionContext } from "./decisions-input";
 import { preparePost, scoreSubmission, type CreatePostInput } from "./post-input";
 export type { CreatePostInput } from "./post-input";
@@ -242,7 +243,7 @@ export async function searchAll(term: string, viewer: User | null) {
   const t = term.trim();
   const tags = t.replace(/^#/, "");
   const [users, players, rooms, tagPosts] = await Promise.all([
-    t.length >= 2 ? queryRows(`WITH ${HIDDEN_AUTHORS} SELECT id, display_name, avatar_hue FROM wp_users
+    t.length >= 2 ? queryRows(`WITH ${HIDDEN_AUTHORS} SELECT id, display_name, avatar_hue, avatar_ref FROM wp_users
       WHERE safety_status = 'visible' AND id NOT IN (SELECT id FROM hidden) AND strpos(lower(display_name), lower($2)) > 0
       ORDER BY display_name, id LIMIT 8`, [viewer?.id ?? null, t]) : [],
     t.length >= 2 && !t.startsWith("#") ? q`SELECT puuid, platform, game_name, tag_line, rank_tier, rank_div, snapshot->'rankedEntries' AS ranked_entries FROM wp_players
@@ -253,7 +254,7 @@ export async function searchAll(term: string, viewer: User | null) {
   ]);
   const roomHits = rooms.filter(r => r.name.toLowerCase().includes(t.toLowerCase()));
   return {
-    users: users.map((u) => ({ id: Number(u.id), name: String(u.display_name), hue: Number(u.avatar_hue) })),
+    users: users.map((u) => ({ id: Number(u.id), name: String(u.display_name), hue: Number(u.avatar_hue), avatar: publicAvatar(u.avatar_ref) })),
     players: players.map((p) => ({
       puuid: String(p.puuid), platform: String(p.platform),
       riotId: `${p.game_name}#${p.tag_line}`,

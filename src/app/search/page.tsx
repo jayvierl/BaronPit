@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
+import { publicAvatarIdentity } from "@/lib/author-identity";
 import { searchAll } from "@/lib/social";
 import { currentPatch, PLATFORMS } from "@/lib/riot";
 import { playerStatsHref } from "@/lib/platforms";
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const [sp, user] = await Promise.all([searchParams, getCurrentUser()]);
+  const viewerIdentity = publicAvatarIdentity(user);
   const term = typeof sp.q === "string" ? sp.q.trim().slice(0,80) : "";
   const [results, patch] = await Promise.all([
     term ? searchAll(term, user).catch(() => null) : null, term ? currentPatch() : "",
@@ -47,7 +49,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
               <h2 className="section">Community profiles</h2>
               {results.users.map((u) => (
                 <Link key={u.id} href={`/u/${u.id}`} className={`card ${styles.result}`}>
-                  <Avatar name={u.name} hue={u.hue} size={36} />
+                  <Avatar name={u.name} hue={u.hue} avatar={u.avatar} size={36} />
                   <strong className={styles.identity}>{u.name}</strong>
                 </Link>
               ))}
@@ -67,7 +69,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           {results.tagPosts.length > 0 && (
             <>
               <h2 className="section">Posts with this tag</h2>
-              {results.tagPosts.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} />)}
+              {results.tagPosts.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} viewerIdentity={viewerIdentity} />)}
             </>
           )}
           {results.players.length === 0 && results.users.length === 0 && results.rooms.length === 0 && results.tagPosts.length === 0 && (

@@ -41,6 +41,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
   return (
     <section aria-labelledby="moderation-title">
       <h1 id="moderation-title" className="page-title">Moderation queue</h1>
+      <p><Link href="/admin/moderation/photos">Review profile photos →</Link></p>
       <p className="meta">
         Urgent cases appear first. Report counts describe how many different people raised a concern. Check
         the context before deciding.

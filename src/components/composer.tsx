@@ -8,6 +8,7 @@ import { clipLink } from "@/lib/clip-link";
 import { BARON_CALL_OPTIONS } from "@/lib/poll";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { Avatar } from "./ui";
+import type { AvatarIdentity } from "@/lib/author-identity";
 import styles from "./thread.module.css";
 
 type Kind = "text" | "build" | "poll" | "clip";
@@ -16,14 +17,12 @@ export function Composer({
   roomId,
   patch,
   champions,
-  userName,
-  userHue,
+  viewerIdentity,
 }: {
   roomId?: number;
   patch: string;
   champions: string[];
-  userName?: string;
-  userHue?: number;
+  viewerIdentity?: AvatarIdentity | null;
 }) {
   const router = useRouter();
   const [kind, setKind] = useState<Kind>("text");
@@ -150,7 +149,7 @@ export function Composer({
       aria-label="Start a thread"
     >
       <div className="composer-head">
-        {userName != null && <Avatar name={userName} hue={userHue ?? 0} size={40} />}
+        {viewerIdentity && <Avatar {...viewerIdentity} size={40} />}
         <textarea
           ref={bodyRef}
           aria-label="Post text"

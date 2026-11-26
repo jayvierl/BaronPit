@@ -1,3 +1,4 @@
+import { profilePhotoSchema } from "./profile-photo-schema";
 import { submissionSchema } from "./submission-schema";
 import { communityObjectiveSchema } from "./community-objective-schema";
 import { APP_NAME } from "./brand";
@@ -25,7 +26,7 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
  */
 
 type Sql = NeonQueryFunction<false, false>;
-const SCHEMA_REVISION = "baron-social-duo-20261126-5";
+const SCHEMA_REVISION = "baron-profile-avatar-20261126-1";
 let client: Sql | undefined;
 let ready: Promise<void> | undefined;
 
@@ -86,6 +87,9 @@ export function schemaStatements(sql: Sql) {
     banned_until TIMESTAMPTZ,
     strike_count INT NOT NULL DEFAULT 0
   )`,
+    sql`ALTER TABLE wp_users ADD COLUMN IF NOT EXISTS avatar_ref jsonb,
+      ADD COLUMN IF NOT EXISTS profile_version integer NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS profile_link text`,
     sql`CREATE TABLE IF NOT EXISTS wp_magic_links (
     id SERIAL PRIMARY KEY,
     email TEXT NOT NULL,
@@ -268,6 +272,7 @@ export function schemaStatements(sql: Sql) {
     ...[...ownershipSchema, ...decisionSchema, ...librarySchema, ...pilotSchema, ...duoExtraSchema, ...duoFitSchema, ...reviewHourSchema, ...communityObjectiveSchema, ...spotlightSchema].map(text => sql(text, [])),
     sql`CREATE TABLE IF NOT EXISTS wp_safety_page_delivery (receipt uuid PRIMARY KEY, opened_at timestamptz NOT NULL,
       attempts integer NOT NULL DEFAULT 0, next_attempt timestamptz NOT NULL DEFAULT now(), lease_id uuid, delivered_at timestamptz)`,
+    ...profilePhotoSchema(sql),
     sql`INSERT INTO wp_meta(key,value) VALUES ('schema_revision',${SCHEMA_REVISION})
       ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
   ];

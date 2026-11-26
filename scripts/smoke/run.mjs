@@ -9,6 +9,8 @@ import assert from "node:assert/strict";
 import { checkSubmissions } from "./submissions.mjs";
 import { checkCommunityDuo } from "./community-duo.mjs";
 import { checkPlayerProfiles } from "./profiles.mjs";
+import { checkProfileEditor } from "./profile-editor.mjs";
+import { fixturePhotoEnv } from "./photo-scanner.mjs";
 import { checkImage, publicArtwork } from "../public-art.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -53,8 +55,7 @@ const server = spawn(
       CRON_SECRET: "",
       RESEND_API_KEY: "",
       BLOB_READ_WRITE_TOKEN: "",
-      ADMIN_EMAILS: "",
-      SAFETY_OWNER_EMAILS: "",
+      ...fixturePhotoEnv,
       VERCEL_ENV: "development",
       DUO_MATCHING_ENABLED: "false",
     },
@@ -70,18 +71,28 @@ const signed = { cookie: "wp_session=" + session };
 let completed = 0;
 async function journey(
   path,
-  { status = 200, session = false, includes = [], excludes = [], method = "GET", body, base = origin, signInReturn, html = false } = {},
+  { status = 200, session = false, includes = [], excludes = [], method = "GET", body, base = origin, signInReturn, html = false, upload, expectWebp = false } = {},
 ) {
   const res = await fetch(base + path, {
     method,
     headers: {
       ...(session === "helper" ? {cookie: "wp_session=" + helperSession} : session ? signed : {}),
-      ...(method === "POST" ? { origin: base, "content-type": "application/json" } : {}),
+      ...(method !== "GET" ? { origin: base, "content-type": upload ? "image/webp" : "application/json" } : {}),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: upload ?? (body === undefined ? undefined : JSON.stringify(body)),
     redirect: "manual",
     signal: AbortSignal.timeout(20000),
   });
+  if (expectWebp) {
+    assert.equal(res.status, status, path);
+    assert.match(res.headers.get("content-type") ?? "", /^image\/webp/);
+    assert.match(res.headers.get("cache-control") ?? "", /no-store/);
+    const bytes = Buffer.from(await res.arrayBuffer());
+    assert.equal(bytes.subarray(0, 4).toString(), "RIFF");
+    assert.equal(bytes.subarray(8, 12).toString(), "WEBP");
+    completed++;
+    return;
+  }
   const text = await res.text();
   if (signInReturn) {
     const location = new URL(res.headers.get("location"), base);
@@ -242,6 +253,7 @@ try {
   await journey("/api/account/riot/start",{session:true,method:"POST",status:503,body:{puuid:"fixture-owner"},includes:["awaiting provider configuration"]});
   await checkSubmissions(journey);
   await checkCommunityDuo(journey);
+  await checkProfileEditor(journey);
   console.log(completed + " production HTTP journeys passed against the local PostgreSQL fixture.");
 } catch (error) {
   console.error(output);

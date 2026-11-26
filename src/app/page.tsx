@@ -16,6 +16,7 @@ import { GuestPostDraft } from "@/components/guest-draft";
 import Image from "next/image";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
+import { publicAvatarIdentity } from "@/lib/author-identity";
 import { dbAvailable } from "@/lib/db";
 import { trendingChampions } from "@/lib/player-insights";
 import { listFeaturedRooms } from "@/lib/rooms";
@@ -32,6 +33,7 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const [{tab},user] = await Promise.all([searchParams,getCurrentUser()]);
+  const viewerIdentity = publicAvatarIdentity(user);
   const activeTab = tab === "following" && user ? "following" : "everyone";
   const today = new Date().toISOString().slice(0, 10);
   const available = dbAvailable();
@@ -45,7 +47,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     user && available ? hasIncomingDuoRequest(user.id).catch(() => false) : false,
   ]);
   function renderPost(post: NonNullable<typeof posts>[number]) {
-    return <PostCard key={post.id} post={post} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} />;
+    return <PostCard key={post.id} post={post} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} viewerIdentity={viewerIdentity} />;
   }
 
   return (
@@ -65,7 +67,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       </div>}
 
       {user ? (
-        <Composer patch={patch} champions={champions.map((c) => c.id)} userName={user.displayName} userHue={user.avatarHue} />
+        <Composer patch={patch} champions={champions.map((c) => c.id)} viewerIdentity={viewerIdentity} />
       ) : (
         <GuestPostDraft destination="/#compose" label="Start a conversation"/>
       )}

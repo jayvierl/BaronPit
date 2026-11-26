@@ -1,3 +1,4 @@
+import { publicAvatar, type AvatarRef } from "./avatar";
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import { cache } from "react";
 import { TERMS_VERSION, isAgeBand, type AgeBand } from "./account-policy";
@@ -15,6 +16,9 @@ export interface User {
   email: string;
   displayName: string;
   avatarHue: number;
+  avatar?: AvatarRef;
+  profileVersion?: number;
+  profileLink?: string | null;
   bio: string;
   createdAt: string;
   bannedUntil: string | null;
@@ -38,6 +42,9 @@ function rowToUser(r: Record<string, unknown>): User {
     email: String(r.email),
     displayName: String(r.display_name),
     avatarHue: Number(r.avatar_hue),
+    avatar: publicAvatar(r.avatar_ref),
+    profileVersion: Number(r.profile_version ?? 0),
+    profileLink: typeof r.profile_link === "string" ? r.profile_link : null,
     bio: String(r.bio ?? ""),
     createdAt: String(r.created_at),
     bannedUntil: r.banned_until ? String(r.banned_until) : null,

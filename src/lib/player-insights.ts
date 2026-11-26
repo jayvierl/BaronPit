@@ -3,6 +3,7 @@ import { HIDDEN_AUTHORS, BLOCKED_AUTHORS } from "./community-queries";
 import { playerFlair } from "./player-summary";
 import { playerFromRow, type Player } from "./riot";
 import { fnvHash } from "./pure";
+import { publicAvatar } from "./avatar";
 
 export async function linkedPlayers(userId: number) {
   const rows = await q`SELECT p.*, l.is_primary, p.snapshot #> '{champPool,0,champion}' AS main, (l.verified AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.verified AND other.puuid=l.puuid AND other.user_id<>l.user_id)) AS verified FROM wp_links l JOIN wp_players p ON p.puuid=l.puuid
@@ -96,11 +97,11 @@ export async function todaysSpotlight(dateStr: string, viewerId: number | null =
 
 export async function publicProfile(userId: number, viewerId: number | null, dateStr: string) {
   const [row] = await queryRows(`WITH ${HIDDEN_AUTHORS}, ${visibleSpotlight}
-    SELECT u.display_name,u.avatar_hue,u.bio,u.created_at,
+    SELECT u.display_name,u.avatar_hue,u.avatar_ref,u.bio,u.profile_link,u.created_at,
       EXISTS (SELECT 1 FROM featured f WHERE f.user_id=u.id) AS featured
     FROM wp_users u WHERE u.id=$3 AND u.safety_status='visible'
       AND (u.banned_until IS NULL OR u.banned_until<=now())
       AND u.id NOT IN (${BLOCKED_AUTHORS})`, [viewerId,dateStr,userId]);
-  return row ? { id: userId, name: String(row.display_name), hue: Number(row.avatar_hue),
-    bio: String(row.bio ?? ""), createdAt: String(row.created_at), featured: row.featured === true } : null;
+  return row ? { id: userId, name: String(row.display_name), hue: Number(row.avatar_hue), avatar: publicAvatar(row.avatar_ref),
+    bio: String(row.bio ?? ""), link: typeof row.profile_link === "string" ? row.profile_link : null, createdAt: String(row.created_at), featured: row.featured === true } : null;
 }

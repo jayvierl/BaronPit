@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { publicAvatarIdentity } from "@/lib/author-identity";
 import { championRoomPulse } from "@/lib/player-insights";
 import { SafetyReport } from "@/components/safety-report";
 import { feed, getRoom } from "@/lib/social";
@@ -20,6 +21,7 @@ export const dynamic = "force-dynamic";
 
 export default async function RoomPage({ params }: { params: Promise<{ slug: string }> }) {
   const [{slug},user] = await Promise.all([params,getCurrentUser()]);
+  const viewerIdentity = publicAvatarIdentity(user);
   const [room,patch,champions] = await Promise.all([getRoom(slug,user?.id),currentPatch(),championList()]);
   if (!room) notFound();
   const [posts,brief] = await Promise.all([
@@ -97,13 +99,13 @@ export default async function RoomPage({ params }: { params: Promise<{ slug: str
       )}
 
       {user
-        ? <Composer roomId={room.id} patch={patch} champions={champions.map((c) => c.id)} userName={user.displayName} userHue={user.avatarHue} />
+        ? <Composer roomId={room.id} patch={patch} champions={champions.map((c) => c.id)} viewerIdentity={viewerIdentity} />
         : <GuestPostDraft roomId={room.id} destination={`/rooms/${room.slug}#compose`} label={`Post in ${room.name}`}/>}
 
       <div>
         {posts === null ? <div className="empty" role="status">Room posts are temporarily unavailable. Refresh to try again.</div> : posts.length === 0
           ? <div className="empty">No posts yet — start this room&apos;s first thread.</div>
-          : posts.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} />)}
+          : posts.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} viewerIdentity={viewerIdentity} />)}
       </div>
     </div>
   );

@@ -2,7 +2,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { PostCard } from "./post-card";
+import { Composer } from "./composer";
 import { BARON_CALL_OPTIONS } from "../lib/poll";
+import { AVATAR_PATCH } from "../lib/avatar";
 import { RichBody } from "./ui";
 import type { PostView } from "../lib/post-types";
 vi.mock("next/navigation", () => ({ useRouter: () => ({}) }));
@@ -35,6 +37,23 @@ function render(kind: string, data: Record<string, unknown>, status = "visible")
   );
 }
 describe("thread controls", () => {
+  it("keeps the post author's avatar distinct from the signed-in player's composer avatar", () => {
+    const photo = {kind:"upload",id:"e154c2e1-f001-4324-98f7-d5435281c421",hash:"9e".repeat(32)} as const;
+    const photoPath = "/api/profile-photo/" + photo.id + "?v=" + photo.hash;
+    const viewer = {name:"Reader", hue:140, avatar:photo};
+    const props = {
+      post:{...base,kind:"text",data:{},authorAvatar:{kind:"champion",id:"Nami"} as const},
+      signedIn:true,viewerId:2,viewerIdentity:viewer,threadPage:true,patch:"16.23.1",
+    };
+    const thread = renderToStaticMarkup(createElement(PostCard,props));
+    expect(thread).toContain(`/champions/${AVATAR_PATCH}.webp`);
+    expect(thread).toContain(photoPath);
+    const composer = renderToStaticMarkup(createElement(Composer, {champions:[],patch:props.patch,viewerIdentity:viewer}));
+    expect(composer).toContain(photoPath);
+    expect(renderToStaticMarkup(createElement(PostCard,{...props,signedIn:false}))).not.toContain(photoPath);
+    expect(render("text",{})).not.toContain('class="avatar-art"');
+  });
+
   it("links an author's public name to their community identity and verified rank to its Riot player", () => {
     const post = { ...base, kind: "text", data: {}, authorFlair: "Gold IV", authorStatsHref: "/player?platform=euw1&riotId=Un%20nom%23EUW" };
     const html = renderToStaticMarkup(createElement(PostCard, { post, patch: "16.23.1", signedIn: false }));

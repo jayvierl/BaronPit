@@ -1,71 +1,10 @@
 "use client";
 
 import { clearBrowserAuthDrafts } from "@/lib/auth-draft";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PLATFORMS, splitRiotId } from "@/lib/platforms";
 import { usePostAction, ActionFeedback } from "./post-action";
-
-export function ProfileForm({ name, bio }: { name: string; bio: string }) {
-  const router = useRouter();
-  const action = usePostAction();
-  const [displayName, setDisplayName] = useState(name);
-  const [bioText, setBioText] = useState(bio);
-  const [saved, setSaved] = useState(false);
-  const id = useId();
-  return (
-    <form
-      onSubmit={async (e) => {
-        e.preventDefault();
-        setSaved(false);
-        if (await action.send("/api/account/profile", { displayName, bio: bioText })) {
-          setSaved(true);
-          router.refresh();
-        }
-      }}
-    >
-      <div className="field">
-        <label htmlFor={id + "-name"}>Display name</label>
-        <input
-          id={id + "-name"}
-          type="text"
-          required
-          value={displayName}
-          disabled={action.busy}
-          onChange={(e) => {
-            setDisplayName(e.target.value);
-            setSaved(false);
-          }}
-          maxLength={40}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor={id + "-bio"}>Bio</label>
-        <textarea
-          id={id + "-bio"}
-          rows={3}
-          value={bioText}
-          disabled={action.busy}
-          onChange={(e) => {
-            setBioText(e.target.value);
-            setSaved(false);
-          }}
-          maxLength={280}
-          placeholder="Roles, champions or when you play…"
-        />
-      </div>
-      <ActionFeedback error={action.error} />
-      {saved && (
-        <p className="notice ok" role="status">
-          Profile saved.
-        </p>
-      )}
-      <button type="submit" className="btn" disabled={action.busy}>
-        {action.busy ? "Saving…" : "Save profile"}
-      </button>
-    </form>
-  );
-}
 
 export function LinkForm() {
   const router = useRouter();

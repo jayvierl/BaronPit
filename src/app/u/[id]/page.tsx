@@ -7,28 +7,31 @@ import { feedByAuthor, followCounts, isFollowing, endorsementCounts, dailyHighli
 import { earnedBadges } from "@/lib/pure";
 import { linkedPlayers as readLinkedPlayers, publicProfile } from "@/lib/player-insights";
 import { playerStatsHref } from "@/lib/platforms";
+import { readProfileLink } from "@/lib/profile-featured-link";
 import { signInHref } from "@/lib/signin-return";
 import { Avatar } from "@/components/ui";
 import { PlayerStats } from "@/components/player-stats";
 import { EndorseRow, FollowButton, UserSafetyMenu } from "@/components/social-ui";
+import { publicAvatarIdentity } from "@/lib/author-identity";
 import { PostCard } from "@/components/post-card";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage({ params, searchParams }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; updated?: string }>;
 }) {
-  const [{id},{tab},viewer] = await Promise.all([params,searchParams,getCurrentUser()]);
+  const [{id},{tab,updated},viewer] = await Promise.all([params,searchParams,getCurrentUser()]);
   const userId = Number(id);
   if (!Number.isSafeInteger(userId) || userId <= 0 || userId > 2147483647) notFound();
   const today = new Date().toISOString().slice(0, 10);
   const profile = await publicProfile(userId, viewer?.id ?? null, today);
   if (!profile) notFound();
-  const [patch,counts,endorsements,linkedPlayers,following,posts] = await Promise.all([
+  const [patch,counts,endorsements,linkedPlayers,following,posts,featuredLink] = await Promise.all([
     currentPatch(), followCounts(userId), endorsementCounts(userId), readLinkedPlayers(userId),
     viewer && viewer.id !== userId ? isFollowing(viewer.id,userId) : false,
     feedByAuthor(userId,viewer,20).catch(() => null),
+    profile.link ? readProfileLink(profile.link, viewer?.id ?? null) : null,
   ]);
   const player = linkedPlayers[0] ?? null;
   const badges = player?.verified ? earnedBadges(player.snapshot) : [];
@@ -40,6 +43,7 @@ export default async function ProfilePage({ params, searchParams }: {
 
   return (
     <div>
+      {isSelf && updated === "1" && <p className="notice ok" role="status">Profile updated.</p>}
       <div style={{ padding: "6px 2px 0" }}>
         <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -57,7 +61,7 @@ export default async function ProfilePage({ params, searchParams }: {
               </div>
             )}
           </div>
-          <Avatar name={profile.name} hue={profile.hue} size={84} />
+          <Avatar name={profile.name} hue={profile.hue} avatar={profile.avatar} size={84} />
         </div>
 
         {player?.verified && lookupHref && <PlayerStats player={player} lookupHref={lookupHref} />}
@@ -66,6 +70,7 @@ export default async function ProfilePage({ params, searchParams }: {
         )}
         {!player && isSelf && <p className="meta"><Link href="/me">Link a Riot ID to your profile →</Link></p>}
         {profile.bio && <p style={{ margin: "12px 0 0", fontSize: 15 }}>{profile.bio}</p>}
+        {featuredLink && <p><Link href={featuredLink.href}>{featuredLink.label} <span aria-hidden="true">↗</span></Link></p>}
 
         <div className="meta" style={{ marginTop: 10, fontSize: 14 }}>
           {counts.followers} follower{counts.followers === 1 ? "" : "s"} · {counts.following} following · joined{" "}
@@ -82,7 +87,7 @@ export default async function ProfilePage({ params, searchParams }: {
         {!viewer && <div className="profile-actions"><Link className="btn small" href={signInHref(`/u/${userId}`)}>Sign in to follow</Link></div>}
         {(viewer || isSelf) && (
           <div className="profile-actions">
-            {isSelf && <><Link href="/me" className="btn secondary">Edit profile</Link><Link href="/lfg" className="btn secondary">My duo preferences</Link></>}
+            {isSelf && <><Link href="/profile/edit" className="btn secondary">Edit profile</Link><Link href="/lfg" className="btn secondary">My duo preferences</Link></>}
             {viewer && !isSelf && <FollowButton userId={userId} initial={following} />}
           </div>
         )}
@@ -144,7 +149,7 @@ export default async function ProfilePage({ params, searchParams }: {
       ) : posts.length === 0 ? (
         <div className="empty">No posts yet.</div>
       ) : (
-        posts.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(viewer)} viewerId={viewer?.id ?? null} />)
+        posts.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(viewer)} viewerId={viewer?.id ?? null} viewerIdentity={publicAvatarIdentity(viewer)} />)
       )}
     </div>
   );

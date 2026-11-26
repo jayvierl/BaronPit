@@ -2,19 +2,14 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import atlas from "@/lib/champion-portrait-atlas.json";
-
-const portraitIds = new Map(atlas.ids.map((id, index) => [id, index]));
-const atlasUrl = `url("/champions/${atlas.patch}.webp")`;
+import { AVATAR_PATCH, championAvatarArt } from "@/lib/avatar";
 
 /** The directory's bundled Riot portraits render offline. A newer patch can overlay its current artwork. */
 export function ChampionPortrait({ id, patch, size = 40 }: { id: string; patch: string; size?: number }) {
-  const index = portraitIds.get(id);
+  const art = championAvatarArt(id);
   const [failedUrl, setFailedUrl] = useState("");
   const remote = `https://ddragon.leagueoflegends.com/cdn/${patch}/img/champion/${encodeURIComponent(id)}.png`;
-  const fetchNewArt = patch !== atlas.patch || index == null;
-  const column = index == null ? 0 : index % atlas.columns;
-  const row = index == null ? 0 : Math.floor(index / atlas.columns);
+  const fetchNewArt = patch !== AVATAR_PATCH || !art;
   return (
     <span
       className="champ-icon"
@@ -28,12 +23,10 @@ export function ChampionPortrait({ id, patch, size = 40 }: { id: string; patch: 
         width: size,
         height: size,
         backgroundColor: "var(--field)",
-        backgroundImage: index == null ? undefined : atlasUrl,
-        backgroundSize: `${atlas.columns * 100}% ${atlas.rows * 100}%`,
-        backgroundPosition: `${(100 * column) / (atlas.columns - 1)}% ${(100 * row) / (atlas.rows - 1)}%`,
+        ...art,
       }}
     >
-      {index == null && id.charAt(0).toUpperCase()}
+      {!art && id.charAt(0).toUpperCase()}
       {fetchNewArt && failedUrl !== remote && (
         <Image unoptimized fill sizes={size + "px"} src={remote} alt="" onError={() => setFailedUrl(remote)} />
       )}

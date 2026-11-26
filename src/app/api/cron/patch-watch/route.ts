@@ -1,3 +1,4 @@
+import { maintainPhotos } from "@/lib/profile-photo";
 import { clearExpiredGameChecks } from "@/lib/duo-game-check";
 import { clearExpiredOwnership } from "@/lib/riot-ownership";
 import { clearExpiredPilotData } from "@/lib/pilot";
@@ -14,7 +15,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
   try {
-    const [result] = await Promise.all([runPatchWatch(), clearExpiredAuthData(), clearExpiredDuoListings(), clearExpiredRoomTurns(), clearExpiredOwnership(), clearExpiredPilotData(), clearExpiredGameChecks()]);
+    const [result] = await Promise.all([runPatchWatch(), clearExpiredAuthData(), clearExpiredDuoListings(), clearExpiredRoomTurns(), clearExpiredOwnership(), clearExpiredPilotData(), clearExpiredGameChecks(), maintainPhotos()]);
     return NextResponse.json({ ok: true, ...result }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ ok: false, error: "Scheduled update could not finish." }, { status: 503 });

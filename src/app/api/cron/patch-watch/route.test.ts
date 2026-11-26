@@ -7,6 +7,7 @@ vi.mock("@/lib/social", () => ({ runPatchWatch: mocks.watch }));
 vi.mock("@/lib/room-safety", () => ({ clearExpiredRoomTurns: vi.fn() }));
 vi.mock("@/lib/duo", () => ({ clearExpiredDuoListings: mocks.duo }));
 vi.mock("@/lib/auth", () => ({ clearExpiredAuthData: mocks.clean }));
+vi.mock("@/lib/profile-photo", () => ({ maintainPhotos: vi.fn() }));
 import { GET } from "./route";
 
 describe("scheduled patch updates", () => {

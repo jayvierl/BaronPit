@@ -9,7 +9,7 @@ import { myNotices, myReports, followCounts } from "@/lib/social";
 import { linkedPlayers } from "@/lib/player-insights";
 import { socialRankLabel } from "@/lib/player-summary";
 import { Avatar } from "@/components/ui";
-import { LinkForm, ProfileForm, SignOutButton, UnlinkButton, PrimaryPlayerButton } from "@/components/me-ui";
+import { LinkForm, SignOutButton, UnlinkButton, PrimaryPlayerButton } from "@/components/me-ui";
 
 const verificationMessages: Record<string,string> = {
   verified: "Riot confirmed ownership of your linked profile.",
@@ -21,7 +21,7 @@ const verificationMessages: Record<string,string> = {
 
 export const dynamic = "force-dynamic";
 
-export default async function MePage({ searchParams }: { searchParams: Promise<{ welcome?: string; verification?: string; beforeSubmission?: string }> }) {
+export default async function MePage({ searchParams }: { searchParams: Promise<{ welcome?: string; verification?: string; beforeSubmission?: string; updated?: string }> }) {
   const [sp,user] = await Promise.all([searchParams,getCurrentUser()]);
   if (!user) redirect("/signin");
   const [counts,reports,notices,linked,receipts] = await Promise.all([
@@ -30,12 +30,13 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
 
   return (
     <div style={{ maxWidth: 760, margin: "0 auto" }}>
+      {sp.updated === "1" && <p className="notice ok" role="status">Profile updated.</p>}
       {sp.verification && <p className="notice" role="status">{(Object.hasOwn(verificationMessages,sp.verification) && verificationMessages[sp.verification]) || "Check your Riot links below."}</p>}
       {!user.termsCurrent && <p className="notice"><Link href="/signin?enrol=1">Confirm your age group and accept the community terms</Link> before posting.</p>}
       {sp.welcome && <div className="notice ok">🎉 You&apos;re in! Link a Riot ID to follow its recent form and find champion rooms.</div>}
       <div className="card">
         <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-          <Avatar name={user.displayName} hue={user.avatarHue} size={58} />
+          <Avatar name={user.displayName} hue={user.avatarHue} avatar={user.avatar} size={58} />
           <div style={{ flex: 1 }}>
             <h1 style={{ margin: 0, fontSize: 23 }}>{user.displayName}</h1>
             <div className="meta">{user.email} · {counts.followers} followers · {counts.following} following · <Link href={`/u/${user.id}`}>View public profile</Link></div>
@@ -46,8 +47,7 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
 
       <div className="card">
         <nav className="account-shortcuts" aria-label="My community"><Link href="/lfg">My duo preferences</Link><Link href="/activity">Thread activity</Link><Link href="/playbook">My playbook</Link><Link href="/pilot">Community pilot</Link>{isAdmin(user.email) && <Link href="/admin/pilot">Pilot results</Link>}</nav>
-        <h2 style={{ margin: "0 0 10px", fontSize: 18 }}>Profile</h2>
-        <ProfileForm name={user.displayName} bio={user.bio} />
+        <Link href="/profile/edit?from=account" className="btn secondary">Edit profile</Link>
       </div>
 
       <div className="card">
