@@ -17,9 +17,9 @@ export const canDisplayPost = `p.withdrawn_at IS NULL AND ${visibleContentKind} 
   AND (p.room_id IS NULL OR EXISTS (SELECT 1 FROM wp_rooms room WHERE room.id = p.room_id AND room.safety_status = 'visible'))`;
 export const visiblePostForInteraction = `p.status = 'visible' AND ${canDisplayPost}`;
 
-const visibleComment = "c.status = 'visible' AND c.author_id NOT IN (SELECT id FROM hidden)";
+const visibleComment = "c.status = 'visible' AND c.withdrawn_at IS NULL AND c.author_id NOT IN (SELECT id FROM hidden)";
 
-// For a targeted operation walk just the ancestor chain. A legacy reply is visible only
+// For a targeted operation walk just the ancestor chain. A reply is visible only
 // if the chain reaches a visible root in the same visible post.
 export function visibleCommentsFor(scope: "posts" | "comment" | "candidateReplies", posts: "parameter" | "candidates" = "parameter") {
   if (scope !== "posts") {

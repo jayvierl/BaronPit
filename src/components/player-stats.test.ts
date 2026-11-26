@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { LEAGUE_TIERS } from "../lib/rank";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { PlayerStats } from "./player-stats";
 import { EMPTY_SNAPSHOT } from "../lib/pure";
 import type { Player } from "../lib/riot";
@@ -13,7 +13,7 @@ const player: Player = {
   rankWins: 7, rankLosses: 3, snapshot: EMPTY_SNAPSHOT, fetchedAt: "2026-11-26T01:00:00Z",
 };
 
-it("labels the headline queue and combines both ranked records only in the disclosure", () => {
+it("shows separately tinted Solo/Duo and Flex records before the combined disclosure", () => {
   const html = renderToStaticMarkup(createElement(PlayerStats, { player: {
     ...player,
     rankedEntries: [
@@ -22,16 +22,47 @@ it("labels the headline queue and combines both ranked records only in the discl
     ],
     snapshot: {...EMPTY_SNAPSHOT, games: 2, roles: {BOTTOM:1,UTILITY:1}, champPool: [{champion:"Ashe", games:2,wins:1,kda:4}]},
   }, lookupHref: "/player?riotId=River%23NA1" }));
-  expect(html).toContain('data-tier="GOLD"');
-  for (const value of ["Gold IV", "Ranked Solo/Duo", "70%", "Other ranked stats", "30 games", "33%",
+  const solo = html.substring(html.indexOf('aria-label="Ranked Solo/Duo"'), html.indexOf('aria-label="Ranked Flex"'));
+  const flex = html.substring(html.indexOf('aria-label="Ranked Flex"'), html.indexOf("<details"));
+  expect(solo).toContain('data-tier="GOLD"');
+  expect(solo).toMatch(/<dt>Win rate<\/dt><dd>70%<small>7W · 3L<\/small><\/dd>/);
+  expect(flex).toContain('data-tier="SILVER"');
+  expect(flex).toMatch(/<dt>Win rate<\/dt><dd>15%<small>3W · 17L<\/small><\/dd>/);
+  for (const value of ["Gold IV", "Silver II", "Combined ranked record", "30 games", "33%",
     "Last 2 games · all queues", "Bot / Support", "1 game each", "Ashe", "View match history"]) expect(html).toContain(value);
+});
+
+it("shows just a Flex placement and does not borrow the legacy Solo/Duo rank", () => {
+  const html = renderToStaticMarkup(createElement(PlayerStats, { player: { ...player, rankedEntries: [
+    {queueType:"RANKED_FLEX_SR", tier:"EMERALD",rank:"I",leaguePoints:21,wins:0,losses:2},
+  ] }}));
+  expect(html).toContain('aria-label="Ranked Flex"');
+  expect(html).toContain('data-tier="EMERALD"');
+  expect(html).toContain("0%<small>0W · 2L</small>");
+  expect(html).not.toContain("Ranked Solo/Duo");
+  expect(html).not.toContain("Combined ranked record");
 });
 
 it("distinguishes absent data, unplaced rank and a stale snapshot without displaying a made-up record", () => {
   const html = renderToStaticMarkup(createElement(PlayerStats, { player: {...player, rankedEntries: []}, source: "stale" }));
   expect(html).toContain('data-tier="neutral"');
-  for (const value of ["Riot couldn’t refresh", "Unranked", "Record unavailable", "No recent games", "UTC"]) expect(html).toContain(value);
-  for (const value of ["Other ranked stats", "0%", "0W", "0L"]) expect(html).not.toContain(value);
+  for (const value of ["Riot couldn’t refresh", "Last known Riot records", "Unranked", "Record unavailable", "No recent games", "UTC"]) expect(html).toContain(value);
+  for (const value of ["Combined ranked record", "0%", "0W", "0L"]) expect(html).not.toContain(value);
+});
+
+it("dates prior-year linked data as last known even without a failed refresh", () => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime(new Date("2026-01-01T00:03:00Z"));
+    const html = renderToStaticMarkup(createElement(PlayerStats, { player: { ...player, fetchedAt: "2025-12-31T23:58:00Z" } }));
+    expect(html).toContain("Last known Riot records");
+    expect(html).toContain('dateTime="2025-12-31T23:58:00.000Z"');
+    expect(html).toContain("Dec 31, 2025");
+    expect(html).not.toContain("This ranked year");
+    expect(html).not.toContain("Riot couldn’t refresh");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("has a legible tint for each text rank in both color schemes", () => {

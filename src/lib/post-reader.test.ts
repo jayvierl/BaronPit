@@ -171,15 +171,18 @@ describe("feed and conversation read contracts", () => {
     expect(await toggleReaction(viewer,"comment",101,"GG",false)).toBe(true);
     expect((await listComments(13,viewer))[0].reactions).toEqual({});
   });
-  it("accepts a root reply and a One Fix, while rejecting nested, private and cross-thread targets", async () => {
+  it("accepts visible comment targets, while rejecting hidden ancestors, cross-thread targets and nested One Fixes", async () => {
     const send = (post: number, parent?: number, oneFix=false) => addComment(viewer,post,"Try the next drake together.",parent,oneFix);
     expect((await send(14)).ok).toBe(false);
     expect((await send(15)).ok).toBe(false);
-    expect((await send(13,102)).ok).toBe(false);
     expect((await send(13,104)).ok).toBe(false);
-    expect((await send(11,101)).ok).toBe(false);
+    expect((await send(13,105)).ok).toBe(false);
+    expect((await send(13,107)).ok).toBe(false);
+    expect((await send(11,102)).ok).toBe(false);
     expect((await send(11,undefined,true)).ok).toBe(false);
+    expect((await send(13,102,true)).ok).toBe(false);
     expect((await send(13,101)).ok).toBe(true);
+    expect((await send(13,102)).ok).toBe(true);
     expect((await send(13,undefined,true)).ok).toBe(true);
   });
   it("rebuilds old game cards from Riot and keeps discussion readable after a snapshot rolls over", async () => {

@@ -5,6 +5,8 @@ export async function checkMatchFilters(journey, playerUrl) {
   filter.searchParams.set("queue", "400");
   filter.searchParams.set("champion", "Nami");
   const loss = await journey(filter.pathname + filter.search, {html:true});
+  const playerIcon = (loss.match(/<img\b[^>]*>/g) ?? []).find(image => image.includes("profileicon"));
+  assert.ok(playerIcon?.includes("/_next/image?") && /\bfetchpriority="high"/i.test(playerIcon), "The player icon should be resized and discoverable in the initial HTML");
   const summary = html => html.match(/<p[^>]*aria-live="polite"[^>]*>([\s\S]*?)<\/p>/)?.[1].replace(/<[^>]+>/g,"") ?? "";
   const record = summary(loss);
   for (const sample of ["3 games", "0W–1L", "0% win rate"]) assert.ok(record.includes(sample), record);

@@ -3,7 +3,8 @@ import { getSql, q } from "./db";
 import { validId } from "./ids";
 import { isAdmin, isBanned, rateLimit, type User } from "./auth";
 import { viewerCanSeePostOrComment } from "./community-queries";
-import { canReportDuo } from "./duo";
+import { canReportDuo, duoEnabled, reviewedDuoRequestState } from "./duo";
+import { TERMS_VERSION } from "./account-policy";
 import { days, urgentRules, targetKinds, type Decision, type Rule, type TargetKind } from "./safety-policy";
 
 type Sql = Awaited<ReturnType<typeof getSql>>;
@@ -81,6 +82,22 @@ function target(kind: TargetKind) {
 const currentTarget = (kind: TargetKind) => target(kind) + " WHERE t.id=$2";
 const locking = (sql: Sql, kind: TargetKind, id: number) =>
   sql`SELECT pg_advisory_xact_lock(hashtext(${"wp-review:" + kind + ":" + id}))`;
+
+function duoRestorationLocks(sql: Sql, kind: TargetKind, id: number) {
+  if (kind !== "duo_request") return [];
+  // Match the order of an ordinary acceptance and serialize with a listing closure.
+  const participants = " FROM wp_duo_requests r JOIN wp_lfg l ON l.id=r.listing_id WHERE r.id=$1";
+  return [
+    sql("SELECT pg_advisory_xact_lock(hashtext('duo-session'),least(r.sender_id,l.user_id))" + participants, [id]),
+    sql("SELECT pg_advisory_xact_lock(hashtext('duo-session'),greatest(r.sender_id,l.user_id))" + participants, [id]),
+    sql("SELECT pg_advisory_xact_lock(least(r.sender_id,l.user_id),greatest(r.sender_id,l.user_id))" + participants, [id]),
+    sql("SELECT l.id" + participants + " FOR SHARE OF l", [id]),
+  ];
+}
+
+function restoreArgs(kind: TargetKind, id: number, op: string) {
+  return kind === "duo_request" ? [kind, id, op, TERMS_VERSION, duoEnabled()] : [kind, id, op];
+}
 const activeReports = "SELECT * FROM wp_reports WHERE target_kind=$1 AND target_id=$2 AND status='open'";
 const activeUrgent =
   "SELECT * FROM wp_safety_urgent WHERE target_kind=$1 AND target_id=$2 AND reviewed_at IS NULL";
@@ -97,10 +114,10 @@ function changeState(kind: TargetKind, state: "held" | "removed" | "restore", wh
   const redacted = state !== "restore";
   let value = redacted ? `'${state}'` : `'${d.visible}'`;
   if (!redacted && kind === "duo_request")
-    value = "CASE WHEN t.status='declined' THEN 'declined' ELSE 'pending' END";
+    value = reviewedDuoRequestState("t", "h");
   if (!redacted && kind === "lfg")
     value =
-      "CASE WHEN t.expires_at<=now() OR h.prior_status='closed' OR t.status='closed' THEN 'closed' ELSE 'open' END";
+      "CASE WHEN t.expires_at<=clock_timestamp() OR h.prior_status IN ('closed','removed') OR t.status='closed' THEN 'closed' ELSE 'open' END";
   const extra =
     kind === "user"
       ? redacted
@@ -242,7 +259,9 @@ export async function reviewQueue(staff: User, cursors: { cases?: unknown; appea
           WHEN category IN ('hate','fraud','harassment','sexual') THEN 1 ELSE 2 END,created_at,id))[1] AS rule
       FROM wp_reports WHERE status='open' GROUP BY target_kind,target_id), queue AS (
       SELECT t.kind,t.id,t.releasable,u.receipt,u.release_requested_by,coalesce(r.reports,0) AS reports,coalesce(u.rule,r.rule,'other') AS rule,
-        CASE WHEN u.receipt IS NULL THEN r.note END AS note, CASE WHEN u.receipt IS NULL THEN t.excerpt END AS excerpt, CASE WHEN u.receipt IS NULL THEN t.link END AS link,
+        CASE WHEN u.receipt IS NULL THEN r.note END AS note,
+        CASE WHEN u.receipt IS NULL THEN left(coalesce(nullif(concat_ws(' ',h.original_name,h.original_description),''),t.excerpt),750) END AS excerpt,
+        CASE WHEN u.receipt IS NULL THEN t.link END AS link,
         CASE WHEN u.receipt IS NOT NULL THEN 0 WHEN r.rule IN ('hate','fraud','harassment','sexual') THEN 1 ELSE 2 END AS priority,
         coalesce(least(r.opened,u.opened_at,
           CASE WHEN t.status='held' AND (h.prior_status IS NULL OR h.prior_status='held') THEN t.created_at END),t.created_at) AS opened_at
@@ -277,6 +296,15 @@ export async function escalateCase(staff: User, kind: TargetKind, id: number, ru
       AND (x.status='held' OR EXISTS(${activeReports})) ON CONFLICT(target_kind,target_id) WHERE reviewed_at IS NULL DO NOTHING RETURNING receipt`,
       [kind, id, randomUUID(), rule, staff.id],
     ),
+  ];
+  if (kind === "user" && rule === "child_safety")
+    steps.push(sql(
+      `SELECT wp_capture_reported_avatar($2, c.receipt) FROM (${activeUrgent}) c WHERE EXISTS(
+        SELECT 1 FROM (${currentTarget(kind)}) x WHERE x.author IS DISTINCT FROM $3::int
+        AND (x.status='held' OR EXISTS(${activeReports})))`,
+      [kind, id, staff.id],
+    ));
+  steps.push(
     sql(rememberPrevious(kind) + `EXISTS(${activeUrgent}) ON CONFLICT DO NOTHING`, [kind, id]),
     sql(
       changeState(
@@ -286,7 +314,7 @@ export async function escalateCase(staff: User, kind: TargetKind, id: number, ru
       ),
       [kind, id],
     ),
-  ];
+  );
   const rows = await sql.transaction(steps);
   return rows[1].length > 0;
 }
@@ -312,11 +340,15 @@ export async function resolveCase(staff: User, kind: TargetKind, id: number, act
       AND ($5<>'dismiss' OR x.releasable)
       AND NOT EXISTS(SELECT 1 FROM (${activeReports}) r WHERE r.reporter_id=$4)
     RETURNING id`;
-  const steps = [
+  const locks = [
     locking(sql, kind, id),
+    ...(!removing ? duoRestorationLocks(sql, kind, id) : []),
+  ];
+  const steps = [
+    ...locks,
     sql(create, args),
     sql(rememberPrevious(kind) + existsDecision + " ON CONFLICT DO NOTHING", [kind, id, op]),
-    sql(changeState(kind, removing ? "removed" : "restore", existsDecision), [kind, id, op]),
+    sql(changeState(kind, removing ? "removed" : "restore", existsDecision), removing ? [kind, id, op] : restoreArgs(kind, id, op)),
     sql`UPDATE wp_reports r SET status=${removing ? "actioned" : "dismissed"},resolved_at=now(),decision_id=d.id,
       resolution=${removing ? "A moderator acted on your report." : "The review found no violation."} FROM wp_safety_decisions d
       WHERE d.operation=${op} AND r.target_kind=d.target_kind AND r.target_id=d.target_id AND r.status='open'`,
@@ -343,7 +375,7 @@ export async function resolveCase(staff: User, kind: TargetKind, id: number, act
       ),
     );
   const rows = await sql.transaction(steps);
-  if (rows[1].length) return true;
+  if (rows[locks.length].length) return true;
   if (action === "dismiss" && isSafetyOwner(staff.email) && rows.at(-1)?.length) return "second_review";
   return false;
 }
@@ -371,8 +403,12 @@ export async function reviewAppeal(staff: User, appealId: number, overturn: bool
     id = Number(info.target_id),
     op = randomUUID();
   // A unique review nonce lets later statements distinguish this attempt from a concurrent review.
-  const result = await sql.transaction([
+  const locks = [
     locking(sql, kind, id),
+    ...(overturn ? duoRestorationLocks(sql, kind, id) : []),
+  ];
+  const result = await sql.transaction([
+    ...locks,
     sql`SELECT id FROM wp_users WHERE id=${Number(info.author_id)} FOR UPDATE`,
     sql`UPDATE wp_safety_appeals a SET status=${overturn ? "overturned" : "upheld"},reviewer_id=${staff.id},decided_at=now(),
       reason=${reason},review_operation=${op} FROM wp_safety_decisions d WHERE a.id=${appealId} AND a.status='pending'
@@ -399,6 +435,9 @@ export async function reviewAppeal(staff: User, appealId: number, overturn: bool
       ),
       [kind, id, op],
     ),
+    sql`UPDATE wp_users u SET strike_count=greatest(0,strike_count-1),
+      banned_until=greatest(b.ends_at,(SELECT max(ends_at) FROM wp_safety_decisions WHERE author_id=u.id AND revoked_at IS NULL))
+      FROM wp_safety_prior_restrictions b WHERE b.user_id=u.id AND EXISTS(SELECT 1 FROM wp_safety_appeals a WHERE a.applicant_id=u.id AND a.review_operation=${op} AND a.status='overturned')`,
     sql(
       changeState(
         kind,
@@ -408,11 +447,8 @@ export async function reviewAppeal(staff: User, appealId: number, overturn: bool
       AND NOT EXISTS(SELECT 1 FROM wp_safety_decisions WHERE target_kind=$1 AND target_id=$2 AND action<>'dismiss' AND revoked_at IS NULL)
       AND NOT EXISTS(${activeReports}) AND EXISTS(SELECT 1 FROM (${currentTarget(kind)}) x WHERE x.releasable)`,
       ),
-      [kind, id, op],
+      restoreArgs(kind, id, op),
     ),
-    sql`UPDATE wp_users u SET strike_count=greatest(0,strike_count-1),
-      banned_until=greatest(b.ends_at,(SELECT max(ends_at) FROM wp_safety_decisions WHERE author_id=u.id AND revoked_at IS NULL))
-      FROM wp_safety_prior_restrictions b WHERE b.user_id=u.id AND EXISTS(SELECT 1 FROM wp_safety_appeals a WHERE a.applicant_id=u.id AND a.review_operation=${op} AND a.status='overturned')`,
     sql`UPDATE wp_reports r SET status='corrected',resolution='The decision changed after an appeal.'
       FROM wp_safety_appeals a WHERE a.review_operation=${op} AND a.status='overturned' AND r.decision_id=a.decision_id`,
     sql(
@@ -422,6 +458,6 @@ export async function reviewAppeal(staff: User, appealId: number, overturn: bool
       [kind, id, op],
     ),
   ]);
-  return result[2].length > 0;
+  return result[locks.length + 1].length > 0;
 }
 export const safeString = (r: Row, k: string) => (r[k] == null ? "" : String(r[k]));

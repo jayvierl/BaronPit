@@ -1,5 +1,5 @@
 import { RANKED_QUEUE, NORMAL_QUEUE, isSessionQueue, type SessionQueue, SESSION_MINUTES, parseSessionOffer, sessionWindow } from "./duo-session";
-import { sharedGame } from "./verified-duo-game";
+import { confirmedBeforeCancellation, sharedGame } from "./verified-duo-game";
 import { getSql, q, queryRows } from "./db";
 import { decodeWindows, encodeWindows, scheduleWindows, type PlayWindow } from "./duo-schedule";
 import { filterByDuoFit, loadDuoFit } from "./duo-fit-store";
@@ -51,6 +51,7 @@ export interface DuoRequest {
   riotId: string | null;
   socialProfileId: number | null;
   contactEndsAt: number | null;
+  cancellationEndsAt: number | null;
   platform: string;
   requeue: "available" | "waiting" | "mutual" | null;
   matchedAt: string | null;
@@ -60,7 +61,7 @@ export interface DuoRequest {
 
 // $1 is always the requesting user and $2 the current terms revision. Both participants are
 // rechecked at read/accept time. Unlinking Riot, changing bands or blocking withdraws access.
-function eligibility(fresh: boolean) {
+function eligibility(fresh: boolean, viewer: string | null = "$1", terms = "$2") {
   return `WITH eligible AS NOT MATERIALIZED (
   SELECT u.id,u.age_band,p.puuid,p.platform,p.game_name,p.tag_line,p.rank_tier,p.rank_div,p.rank_lp,p.rank_wins,p.rank_losses,p.snapshot,p.fetched_at,k.is_primary,
     CASE WHEN p.rank_div IN ('I','II','III','IV') THEN
@@ -68,12 +69,12 @@ function eligibility(fresh: boolean) {
     END AS pilot_tier
   FROM wp_users u JOIN wp_links k ON k.user_id=u.id AND k.verified
   JOIN wp_players p ON p.puuid=k.puuid
-  WHERE u.terms_version=$2 AND u.safety_status='visible' AND u.age_band IN ('adult','teen') AND u.terms_accepted_at IS NOT NULL
+  WHERE u.terms_version=${terms} AND u.safety_status='visible' AND u.age_band IN ('adult','teen') AND u.terms_accepted_at IS NOT NULL
     AND u.created_at<=now()-interval '24 hours' AND (u.banned_until IS NULL OR u.banned_until<=now())
     AND NOT EXISTS(SELECT 1 FROM wp_links contested WHERE contested.puuid=k.puuid AND contested.verified AND contested.user_id<>k.user_id)
     AND p.rank_tier IS NOT NULL ${fresh ? "AND p.fetched_at>now()-interval '24 hours'" : ""}
     AND jsonb_typeof(p.snapshot->'matches')='array' AND p.snapshot->'matches'->0 IS NOT NULL
-), me AS (SELECT e.* FROM eligible e WHERE e.id=$1 ORDER BY e.is_primary DESC,e.puuid LIMIT 1)`;
+)${viewer ? `, me AS (SELECT e.* FROM eligible e WHERE e.id=${viewer} ORDER BY e.is_primary DESC,e.puuid LIMIT 1)` : ""}`;
 }
 const eligible = eligibility(true);
 // An existing accepted pair may refresh its stale stats without gaining contact or board access.
@@ -86,11 +87,30 @@ function sessionCompatible(queue: string, first: string, second: string) {
     AND (abs(${first}.pilot_tier-${second}.pilot_tier)<=1 OR greatest(${first}.pilot_tier,${second}.pilot_tier)<=3)))`;
 }
 // Accepted sessions reserve both players until the end of the agreed hour.
-function bookedSession(listing: string, participant: string) {
+function bookedSession(listing: string, participant: string, exceptRequest?: string) {
   return `EXISTS(SELECT 1 FROM wp_duo_requests booking JOIN wp_lfg booked ON booked.id=booking.listing_id
-    WHERE booking.status='accepted' AND booked.safe_listing AND booked.session_queue IN ('${NORMAL_QUEUE}','${RANKED_QUEUE}')
+    WHERE booking.status='accepted' AND booking.cancelled_at IS NULL AND booked.safe_listing AND booked.session_queue IN ('${NORMAL_QUEUE}','${RANKED_QUEUE}')
       AND (${participant} IN (booking.sender_id,booked.user_id))
-      AND booked.session_start < ${listing}.expires_at AND ${listing}.session_start < booked.expires_at)`;
+      AND booked.session_start < ${listing}.expires_at AND ${listing}.session_start < booked.expires_at
+      ${exceptRequest ? `AND booking.id<>${exceptRequest}` : ""})`;
+}
+
+/** Return an invitation to its original state only while its original session and both players are eligible. */
+export function reviewedDuoRequestState(request: string, hold: string) {
+  return `CASE WHEN ${request}.status='declined' OR ${request}.cancelled_at IS NOT NULL THEN 'declined'
+    WHEN $5::boolean AND EXISTS (${eligibility(true, null, "$4")}
+      SELECT 1 FROM wp_lfg l JOIN eligible owner ON owner.id=l.user_id AND owner.puuid=l.puuid
+      JOIN eligible sender ON sender.id=${request}.sender_id AND sender.puuid=${request}.sender_puuid
+      WHERE l.id=${request}.listing_id AND l.safe_listing AND l.status='open' AND l.expires_at>clock_timestamp()
+        AND owner.platform='na1' AND owner.platform=sender.platform AND owner.age_band=sender.age_band
+        AND ${sessionCompatible("l.session_queue", "owner", "sender")} AND ${request}.offered_role IS NOT NULL
+        AND ((${hold}.prior_status='pending' AND l.session_start>clock_timestamp()) OR (${hold}.prior_status='accepted'
+          AND ${request}.accepted_at BETWEEN ${request}.created_at AND least(l.session_start,clock_timestamp())))
+        AND NOT ${bookedSession("l", "l.user_id", `${request}.id`)}
+        AND NOT ${bookedSession("l", `${request}.sender_id`, `${request}.id`)}
+        AND NOT EXISTS (SELECT 1 FROM wp_blocks b WHERE (b.blocker_id,b.blocked_id) IN ((owner.id,sender.id),(sender.id,owner.id)))
+        AND NOT EXISTS (SELECT 1 FROM wp_mutes m WHERE (m.muter_id,m.muted_id) IN ((owner.id,sender.id),(sender.id,owner.id)))
+    ) THEN ${hold}.prior_status ELSE 'declined' END`;
 }
 const board = `${eligible}, board AS (
   SELECT l.*,peer.platform,peer.rank_tier,peer.rank_div,peer.rank_lp,peer.rank_wins,peer.rank_losses,
@@ -105,35 +125,43 @@ const board = `${eligible}, board AS (
     AND NOT EXISTS(SELECT 1 FROM wp_mutes m WHERE (m.muter_id,m.muted_id) IN ((me.id,peer.id),(peer.id,me.id)))
 )`;
 const ownRequeue = `CASE WHEN r.sender_id=$1 THEN r.sender_requeue ELSE r.owner_requeue END`;
+const activeBookingWindow = `l.session_queue IN ('${NORMAL_QUEUE}','${RANKED_QUEUE}')
+  AND l.session_start<l.expires_at AND l.expires_at>clock_timestamp()`;
+const cancelledBooking = "r.status='declined' AND r.cancelled_at IS NOT NULL";
+const acceptedBooking = "r.status='accepted' AND r.cancelled_at IS NULL";
 function pairScope(recentlyExpired = false) {
   return `${eligible}, pairs AS (
-  SELECT r.id,r.status,r.sender_id,l.user_id AS owner_id,r.listing_id,r.created_at,r.accepted_at,l.expires_at,
+  SELECT r.id,r.status,r.sender_id,l.user_id AS owner_id,r.listing_id,r.created_at,r.accepted_at,r.cancelled_at,l.expires_at,
     l.session_start,l.session_queue,r.offered_role,r.offered_voice,r.offered_vibe,l.roles,l.vibe,l.voice,
     ${sessionCompatible("l.session_queue","owner","sender")} AS compatible,
     ${ownRequeue} AS my_choice,
-    game.played AND NOT EXISTS (SELECT 1 FROM wp_reports f WHERE f.status='open'
+    (${acceptedBooking} AND r.accepted_at IS NOT NULL AND ${activeBookingWindow}) AS can_cancel,
+    ${acceptedBooking} AND game.played AND NOT EXISTS (SELECT 1 FROM wp_reports f WHERE f.status='open'
       AND ((f.target_kind='duo_request' AND f.target_id=r.id) OR (f.target_kind='lfg' AND f.target_id=l.id))) AS can_thank,
     CASE WHEN r.sender_id=$1 THEN r.sender_thanked ELSE r.owner_thanked END AS sent_thanks,
     CASE WHEN r.sender_id=$1 THEN r.owner_thanked ELSE r.sender_thanked END AS received_thanks,
     sender.age_band='adult' AND owner.age_band='adult' AS adult_pair,
-    r.sender_requeue AND r.owner_requeue AS mutual,
-    r.status='accepted' AND (game.played OR ${ownRequeue}) AS can_requeue,
+    ${acceptedBooking} AND r.sender_requeue AND r.owner_requeue AS mutual,
+    ${acceptedBooking} AND (game.played OR ${ownRequeue}) AS can_requeue,
     CASE WHEN r.sender_id=$1 THEN owner.rank_tier ELSE sender.rank_tier END AS rank_tier,
     CASE WHEN r.sender_id=$1 THEN owner.rank_div ELSE sender.rank_div END AS rank_div,
-    CASE WHEN r.status='accepted' AND ((l.expires_at>now() AND l.status='open') OR (r.sender_requeue AND r.owner_requeue)) THEN
+    CASE WHEN ${acceptedBooking} AND ((l.expires_at>now() AND l.status='open') OR (r.sender_requeue AND r.owner_requeue)) THEN
       CASE WHEN r.sender_id=$1 THEN owner.game_name||'#'||owner.tag_line ELSE sender.game_name||'#'||sender.tag_line END
     END AS contact,owner.platform
   FROM wp_duo_requests r JOIN wp_lfg l ON l.id=r.listing_id
   JOIN eligible owner ON owner.id=l.user_id AND owner.puuid=l.puuid
   JOIN eligible sender ON sender.id=r.sender_id AND sender.puuid=r.sender_puuid
-  CROSS JOIN LATERAL (SELECT CASE WHEN r.status='accepted' AND r.accepted_at IS NOT NULL THEN ${sharedGame}
-    ELSE false END AS played) game
+  CROSS JOIN LATERAL (SELECT CASE WHEN ${acceptedBooking} AND r.accepted_at IS NOT NULL THEN ${sharedGame}
+    WHEN ${cancelledBooking} THEN ${confirmedBeforeCancellation} ELSE false END AS played) game
   WHERE $1 IN (l.user_id,r.sender_id) AND l.safe_listing
     AND ((l.status='open' AND l.expires_at>now())
-      ${recentlyExpired ? "OR (l.status='open' AND l.expires_at<=now() AND l.expires_at>now()-interval '24 hours')" : ""} OR
-      (l.status IN ('open','closed') AND r.status='accepted' AND r.accepted_at>now()-interval '30 days'
+      OR (l.status='closed' AND ${acceptedBooking} AND ${activeBookingWindow})
+      ${recentlyExpired ? `OR (l.status='open' AND l.expires_at<=now() AND l.expires_at>now()-interval '24 hours')
+      OR (l.status='closed' AND ${cancelledBooking})` : ""} OR
+      (l.status IN ('open','closed') AND ((${acceptedBooking}) OR (${cancelledBooking})) AND r.accepted_at>now()-interval '30 days'
        AND (game.played OR ${ownRequeue} OR r.sender_thanked OR r.owner_thanked)))
-    AND owner.age_band=sender.age_band AND owner.platform=sender.platform AND r.status IN ('pending','accepted')
+    AND owner.age_band=sender.age_band AND owner.platform=sender.platform
+    AND ((r.status='pending' AND r.cancelled_at IS NULL) OR (${acceptedBooking}) OR (${cancelledBooking}))
     AND NOT EXISTS(SELECT 1 FROM wp_blocks b WHERE (b.blocker_id,b.blocked_id) IN ((l.user_id,r.sender_id),(r.sender_id,l.user_id)))
     AND NOT EXISTS(SELECT 1 FROM wp_mutes m WHERE (m.muter_id,m.muted_id) IN ((l.user_id,r.sender_id),(r.sender_id,l.user_id)))
 )`;
@@ -190,7 +218,7 @@ export async function readDuoBoard(userId: number, onlyFit = false, asOf = Date.
     })(),
     queryRows(
       pairs +
-        ` SELECT id,status,sender_id,contact,expires_at,
+        ` SELECT id,status,sender_id,contact,expires_at,cancelled_at,can_cancel,
           CASE WHEN contact IS NOT NULL AND session_queue='${RANKED_QUEUE}'
             THEN CASE WHEN sender_id=$1 THEN owner_id ELSE sender_id END END AS social_profile_id,
           EXISTS(SELECT 1 FROM wp_endorsements e WHERE e.from_user=$1 AND e.interaction_checked AND
@@ -207,7 +235,7 @@ export async function readDuoBoard(userId: number, onlyFit = false, asOf = Date.
         id: Number(r.id),
         incoming: Number(r.sender_id) !== userId,
         ...duoRank(r),
-        status: String(r.status),
+        status: r.cancelled_at ? "cancelled" : String(r.status),
         session: isSessionQueue(r.session_queue) && r.session_start && typeof r.offered_role === "string" ? {
           queue: r.session_queue, compatible: r.compatible === true,
           start: new Date(String(r.session_start)).getTime(),
@@ -216,6 +244,7 @@ export async function readDuoBoard(userId: number, onlyFit = false, asOf = Date.
           vibe: String(Number(r.sender_id) === userId ? r.vibe : r.offered_vibe),
         } : null,
         contactEndsAt: r.contact && !r.mutual ? new Date(String(r.expires_at)).getTime() : null,
+        cancellationEndsAt: r.can_cancel === true ? new Date(String(r.expires_at)).getTime() : null,
         socialProfileId: r.social_profile_id == null ? null : Number(r.social_profile_id),
         riotId: typeof r.contact === "string" ? r.contact : null,
         requeue: !r.can_requeue ? null : r.mutual ? "mutual" : r.my_choice ? "waiting" : "available",
@@ -267,8 +296,17 @@ export async function createDuoListing(user: User, data: unknown) {
     : { ok: false, error: "Choose an upcoming time without another booking and close any open listing before posting." };
 }
 export async function closeDuoListing(userId: number, id: number) {
-  const rows =
-    await q`UPDATE wp_lfg SET status='closed' WHERE id=${id} AND user_id=${userId} AND status IN ('open','held') RETURNING id`;
+  const sql = await getSql();
+  const [, rows] = await sql.transaction([
+    sql`SELECT pg_advisory_xact_lock(hashtext(${"wp-review:lfg:" + id}))`,
+    sql`WITH closed AS (
+      UPDATE wp_lfg l SET status=CASE WHEN l.status='removed' THEN l.status ELSE 'closed' END
+      WHERE l.id=${id} AND l.user_id=${userId} AND (l.status IN ('open','held','closed') OR (l.status='removed' AND EXISTS (
+        SELECT 1 FROM wp_safety_holds WHERE target_kind='lfg' AND target_id=l.id))) RETURNING l.id
+    ), preserve_closure AS (
+      UPDATE wp_safety_holds h SET prior_status='closed' FROM closed c WHERE h.target_kind='lfg' AND h.target_id=c.id
+    ) SELECT id FROM closed`,
+  ]);
   return rows.length ? { ok: true } : missing;
 }
 export async function duoPeerId(userId: number, kind: "lfg" | "duo_request", id: number) {
@@ -291,7 +329,56 @@ export async function canReportDuo(userId: number, kind: "lfg" | "duo_request", 
   }
   return (await duoPeerId(userId, kind, id)) !== null;
 }
+
+export async function cancelDuoBooking(userId: number, id: number) {
+  // A participant can release their booking even if another participant or staff has restricted access.
+  const [booking] = await q`SELECT CASE WHEN r.sender_id=${userId} THEN l.user_id ELSE r.sender_id END AS peer_id
+    FROM wp_duo_requests r JOIN wp_lfg l ON l.id=r.listing_id
+    WHERE r.id=${id} AND ${userId}::int IN (r.sender_id,l.user_id) AND l.safe_listing`;
+  if (!booking) return missing;
+  const first = Math.min(userId, Number(booking.peer_id)), second = Math.max(userId, Number(booking.peer_id));
+  const sql = await getSql();
+  const [, , , , rows] = await sql.transaction([
+    sql`SELECT pg_advisory_xact_lock(hashtext(${"wp-review:duo_request:" + id}))`,
+    sql`SELECT pg_advisory_xact_lock(hashtext('duo-session'),${first}::int)`,
+    sql`SELECT pg_advisory_xact_lock(hashtext('duo-session'),${second}::int)`,
+    sql`SELECT pg_advisory_xact_lock(${first}::int,${second}::int)`,
+    sql(`WITH cancelled AS (
+      UPDATE wp_duo_requests r SET status=CASE WHEN r.status IN ('held','removed') THEN r.status ELSE 'declined' END,
+        cancelled_at=coalesce(r.cancelled_at,clock_timestamp()),sender_requeue=false,owner_requeue=false
+      FROM wp_lfg l WHERE r.id=$1 AND r.listing_id=l.id AND $2::int IN (r.sender_id,l.user_id) AND l.safe_listing
+        AND (r.cancelled_at IS NOT NULL OR (r.accepted_at IS NOT NULL AND ${activeBookingWindow}
+          AND (r.status='accepted' OR (r.status IN ('held','removed') AND EXISTS (
+            SELECT 1 FROM wp_safety_holds h WHERE h.target_kind='duo_request' AND h.target_id=r.id AND h.prior_status='accepted')))))
+      RETURNING r.id
+    ), preserve_cancellation AS (
+      UPDATE wp_safety_holds h SET prior_status='declined' FROM cancelled c
+      WHERE h.target_kind='duo_request' AND h.target_id=c.id
+    ) SELECT id FROM cancelled`, [id, userId]),
+  ]);
+  return rows.length ? { ok: true } : missing;
+}
+
+async function declineDuoRequest(userId: number, id: number) {
+  const sql = await getSql();
+  const [, rows] = await sql.transaction([
+    sql`SELECT pg_advisory_xact_lock(hashtext(${"wp-review:duo_request:" + id}))`,
+    sql`WITH declined AS (
+      UPDATE wp_duo_requests r SET status=CASE WHEN r.status IN ('held','removed') THEN r.status ELSE 'declined' END,
+        sender_requeue=false,owner_requeue=false
+      FROM wp_lfg l WHERE r.id=${id} AND r.listing_id=l.id AND ${userId}::int IN (r.sender_id,l.user_id)
+        AND (r.status IN ('pending','declined') OR (r.status IN ('held','removed') AND EXISTS (
+          SELECT 1 FROM wp_safety_holds WHERE target_kind='duo_request' AND target_id=r.id))) RETURNING r.id
+    ), preserve_withdrawal AS (
+      UPDATE wp_safety_holds h SET prior_status='declined' FROM declined d
+      WHERE h.target_kind='duo_request' AND h.target_id=d.id
+    ) SELECT id FROM declined`,
+  ]);
+  return rows.length ? { ok: true } : missing;
+}
+
 export async function duoAction(user: User, id: number, action: "request" | "accept" | "decline", input?: unknown) {
+  if (action === "decline") return declineDuoRequest(user.id, id);
   const offer = action === "request" ? parseSessionOffer(input) : null;
   if (action === "request" && !offer) return { ok: false, error: "Confirm the session time, your role, playstyle and voice choice." };
   const peerId = await duoPeerId(user.id, action === "request" ? "lfg" : "duo_request", id);
@@ -317,18 +404,17 @@ export async function duoAction(user: User, id: number, action: "request" | "acc
         )
       : sql(
           pairs +
-            `, changed AS (UPDATE wp_duo_requests r SET status=$4,accepted_at=CASE WHEN $4='accepted' THEN now() END FROM pairs p
+            `, changed AS (UPDATE wp_duo_requests r SET status='accepted',accepted_at=now() FROM pairs p
         WHERE r.id=p.id AND p.id=$3 AND r.status='pending'
-          AND (($4='declined' AND $1 IN (p.owner_id,p.sender_id)) OR
-               ($4='accepted' AND p.owner_id=$1 AND p.compatible AND p.platform='na1' AND p.session_start>clock_timestamp()
-                 AND p.offered_role IS NOT NULL AND NOT ${bookedSession("p", "p.owner_id")} AND NOT ${bookedSession("p", "p.sender_id")}))
+          AND p.owner_id=$1 AND p.compatible AND p.platform='na1' AND p.session_start>clock_timestamp()
+          AND p.offered_role IS NOT NULL AND NOT ${bookedSession("p", "p.owner_id")} AND NOT ${bookedSession("p", "p.sender_id")}
         RETURNING r.id,r.listing_id,r.sender_id), cleared AS (
         UPDATE wp_duo_requests other SET status='declined' FROM changed c,wp_lfg other_listing, pairs p
-        WHERE $4='accepted' AND p.id=c.id AND other.listing_id=other_listing.id AND other.status='pending' AND other.id<>c.id
+        WHERE p.id=c.id AND other.listing_id=other_listing.id AND other.status='pending' AND other.id<>c.id
           AND other_listing.session_start<p.expires_at AND p.session_start<other_listing.expires_at
           AND (p.owner_id IN (other.sender_id,other_listing.user_id) OR p.sender_id IN (other.sender_id,other_listing.user_id)))
         SELECT id FROM changed`,
-          [...params(user.id), id, action === "accept" ? "accepted" : "declined"],
+          [...params(user.id), id],
         ),
   ]);
   return rows.length ? { ok: true } : missing;

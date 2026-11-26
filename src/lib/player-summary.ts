@@ -3,6 +3,9 @@ import type { Player } from "./riot";
 
 const solo = "RANKED_SOLO_5x5";
 const flex = "RANKED_FLEX_SR";
+const queueNames = { [solo]: "Ranked Solo/Duo", [flex]: "Ranked Flex" } as const;
+const PLAYER_CACHE_TTL_MS = 10 * 60 * 1000;
+const snapshotDate = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 
 export interface RankedEntry {
   queueType: typeof solo | typeof flex;
@@ -33,6 +36,13 @@ export function readRankedEntries(payload: unknown): RankedEntry[] | undefined {
 }
 
 type Count = {name: string; games: number};
+
+export type PublicRankedRecord = ReturnType<typeof record> & {
+  queue: typeof queueNames[keyof typeof queueNames];
+  rank: string;
+  tier: LeagueTier;
+};
+
 export interface PublicPlayerSummary {
   rank: string;
   tier: LeagueTier | null;
@@ -48,10 +58,12 @@ export interface PublicPlayerSummary {
   rankedWinRate: number | null;
   rankedGamesScope: "solo-and-flex" | "selected-queue";
   hasBothQueues: boolean;
+  rankedRecords: PublicRankedRecord[];
   topRole: Count | null;
   champions: Count[];
   sampleGames: number;
   asOf: string | null;
+  snapshotFresh: boolean;
 }
 
 const roleNames: Record<string,string> = {TOP:"Top", JUNGLE:"Jungle", MIDDLE:"Mid", BOTTOM:"Bot", UTILITY:"Support"};
@@ -62,7 +74,20 @@ function record(wins: unknown, losses: unknown) {
   return { wins, losses, games, winRate: games ? Math.round(100 * wins / games) : null };
 }
 
-type RankFields = Pick<Player, "rankTier" | "rankDiv" | "rankedEntries"> & {rankLp?: number | null};
+type RankFields = Pick<Player, "rankTier" | "rankDiv" | "rankedEntries"> & {rankLp?: number | null; fetchedAt?: string};
+
+export function playerSnapshotTiming(fetchedAt: string, now = Date.now()) {
+  const at = Date.parse(fetchedAt);
+  if (!Number.isFinite(at) || at > now) return { asOf: null, fresh: false };
+  const snapshot = new Date(at);
+  const fresh = now - at < PLAYER_CACHE_TTL_MS && snapshot.getUTCFullYear() === new Date(now).getUTCFullYear();
+  return { asOf: snapshot.toISOString(), fresh };
+}
+
+function formatPlacedRank(tier: LeagueTier, division?: string | null, lp?: number | null) {
+  const apex = tier === "MASTER" || tier === "GRANDMASTER" || tier === "CHALLENGER";
+  return rankLabel(tier, apex ? null : division, lp);
+}
 
 export function placedRank(player: RankFields, withLp = false) {
   const entries = player.rankedEntries;
@@ -70,8 +95,7 @@ export function placedRank(player: RankFields, withLp = false) {
   const legacy = entries === undefined && leagueTier(player.rankTier) !== null;
   const tier = leagueTier(chosen?.tier ?? (legacy ? player.rankTier : null));
   const rankStatus = tier ? "ranked" : entries !== undefined ? "unranked" : "unavailable";
-  const apex = tier === "MASTER" || tier === "GRANDMASTER" || tier === "CHALLENGER";
-  const rank = tier ? rankLabel(tier, apex ? null : chosen?.rank ?? player.rankDiv, withLp ? chosen?.leaguePoints ?? player.rankLp : null)
+  const rank = tier ? formatPlacedRank(tier, chosen?.rank ?? player.rankDiv, withLp ? chosen?.leaguePoints ?? player.rankLp : null)
     : rankStatus === "unranked" ? "Unranked" : "Rank unavailable";
   const queue = chosen?.queueType === flex ? "Ranked Flex" as const : "Ranked Solo/Duo" as const;
   return { chosen, legacy, rank, tier, rankStatus, queue } as const;
@@ -80,8 +104,12 @@ export function placedRank(player: RankFields, withLp = false) {
 // Short social surfaces attribute a Flex rank to its queue. They need at most the
 // two ranked entries and the Solo/Duo legacy columns, without transferring match history.
 export function socialRankLabel(player: RankFields, withLp = false) {
-  const { rank, queue } = placedRank(player, withLp);
-  return queue === "Ranked Flex" ? `${rank} (Flex)` : rank;
+  const { rank, queue, rankStatus } = placedRank(player, withLp);
+  const queueLabel = queue === "Ranked Flex" ? `${rank} (Flex)` : rank;
+  if (rankStatus === "unavailable" || player.fetchedAt === undefined) return queueLabel;
+  const timing = playerSnapshotTiming(player.fetchedAt);
+  if (timing.fresh) return queueLabel;
+  return timing.asOf ? `${queueLabel} · as of ${snapshotDate.format(new Date(timing.asOf))}` : `${queueLabel} · last known`;
 }
 
 export function playerFlair(player: RankFields, champion: unknown) {
@@ -91,11 +119,20 @@ export function playerFlair(player: RankFields, champion: unknown) {
 
 // League-V4 supplies current ladder counts by queue. The capped all-queue Match-V5 sample
 // supplies only roles and champions. A missing entry can include a player still in placements.
-export function publicPlayerSummary(player: Player): PublicPlayerSummary {
+export function publicPlayerSummary(player: Player, now = Date.now()): PublicPlayerSummary {
   const entries = player.rankedEntries;
   const { chosen, legacy, rank, tier, rankStatus, queue } = placedRank(player, true);
   const selected = record(chosen?.wins ?? (legacy ? player.rankWins : null), chosen?.losses ?? (legacy ? player.rankLosses : null));
   const total = entries?.length ? record(entries.reduce((n, e) => n + e.wins, 0), entries.reduce((n, e) => n + e.losses, 0)) : selected;
+  const rankedRecords: PublicRankedRecord[] = [solo, flex].flatMap((queueType) => {
+    const entry = entries?.find((item) => item.queueType === queueType);
+    const entryTier = leagueTier(entry?.tier);
+    return entry && entryTier ? [{
+      queue: queueNames[entry.queueType], rank: formatPlacedRank(entryTier, entry.rank, entry.leaguePoints),
+      tier: entryTier, ...record(entry.wins, entry.losses),
+    }] : [];
+  });
+  if (legacy && tier) rankedRecords.push({ queue, rank, tier, ...selected });
 
   const { games, champPool, roles } = player.snapshot;
   const sampleGames = isCount(games) && games <= 20 ? games : 0;
@@ -105,11 +142,11 @@ export function publicPlayerSummary(player: Player): PublicPlayerSummary {
   const knownRoles = Object.entries(roleNames).filter(([key]) => countInSample(roles[key]));
   const high = Math.max(0, ...knownRoles.map(([key]) => roles[key]));
   const topRole = high ? { name: knownRoles.filter(([key]) => roles[key] === high).map(([, label]) => label).join(" / "), games: high } : null;
-  const asOf = Date.parse(player.fetchedAt);
+  const timing = playerSnapshotTiming(player.fetchedAt, now);
   return {
     rank, tier, rankStatus, queue, ...selected,
     rankedGames: total.games, rankedWins: total.wins, rankedLosses: total.losses, rankedWinRate: total.winRate,
     rankedGamesScope: entries !== undefined ? "solo-and-flex" : "selected-queue", hasBothQueues: entries?.length === 2,
-    topRole, champions, sampleGames, asOf: Number.isFinite(asOf) ? new Date(asOf).toISOString() : null,
+    rankedRecords, topRole, champions, sampleGames, asOf: timing.asOf, snapshotFresh: timing.fresh,
   };
 }

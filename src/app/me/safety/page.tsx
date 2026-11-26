@@ -5,15 +5,33 @@ import { getCurrentUser } from "@/lib/auth";
 import { ownDecisions } from "@/lib/safety-cases";
 import { myReports } from "@/lib/social";
 import { AppealForm } from "@/components/admin-ui";
+import { PersonalSafetyControls } from "@/components/personal-safety-controls";
+import { personalSafetyLists } from "@/lib/personal-safety";
 import { decisions, isDecision, isRule, reportRules } from "@/lib/safety-policy";
+
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Your safety inbox", robots: { index: false, follow: false } };
+
 export default async function SafetyInbox() {
   const user = await getCurrentUser();
   if (!user) redirect(signInHref("/me/safety"));
-  const inbox = await Promise.all([ownDecisions(user.id), myReports(user.id)]).catch(() => null);
+  const [inbox, settings] = await Promise.all([
+    Promise.all([ownDecisions(user.id), myReports(user.id)]).catch(() => null),
+    personalSafetyLists(user.id).catch(() => null),
+  ]);
   return (
-    <main>
+    <>
       <h1 className="page-title">Your safety inbox</h1>
+      <section id="settings" aria-labelledby="personal-safety-heading">
+        <h2 id="personal-safety-heading">Blocks and mutes</h2>
+        <p>These lists are private to your account.</p>
+        {settings ? (
+          <>
+            <PersonalSafetyControls kind="block" players={settings.blocked} />
+            <PersonalSafetyControls kind="mute" players={settings.muted} />
+          </>
+        ) : <p role="alert">Your block and mute lists are unavailable. Reload the page to try again.</p>}
+      </section>
       {!inbox ? (
         <p role="alert">Your private inbox is unavailable. Try again or use the contact in the guidelines.</p>
       ) : (
@@ -66,6 +84,6 @@ export default async function SafetyInbox() {
         </>
       )}
       <Link href="/guidelines">Community guidelines and contact</Link>
-    </main>
+    </>
   );
 }

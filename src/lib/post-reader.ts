@@ -146,7 +146,7 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
     LEFT JOIN wp_users sh ON sh.id=p.sharer
     LEFT JOIN wp_rooms rm ON rm.id = p.room_id
     LEFT JOIN LATERAL (
-      SELECT jsonb_build_array(pl.rank_tier, pl.rank_div, pl.snapshot #> '{champPool,0,champion}', pl.snapshot->'rankedEntries') AS label,
+      SELECT jsonb_build_array(pl.rank_tier, pl.rank_div, pl.snapshot #> '{champPool,0,champion}', pl.snapshot->'rankedEntries', pl.fetched_at) AS label,
         pl.platform, pl.game_name || '#' || pl.tag_line AS riot_id
       FROM wp_links l JOIN wp_players pl ON pl.puuid = l.puuid WHERE l.user_id = p.author_id AND l.verified
         AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.puuid = l.puuid AND other.verified AND other.user_id <> l.user_id)
@@ -184,8 +184,8 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
     const data = version
       ? { briefing: true, patch: version, notesUrl: storedNotesUrl(version, raw.notesUrl) }
       : publicPostData(r.kind, raw);
-    const flair = r.label as [string | null, string | null, unknown, unknown] | null;
-    const rankFields = flair && {rankTier:flair[0], rankDiv:flair[1], rankedEntries:readRankedEntries(flair[3])};
+    const flair = r.label as [string | null, string | null, unknown, unknown, string?] | null;
+    const rankFields = flair && {rankTier:flair[0], rankDiv:flair[1], rankedEntries:readRankedEntries(flair[3]), fetchedAt:flair[4]};
     return {
       id, authorId: Number(r.author_id), authorName: String(r.author_name), authorHue: Number(r.author_hue),
       authorAvatar: publicAvatar(r.avatar_ref),

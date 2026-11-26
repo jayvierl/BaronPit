@@ -38,6 +38,8 @@ During a site-wide incident set `SAFETY_PAUSE_PUBLICATION=true` and redeploy. It
 
 A trained responder should contain suspected material immediately. Use the restricted case receipt and the authorised evidence process. Keep explicit files out of ordinary queues, chat, email and personal devices. Ordinary moderators can pass a difficult case without viewing or redistributing it. If someone is in immediate danger, use the appropriate emergency channel.
 
+One case receipt can have multiple evidence records. In the restricted evidence store, look up screened submissions in `wp_safety_text_evidence` and photos in `wp_profile_photo_evidence` by receipt. Older screened submissions may reside in the original restricted case record. A newly captured item cancels any pending release approval for that case.
+
 In the United States, covered providers that obtain actual knowledge of facts indicating an apparent covered offence must report to NCMEC as soon as reasonably possible. The statutory one-year preservation period for covered records begins with a completed submission. An applicable legal hold can require more time. Record the submission reference and time, limit access, preserve the covered material under protected custody and confirm lawful disposal with a second person. The application does not file external reports. Staff need the reporting relationship and verified custody process in place. Coordinate an under-13 account complaint with the privacy lead and remove information as required, subject to any applicable hold.
 
 ## Operating review

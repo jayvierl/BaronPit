@@ -15,11 +15,37 @@ function linkFrom(html, name) {
   assert.fail("Missing rendered link " + name);
 }
 
-function checkStats(html, markers) {
-  const section = html.match(/<section\b[^>]*aria-label="League stats"[^>]*>([\s\S]*?)<\/section>/)?.[1];
-  assert.ok(section, "Expected rendered League stats");
-  const text = visibleText(section);
-  for (const marker of markers) assert.ok(text.includes(marker), "League stats missing " + marker + " in " + text);
+function sectionFrom(html, label) {
+  const start = [...html.matchAll(/<section\b[^>]*\baria-label="([^"]+)"[^>]*>/g)].find(tag => tag[1] === label);
+  assert.ok(start, "Missing section " + label);
+  const rest = html.slice(start.index + start[0].length);
+  let depth = 1;
+  for (const tag of rest.matchAll(/<\/?section\b[^>]*>/g)) {
+    depth += tag[0].startsWith("</") ? -1 : 1;
+    if (depth === 0) return rest.slice(0, tag.index);
+  }
+  assert.fail("Unclosed section " + label);
+}
+
+function checkMarkers(markup, markers, label) {
+  const text = visibleText(markup);
+  for (const marker of markers) assert.ok(text.includes(marker), `${label} missing ${marker} in ${text}`);
+}
+
+function checkStats(html, { queues, recent, combined }) {
+  const section = sectionFrom(html, "League stats");
+  assert.match(section, /Riot snapshot ·\s*<time datetime="[^"]+">[^<]+ UTC<\/time>/i);
+  const visibleQueues = [...section.matchAll(/<section\b[^>]*\baria-label="([^"]+)"[^>]*>/g)].map(tag => tag[1]);
+  assert.deepEqual(visibleQueues, Object.keys(queues));
+  for (const [queue, markers] of Object.entries(queues)) checkMarkers(sectionFrom(section, queue), markers, queue);
+  const totals = section.match(/<details\b[^>]*>\s*<summary>Combined ranked record<\/summary>([\s\S]*?)<\/details>/)?.[1];
+  if (combined) {
+    assert.ok(totals, "Missing combined ranked record");
+    checkMarkers(totals, combined, "Combined ranked record");
+  } else {
+    assert.doesNotMatch(section, /Combined ranked record|Across Solo\/Duo and Flex/);
+  }
+  checkMarkers(section, recent, "Recent games");
 }
 
 function sameLookup(a, b) {
@@ -35,11 +61,14 @@ function sameLookup(a, b) {
 export async function checkPlayerProfiles(journey) {
   // The ranked queue, the weighted combined record and the all-queue match sample
   // intentionally disagree. Following the HTML links also catches incomplete Riot IDs.
-  const verifiedStats = [
-    "Platinum III · 64 LP", "Ranked Solo/Duo", "Ranked games 20", "Win rate 80%", "16W · 4L",
-    "30 games", "57% win rate", "17W · 13L",
-    "Last 3 games · all queues", "Most played role Support (2 games)", "Nami (2 games)", "Vi (1 game)",
-  ];
+  const verifiedStats = {
+    queues: {
+      "Ranked Solo/Duo": ["Platinum III · 64 LP", "Ranked games 20", "Win rate 80%", "16W · 4L"],
+      "Ranked Flex": ["Silver IV · 11 LP", "Ranked games 10", "Win rate 10%", "1W · 9L"],
+    },
+    combined: ["Across Solo/Duo and Flex", "30 games", "57% win rate", "17W · 13L"],
+    recent: ["Last 3 games · all queues", "Most played role Support (2 games)", "Nami (2 games)", "Vi (1 game)"],
+  };
   for (const session of [false, true]) {
     const options = { html: true, session };
     const unlinked = await journey("/u/501?tab=stats", options);
@@ -72,11 +101,10 @@ export async function checkPlayerProfiles(journey) {
     const teammate = linkFrom(lookup, /^Fixture Archer#NA1$/);
     sameLookup(linkFrom(claim, /View stats for Fixture Archer#NA1/), teammate);
     const legacy = await journey(teammate, options);
-    checkStats(legacy, [
-      "Gold IV · 23 LP", "Ranked Solo/Duo", "Ranked games 100", "Win rate 62%", "62W · 38L",
-      "Last 1 game · all queues", "Most played role Bot (1 game)", "Ashe (1 game)",
-    ]);
-    assert.doesNotMatch(legacy, /Across Solo\/Duo and Flex/);
+    checkStats(legacy, {
+      queues: { "Ranked Solo/Duo": ["Gold IV · 23 LP", "Ranked games 100", "Win rate 62%", "62W · 38L"] },
+      recent: ["Last 1 game · all queues", "Most played role Bot (1 game)", "Ashe (1 game)"],
+    });
     sameLookup(linkFrom(legacy, /^Fixture Support#WAVE$/), history);
   }
 }

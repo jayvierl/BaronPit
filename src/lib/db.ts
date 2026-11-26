@@ -26,7 +26,9 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
  */
 
 type Sql = NeonQueryFunction<false, false>;
-const SCHEMA_REVISION = "baron-profile-avatar-20261126-1";
+// Keep the deployed pre-generation bundle from replaying old DDL during a rolling release.
+const LEGACY_SCHEMA_REVISION = "baron-profile-avatar-20261126-1";
+const SCHEMA_GENERATION = 1;
 let client: Sql | undefined;
 let ready: Promise<void> | undefined;
 
@@ -49,13 +51,18 @@ export async function getSql(): Promise<Sql> {
 
 async function initialize(sql: Sql) {
   try {
-    const rows = await sql`SELECT value FROM wp_meta WHERE key='schema_revision'`;
-    if (rows[0]?.value === SCHEMA_REVISION) return;
+    const rows = await sql`SELECT value::bigint >= ${SCHEMA_GENERATION} AS current FROM wp_meta WHERE key='schema_generation'`;
+    if (rows[0]?.current === true) return;
   } catch (error) {
     // An empty database has no metadata table. Other errors require a retry.
     if ((error as {code?: string}).code !== "42P01") throw error;
   }
-  await sql.transaction(schemaStatements(sql));
+  try {
+    await sql.transaction(schemaStatements(sql, true));
+  } catch (error) {
+    // Another cold start finished while this request waited for the migration lock.
+    if ((error as {code?: string}).code !== "BP001") throw error;
+  }
 }
 
 export async function q(
@@ -73,9 +80,20 @@ export async function queryRows(statement: string, values: unknown[]): Promise<R
 }
 
 // One ordered transaction keeps foreign-key dependencies and concurrent cold starts safe.
-export function schemaStatements(sql: Sql) {
+export function schemaStatements(sql: Sql, checkAfterLock = false) {
   return [
     sql`SELECT pg_advisory_xact_lock(hashtext('wp_schema_init'))`,
+    sql`CREATE TABLE IF NOT EXISTS wp_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT ''
+    )`,
+    // Neon's HTTP transaction is submitted as a batch. End it before any DDL if
+    // another worker is already at this generation or a newer one.
+    ...(checkAfterLock ? [sql(`DO $guard$ BEGIN
+      IF EXISTS (SELECT 1 FROM wp_meta WHERE key='schema_generation' AND value::bigint >= ${SCHEMA_GENERATION}) THEN
+        RAISE EXCEPTION 'Schema already applied' USING ERRCODE='BP001';
+      END IF;
+    END $guard$`, [])] : []),
     sql`CREATE TABLE IF NOT EXISTS wp_users (
     id SERIAL PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
@@ -242,10 +260,6 @@ export function schemaStatements(sql: Sql) {
     expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '4 hours'),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
-    sql`CREATE TABLE IF NOT EXISTS wp_meta (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL DEFAULT ''
-  )`,
     sql`CREATE INDEX IF NOT EXISTS wp_reactions_target_idx ON wp_reactions (target_kind, target_id)`,
     sql`CREATE INDEX IF NOT EXISTS wp_links_puuid_idx ON wp_links (puuid)`,
     sql`CREATE INDEX IF NOT EXISTS wp_reports_target_idx ON wp_reports (target_kind, target_id, status)`,
@@ -273,7 +287,9 @@ export function schemaStatements(sql: Sql) {
     sql`CREATE TABLE IF NOT EXISTS wp_safety_page_delivery (receipt uuid PRIMARY KEY, opened_at timestamptz NOT NULL,
       attempts integer NOT NULL DEFAULT 0, next_attempt timestamptz NOT NULL DEFAULT now(), lease_id uuid, delivered_at timestamptz)`,
     ...profilePhotoSchema(sql),
-    sql`INSERT INTO wp_meta(key,value) VALUES ('schema_revision',${SCHEMA_REVISION})
-      ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+    sql`INSERT INTO wp_meta(key,value) VALUES ('schema_revision',${LEGACY_SCHEMA_REVISION})
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE wp_meta.value IS DISTINCT FROM excluded.value`,
+    sql`INSERT INTO wp_meta(key,value) VALUES ('schema_generation',${String(SCHEMA_GENERATION)})
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE wp_meta.value::bigint < excluded.value::bigint`,
   ];
 }

@@ -1,6 +1,6 @@
 import { validId } from "@/lib/ids";
 import { requireUser } from "@/lib/auth-http";
-import { closeDuoListing, createDuoListing, duoAction, duoPeerId, setRequeue, thankDuo } from "@/lib/duo";
+import { cancelDuoBooking, closeDuoListing, createDuoListing, duoAction, duoPeerId, setRequeue, thankDuo } from "@/lib/duo";
 import { setBlock } from "@/lib/social";
 import { endorseDuoRequest } from "@/lib/relationships";
 
@@ -17,13 +17,19 @@ export async function POST(req: Request) {
   const input = body as Record<string, unknown>;
   const action = input.action;
   const protectedAction =
-    action === "withdraw-requeue" || action === "close" || action === "decline" || action === "block-listing" || action === "block-request";
+    action === "withdraw-requeue" || action === "close" || action === "decline" || action === "cancel-booking"
+    || action === "block-listing" || action === "block-request";
   const auth = await requireUser(req, protectedAction ? "protect" : "participate");
   if (!auth.ok) return auth.response;
   const { user } = auth;
   if (action === "create") return reply(await createDuoListing(user, input));
   const id = input.id;
   if (!validId(id)) return reply({ ok: false, error: "Invalid selection." });
+  if (action === "cancel-booking") {
+    if (Object.keys(input).some(key => key !== "action" && key !== "id"))
+      return reply({ ok: false, error: "This action only accepts a duo request ID." });
+    return reply(await cancelDuoBooking(user.id, id));
+  }
   if (action === "thank" || action === "endorse") {
     if (Object.keys(input).some(key => key !== "action" && key !== "id"))
       return reply({ ok: false, error: "This action only accepts a duo request ID." });

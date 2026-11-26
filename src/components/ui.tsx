@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { publicAvatar, championAvatarArt, avatarImageUrl, isOfficialRiotIcon, type AvatarRef } from "@/lib/avatar";
 
 export function Avatar({ name, hue, size = 40, imageUrl, avatar }: {
@@ -5,7 +6,9 @@ export function Avatar({ name, hue, size = 40, imageUrl, avatar }: {
 }) {
   const ref = publicAvatar(avatar);
   const url = avatarImageUrl(ref) ?? (imageUrl && isOfficialRiotIcon(imageUrl) ? imageUrl : undefined);
-  const art = ref.kind === "champion" ? championAvatarArt(ref.id, true) : url ? { backgroundImage: `url("${url}")` } : undefined;
+  const officialIcon = url && isOfficialRiotIcon(url) ? url : undefined;
+  const art = ref.kind === "champion" ? championAvatarArt(ref.id, true)
+    : ref.kind === "upload" && url ? { backgroundImage: `url("${url}")` } : undefined;
   const initials = name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("") || "?";
   return (
     <span
@@ -14,6 +17,8 @@ export function Avatar({ name, hue, size = 40, imageUrl, avatar }: {
       aria-hidden
     >
       {initials}
+      {officialIcon && <Image src={officialIcon} alt="" width={size} height={size}
+        loading={imageUrl ? "eager" : "lazy"} fetchPriority={imageUrl ? "high" : undefined} />}
       {art && <span className="avatar-art" style={art} />}
     </span>
   );
@@ -32,6 +37,11 @@ export function timeAgo(iso: string): string {
 }
 
 export { rankLabel } from "@/lib/rank";
+
+export function PermalinkTime({ iso, context }: { iso: string; context: string }) {
+  return <><time className="time" dateTime={iso} title={iso} suppressHydrationWarning>{timeAgo(iso)}</time>
+    <span className="sr-only"> · {context}</span></>;
+}
 
 /** Only the official game news site is linked automatically. Other URLs stay as text. */
 export function RichBody({ body }: { body: string }) {

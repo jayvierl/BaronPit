@@ -103,9 +103,10 @@ describe("thread controls", () => {
   it("exposes named positive reactions, reply count, sharing, reporting and a permanent thread link", () => {
     const html = render("text",{});
     for (const label of ["Like, 0 likes","Fire, 0 reactions","Applause, 0 reactions","On target, 0 reactions",
-      "Purple heart, 0 reactions","Good game, 0 reactions","Show replies, 0 replies","Share thread","Save and manage thread notifications","Open thread by River"]) {
+      "Purple heart, 0 reactions","Good game, 0 reactions","Show replies, 0 replies","Share thread","Save and manage thread notifications"]) {
       expect(html).toContain(`aria-label="${label}"`);
     }
+    expect(html).toMatch(/<time\b[^>]*>[^<]+<\/time><span class="sr-only"> · Open thread by River<\/span>/);
     expect(html).toContain(">Report</button>");
     expect(html).toContain('aria-expanded="false" aria-controls="thread-replies-1"');
     expect(html).not.toContain("Loading replies");

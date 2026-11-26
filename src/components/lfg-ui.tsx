@@ -10,6 +10,7 @@ import { DUO_ROLES } from "@/lib/pure";
 import type { DuoListing, DuoRequest } from "@/lib/duo";
 import { playerStatsHref } from "@/lib/platforms";
 import { postJson } from "@/lib/client";
+import { DuoCancelButton } from "./duo-cancel-button";
 import { RankBadge } from "./rank-badge";
 import { SafetyReport } from "./safety-report";
 
@@ -172,7 +173,7 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly 
           {requests.map((r) => (
             <article className="card" key={r.id} id={"duo-request-" + r.id}>
               <strong>
-                {r.status === "accepted" ? "Matched" : r.incoming ? "Incoming request" : "Request sent"}
+                {r.status === "cancelled" ? "Duo booking canceled" : r.status === "accepted" ? "Matched" : r.incoming ? "Incoming request" : "Request sent"}
               </strong>
               <p>
                 <RankBadge tier={r.rankTier}>{r.rank}</RankBadge> · {r.platform}
@@ -238,6 +239,7 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly 
                 <p className="meta">Accepting shares both Riot IDs{r.session.queue === RANKED_QUEUE ? " and social profile links" : ""} until the end of the session. Either player can check recent matches for a game together.</p>
               )}
               {r.status === "pending" && r.session && !r.session.compatible && <p>Your current Solo/Duo placements no longer match this session.</p>}
+              {r.cancellationEndsAt !== null && r.cancellationEndsAt > now && <DuoCancelButton id={r.id} />}
               <div className="duo-controls">
                 {r.status === "pending" && r.incoming && r.session?.compatible && r.session.start > now && (
                   <DuoButton action="accept" id={r.id}>

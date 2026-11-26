@@ -8,7 +8,7 @@ import { publicAvatar } from "./avatar";
 
 function linkedRows(userId: number, includeMatches: boolean) {
   const columns = includeMatches ? "p.*, p.snapshot #> '{champPool,0,champion}' AS main"
-    : "p.puuid,p.platform,p.game_name,p.tag_line,p.profile_icon,p.rank_tier,p.rank_div,p.rank_lp,p.snapshot->'rankedEntries' AS entries";
+    : "p.puuid,p.platform,p.game_name,p.tag_line,p.profile_icon,p.rank_tier,p.rank_div,p.rank_lp,p.fetched_at,p.snapshot->'rankedEntries' AS entries";
   return queryRows(`SELECT ${columns}, l.is_primary,
     (l.verified AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.verified AND other.puuid=l.puuid AND other.user_id<>l.user_id)) AS verified
     FROM wp_links l JOIN wp_players p ON p.puuid=l.puuid WHERE l.user_id=$1
@@ -20,7 +20,7 @@ export async function linkedPlayerIdentities(userId: number) {
     puuid: String(row.puuid), platform: String(row.platform), gameName: String(row.game_name), tagLine: String(row.tag_line),
     profileIcon: Number(row.profile_icon ?? 0), primary: row.is_primary === true, verified: row.verified === true,
     rankTier: typeof row.rank_tier === "string" ? row.rank_tier : null, rankDiv: typeof row.rank_div === "string" ? row.rank_div : null,
-    rankLp: row.rank_lp == null ? null : Number(row.rank_lp), rankedEntries: readRankedEntries(row.entries),
+    rankLp: row.rank_lp == null ? null : Number(row.rank_lp), rankedEntries: readRankedEntries(row.entries), fetchedAt: String(row.fetched_at),
   }));
 }
 

@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  images: {
+    // Only public, versioned Riot icons may enter the shared image cache.
+    localPatterns: [],
+    remotePatterns: [new URL("https://ddragon.leagueoflegends.com/cdn/*/img/profileicon/*.png")],
+    maximumRedirects: 0,
+  },
   async headers() {
     return [{ source: "/:path*", headers: [
       {key:"X-Content-Type-Options", value:"nosniff"},

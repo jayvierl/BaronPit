@@ -2,6 +2,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { postgres } from "../../test/postgres";
 import { q } from "./db";
 import type { User } from "./auth";
+import { TERMS_VERSION } from "./account-policy";
+import { closeDuoListing, createDuoListing, duoAction } from "./duo";
+import { NORMAL_QUEUE, sessionOptions } from "./duo-session";
 import {
   escalateCase,
   fileReport,
@@ -30,13 +33,40 @@ beforeAll(async () => {
   vi.stubEnv("DATABASE_URL", "postgres://test");
   vi.stubEnv("ADMIN_EMAILS", "p6@example.test,p7@example.test,p8@example.test");
   vi.stubEnv("SAFETY_OWNER_EMAILS", "p7@example.test,p8@example.test");
+  vi.stubEnv("DUO_MATCHING_ENABLED", "true");
   await q`INSERT INTO wp_users(id,email,display_name) SELECT i,'p'||i||'@example.test','Player '||i FROM generate_series(1,8) i`;
   await q`INSERT INTO wp_posts(id,author_id,body,kind,status) VALUES (1,1,'Ordinary statement','text','visible'),(2,1,'Restricted test evidence','text','visible'),(3,2,'Private pending submission','media','held'),(4,1,'Another statement','text','visible')`;
+  await q`INSERT INTO wp_users(id,email,display_name,created_at,age_band,terms_version,terms_accepted_at)
+    SELECT i,'p'||i||'@example.test','Player '||i,now()-interval '3 days','adult',${TERMS_VERSION},now()
+    FROM generate_series(21,41) i`;
+  await q`INSERT INTO wp_players(puuid,platform,game_name,tag_line,rank_tier,rank_div,snapshot)
+    SELECT 'case-player-'||i,'na1','Fixture '||i,'TEST','GOLD','III','{"matches":[{"matchId":"NA1_1"}]}'::jsonb
+    FROM generate_series(21,41) i`;
+  await q`INSERT INTO wp_links(user_id,puuid,verified,is_primary)
+    SELECT i,'case-player-'||i,true,true FROM generate_series(21,41) i`;
 });
 afterAll(async () => {
   await postgres.close();
   vi.unstubAllEnvs();
 });
+
+async function invite(owner: number, sender: number, start = sessionOptions(Date.now())[3]) {
+  const queue = NORMAL_QUEUE;
+  expect(await createDuoListing(person(owner), { queue, start, roles: ["Support"], blocks: [], voice: false, vibe: "chill", note: "" })).toMatchObject({ ok: true });
+  const [listing] = await q`SELECT id FROM wp_lfg WHERE user_id=${owner}`;
+  const listingId = Number(listing.id);
+  expect(await duoAction(person(sender), listingId, "request", { queue, start, role: "ADC", voice: false, vibe: "chill" })).toMatchObject({ ok: true });
+  const [request] = await q`SELECT id FROM wp_duo_requests WHERE listing_id=${listingId} AND sender_id=${sender}`;
+  return { listingId, requestId: Number(request.id), start };
+}
+
+async function overturn(kind: "lfg" | "duo_request", id: number, author: number) {
+  const [decision] = await q`SELECT id FROM wp_safety_decisions WHERE target_kind=${kind} AND target_id=${id} AND revoked_at IS NULL AND action<>'dismiss'`;
+  expect(await submitAppeal(person(author), Number(decision.id), "Please reconsider this fixture decision.")).toBe(true);
+  const [appeal] = await q`SELECT id FROM wp_safety_appeals WHERE decision_id=${Number(decision.id)}`;
+  expect(await reviewAppeal(person(7), Number(appeal.id), true, "The independent review found no violation.")).toBe(true);
+}
+
 describe("moderation decisions, reporter feedback and appeals", () => {
   it("deduplicates retrying reporters, refuses unknown items and independently verifies case review", async () => {
     expect((await fileReport(person(2), "post", 900, "spam", "missing")).status).toBe(404);
@@ -131,18 +161,37 @@ describe("moderation decisions, reporter feedback and appeals", () => {
         await q`SELECT target_kind FROM wp_reports WHERE reason IN ('incoming','outgoing') ORDER BY reason`
       ).map((r) => r.target_kind),
     ).toEqual(["duo_request", "lfg"]);
+    expect(await resolveCase(person(6), "duo_request", Number(inv.id), "remove", "fraud")).toBe(true);
+    await overturn("duo_request", Number(inv.id), 3);
+    expect((await q`SELECT status FROM wp_duo_requests WHERE id=${Number(inv.id)}`)[0].status).toBe("declined");
   });
   it("redacts a reported profile and restores its previous display fields after clearance", async () => {
+    await q`UPDATE wp_users SET bio='Map timers practice' WHERE id=5`;
     await fileReport(person(1), "user", 5, "harassment", "");
     await fileReport(person(2), "user", 5, "harassment", "");
     await fileReport(person(3), "user", 5, "harassment", "");
     const [held] = await q`SELECT display_name,safety_status FROM wp_users WHERE id=5`;
     expect(held).toMatchObject({ display_name: "Community player", safety_status: "held" });
+    expect((await reviewQueue(person(6))).cases.find((entry) => entry.kind === "user" && Number(entry.id) === 5)?.excerpt).toBe("Player 5 Map timers practice");
     expect(await resolveCase(person(6), "user", 5, "dismiss", "harassment")).toBe(true);
-    expect((await q`SELECT display_name,safety_status FROM wp_users WHERE id=5`)[0]).toMatchObject({
+    expect((await q`SELECT display_name,bio,safety_status FROM wp_users WHERE id=5`)[0]).toMatchObject({
       display_name: "Player 5",
+      bio: "Map timers practice",
       safety_status: "visible",
     });
+  });
+
+  it("shows ordinary reviewers a held room's original name and description", async () => {
+    const [room] = await q`INSERT INTO wp_rooms(slug,name,description)
+      VALUES ('fixture-review-room','Mid review','Discuss lane priorities') RETURNING id`;
+    const id = Number(room.id);
+    for (const reporter of [1, 2, 3]) await fileReport(person(reporter), "room", id, "other", "");
+    expect((await q`SELECT name,description,safety_status FROM wp_rooms WHERE id=${id}`)[0]).toEqual({
+      name: "Room under review", description: "", safety_status: "held",
+    });
+    expect((await reviewQueue(person(6))).cases.find((entry) => entry.kind === "room" && Number(entry.id) === id)?.excerpt)
+      .toBe("Mid review Discuss lane priorities");
+    expect(await resolveCase(person(6), "room", id, "dismiss", "other")).toBe(true);
   });
 
   it("retains a pre-existing suspension when a later sanction is overturned", async () => {
@@ -158,6 +207,79 @@ describe("moderation decisions, reporter feedback and appeals", () => {
     const [u] =
       await q`SELECT extract(year from banned_until)::int AS suspension_year FROM wp_users WHERE id=2`;
     expect(u.suspension_year).toBe(2030);
+  });
+});
+
+describe("duo consent during moderation", () => {
+  it("preserves the original acceptance and its timestamp after an unwarranted suspension is overturned", async () => {
+    const { requestId } = await invite(21, 22);
+    expect(await duoAction(person(21), requestId, "accept")).toMatchObject({ ok: true });
+    const [original] = await q`SELECT accepted_at FROM wp_duo_requests WHERE id=${requestId}`;
+    expect((await fileReport(person(21), "duo_request", requestId, "other", "Check this invitation.")).status).toBe(200);
+    expect(await resolveCase(person(6), "duo_request", requestId, "restrict1", "other")).toBe(true);
+    await overturn("duo_request", requestId, 22);
+    expect((await q`SELECT status,accepted_at FROM wp_duo_requests WHERE id=${requestId}`)[0]).toEqual({ status: "accepted", accepted_at: original.accepted_at });
+  });
+
+  it("does not restore an acceptance after either verification or the slot expires", async () => {
+    for (const [owner, sender, invalidation] of [[23, 24, "verification"], [25, 26, "expiry"]] as const) {
+      const { listingId, requestId } = await invite(owner, sender);
+      expect(await duoAction(person(owner), requestId, "accept")).toMatchObject({ ok: true });
+      expect((await fileReport(person(owner), "duo_request", requestId, "other", "Check this invitation.")).status).toBe(200);
+      expect(await resolveCase(person(6), "duo_request", requestId, "remove", "other")).toBe(true);
+      if (invalidation === "verification") await q`DELETE FROM wp_links WHERE user_id=${sender}`;
+      else await q`UPDATE wp_lfg SET expires_at=now()-interval '1 second' WHERE id=${listingId}`;
+      await overturn("duo_request", requestId, sender);
+      expect((await q`SELECT status FROM wp_duo_requests WHERE id=${requestId}`)[0].status).toBe("declined");
+    }
+  });
+
+  it("releases an approved pending invitation only before its original session starts", async () => {
+    const { requestId } = await invite(27, 28);
+    expect((await fileReport(person(27), "duo_request", requestId, "other", "Check this invitation.")).status).toBe(200);
+    expect(await resolveCase(person(6), "duo_request", requestId, "dismiss", "other")).toBe(true);
+    expect((await q`SELECT status FROM wp_duo_requests WHERE id=${requestId}`)[0].status).toBe("pending");
+    const late = await invite(40, 41);
+    await q`UPDATE wp_lfg SET session_start=now()-interval '1 second' WHERE id=${late.listingId}`;
+    expect((await fileReport(person(40), "duo_request", late.requestId, "other", "Check the late invitation.")).status).toBe(200);
+    expect(await resolveCase(person(6), "duo_request", late.requestId, "dismiss", "other")).toBe(true);
+    expect((await q`SELECT status FROM wp_duo_requests WHERE id=${late.requestId}`)[0].status).toBe("declined");
+  });
+
+  it("records a participant's withdrawal during a hold without closing the moderation case", async () => {
+    const { requestId } = await invite(29, 30);
+    expect((await fileReport(person(29), "duo_request", requestId, "private_information", "Benign queue fixture.")).status).toBe(200);
+    expect(await duoAction(person(31), requestId, "decline")).toMatchObject({ ok: false });
+    expect(await duoAction(person(30), requestId, "decline")).toMatchObject({ ok: true });
+    expect((await q`SELECT status FROM wp_duo_requests WHERE id=${requestId}`)[0].status).toBe("held");
+    expect(await resolveCase(person(7), "duo_request", requestId, "dismiss", "other")).toBe("second_review");
+    expect(await resolveCase(person(8), "duo_request", requestId, "dismiss", "other")).toBe(true);
+    expect((await q`SELECT status FROM wp_duo_requests WHERE id=${requestId}`)[0].status).toBe("declined");
+  });
+
+  it("does not reopen a listing the owner closed while it was held", async () => {
+    const { listingId } = await invite(32, 33);
+    for (const reporter of [34, 35, 36]) {
+      expect((await fileReport(person(reporter), "lfg", listingId, "other", "Review the listing fixture.")).status).toBe(200);
+    }
+    expect((await q`SELECT status FROM wp_lfg WHERE id=${listingId}`)[0].status).toBe("held");
+    expect(await closeDuoListing(33, listingId)).toMatchObject({ ok: false });
+    expect(await closeDuoListing(32, listingId)).toMatchObject({ ok: true });
+    expect(await resolveCase(person(6), "lfg", listingId, "remove", "other")).toBe(true);
+    await overturn("lfg", listingId, 32);
+    expect((await q`SELECT status FROM wp_lfg WHERE id=${listingId}`)[0].status).toBe("closed");
+  });
+
+  it("does not restore an acceptance that conflicts with a newer booking", async () => {
+    const original = await invite(37, 38);
+    expect(await duoAction(person(37), original.requestId, "accept")).toMatchObject({ ok: true });
+    expect((await fileReport(person(37), "duo_request", original.requestId, "other", "Check this invitation.")).status).toBe(200);
+    expect(await resolveCase(person(6), "duo_request", original.requestId, "remove", "other")).toBe(true);
+    const replacement = await invite(39, 38, original.start);
+    expect(await duoAction(person(39), replacement.requestId, "accept")).toMatchObject({ ok: true });
+    await overturn("duo_request", original.requestId, 38);
+    expect((await q`SELECT status FROM wp_duo_requests WHERE id=${original.requestId}`)[0].status).toBe("declined");
+    expect((await q`SELECT status FROM wp_duo_requests WHERE id=${replacement.requestId}`)[0].status).toBe("accepted");
   });
 });
 

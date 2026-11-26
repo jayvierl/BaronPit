@@ -152,11 +152,11 @@ export async function addComment(user: User, postId: number, bodyRaw: string, pa
   let rows;
   try {
     const sql = await getSql();
-    rows = await insertSubmission(sql,sql(`WITH ${HIDDEN_AUTHORS}, candidate AS MATERIALIZED (
+    rows = await insertSubmission(sql,sql(`WITH RECURSIVE ${HIDDEN_AUTHORS}, candidate_replies AS (
+    SELECT id FROM wp_comments WHERE id=$3::int AND post_id=$2
+  ), ${visibleCommentsFor("candidateReplies")}, candidate AS MATERIALIZED (
     SELECT p.id,p.room_id FROM wp_posts p WHERE p.id=$2 AND ${visiblePostForInteraction} AND (NOT $6 OR p.kind='card')
-      AND ($3::int IS NULL OR EXISTS (
-        SELECT 1 FROM wp_comments c WHERE c.id=$3 AND c.post_id=p.id AND c.parent_id IS NULL
-          AND c.status='visible' AND c.author_id NOT IN (SELECT id FROM hidden)))
+      AND ($3::int IS NULL OR EXISTS (SELECT 1 FROM thread))
   ), submitted AS (
     INSERT INTO wp_comments(post_id,author_id,parent_id,body,status,one_fix,submission_id,submission_hash)
     SELECT id,$1,$3::int,$4,$5,$6::boolean,$10::uuid,$11 FROM candidate
@@ -209,16 +209,24 @@ export async function myNotices(userId: number): Promise<{ id: number; action: s
 export async function setBlock(userId: number, otherId: number, block: boolean): Promise<void> {
   const sql = await getSql();
   const lock = sql`SELECT pg_advisory_xact_lock(least(${userId}::int,${otherId}::int),greatest(${userId}::int,${otherId}::int))`;
-  if (!block) {
-    await sql.transaction([lock,sql`DELETE FROM wp_blocks WHERE blocker_id=${userId} AND blocked_id=${otherId}`]);
-    return;
-  }
-  await sql.transaction([lock,
-    sql`INSERT INTO wp_blocks(blocker_id,blocked_id) SELECT ${userId},id FROM wp_users WHERE id=${otherId} ON CONFLICT DO NOTHING`,
-    sql`DELETE FROM wp_follows WHERE (follower_id=${userId} AND followee_id=${otherId}) OR (follower_id=${otherId} AND followee_id=${userId})`,
+  // End any legacy connections before removing a block. A no-op unblock must leave connections alone.
+  const closeConnections = [
+    sql`DELETE FROM wp_follows WHERE ((follower_id=${userId} AND followee_id=${otherId}) OR (follower_id=${otherId} AND followee_id=${userId}))
+      AND EXISTS (SELECT 1 FROM wp_blocks WHERE blocker_id=${userId} AND blocked_id=${otherId})`,
     sql`UPDATE wp_duo_requests r SET status='declined' FROM wp_lfg l WHERE l.id=r.listing_id AND r.status IN ('pending','accepted','held','removed')
-      AND ((r.sender_id=${userId} AND l.user_id=${otherId}) OR (r.sender_id=${otherId} AND l.user_id=${userId}))`,
-  ]);
+      AND ((r.sender_id=${userId} AND l.user_id=${otherId}) OR (r.sender_id=${otherId} AND l.user_id=${userId}))
+      AND EXISTS (SELECT 1 FROM wp_blocks WHERE blocker_id=${userId} AND blocked_id=${otherId})`,
+  ];
+  if (block) {
+    await sql.transaction([lock,
+      sql`INSERT INTO wp_blocks(blocker_id,blocked_id) SELECT ${userId},id FROM wp_users WHERE id=${otherId} ON CONFLICT DO NOTHING`,
+      ...closeConnections,
+    ]);
+  } else {
+    await sql.transaction([lock, ...closeConnections,
+      sql`DELETE FROM wp_blocks WHERE blocker_id=${userId} AND blocked_id=${otherId}`,
+    ]);
+  }
 }
 export async function setMute(userId: number, otherId: number, mute: boolean): Promise<void> {
   if (mute) await q`INSERT INTO wp_mutes (muter_id, muted_id) VALUES (${userId}, ${otherId}) ON CONFLICT DO NOTHING`;

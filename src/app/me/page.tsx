@@ -54,7 +54,7 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
       </div>
 
       <div className="card">
-        <nav className="account-shortcuts" aria-label="My community"><Link href="/lfg">My duo preferences</Link><Link href="/activity">Thread activity</Link><Link href="/playbook">My playbook</Link><Link href="/pilot">Community pilot</Link>{isAdmin(user.email) && <Link href="/admin/pilot">Pilot results</Link>}</nav>
+        <nav className="account-shortcuts" aria-label="My community"><Link href="/lfg">My duo preferences</Link><Link href="/activity">Thread activity</Link><Link href="/playbook">My playbook</Link><Link href="/me/safety#settings">Safety settings</Link><Link href="/pilot">Community pilot</Link>{isAdmin(user.email) && <Link href="/admin/pilot">Pilot results</Link>}</nav>
         <Link href="/profile/edit?from=account" className="btn secondary">Edit profile</Link>
       </div>
 

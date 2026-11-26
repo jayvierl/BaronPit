@@ -1,6 +1,6 @@
 import { q, dbAvailable } from "./db";
 import bundledCatalog from "./champion-catalog.json";
-import { readRankedEntries, type RankedEntry } from "./player-summary";
+import { playerSnapshotTiming, readRankedEntries, type RankedEntry } from "./player-summary";
 
 /**
  * Riot API access — on-demand recent form ONLY (build brief §2/§8).
@@ -40,8 +40,6 @@ export interface Player {
   snapshot: PlayerSnapshot;
   fetchedAt: string;
 }
-
-const CACHE_TTL_MS = 10 * 60 * 1000;
 
 function key(): string | null {
   return process.env.RIOT_API_KEY ?? null;
@@ -171,7 +169,7 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string): 
   const existing = await q`SELECT * FROM wp_players
     WHERE platform = ${platform} AND lower(game_name) = lower(${gameName}) AND lower(tag_line) = lower(${tagLine}) ORDER BY fetched_at DESC,puuid LIMIT 1`;
   const cached = existing[0] ? playerFromRow(existing[0]) : null;
-  if (cached && Date.now() - Date.parse(cached.fetchedAt) < CACHE_TTL_MS)
+  if (cached && playerSnapshotTiming(cached.fetchedAt).fresh)
     return { ok: true, player: cached, fresh: false, source: "cache" };
   let fallback = cached;
   const unavailable = (status: number): LookupResult =>

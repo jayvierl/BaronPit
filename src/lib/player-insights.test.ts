@@ -83,7 +83,7 @@ describe("bounded player and community data queries", () => {
     expect(testQueries.length - start).toBe(1);
     expect(identities).toEqual(full.map(p => ({
       puuid:p.puuid, platform:p.platform, gameName:p.gameName, tagLine:p.tagLine, profileIcon:p.profileIcon,
-      primary:p.primary, verified:p.verified, rankTier:p.rankTier, rankDiv:p.rankDiv, rankLp:p.rankLp, rankedEntries:p.rankedEntries,
+      primary:p.primary, verified:p.verified, rankTier:p.rankTier, rankDiv:p.rankDiv, rankLp:p.rankLp, rankedEntries:p.rankedEntries, fetchedAt:p.fetchedAt,
     })));
     expect(JSON.stringify(identities).length * 10).toBeLessThan(JSON.stringify(full).length);
   });
@@ -148,6 +148,10 @@ describe("bounded player and community data queries", () => {
       expect(byline).toMatchObject({authorFlair:expected, authorStatsHref:"/player?platform=na1&riotId=Flair%23NA1"});
       expect((await searchAll("Flair#NA1", null)).players).toMatchObject([{rank:expected}]);
     }
+    await q`UPDATE wp_players SET snapshot=${JSON.stringify({ rankedEntries: [flex] })}::jsonb, fetched_at='2024-12-31T23:59:00Z' WHERE puuid='flair'`;
+    const dated = "Emerald II (Flex) · as of Dec 31, 2024";
+    expect((await linkedPlayers(500))[0].flair).toBe(dated);
+    expect((await readPosts(null,{postId:Number(post.id)},1))[0]).toMatchObject({authorFlair:dated,authorTier:"EMERALD"});
     await q`DELETE FROM wp_users WHERE id=500`;
   });
   it("keeps one membership read scoped to the requested room", async () => {

@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { replyActivity, watchedDiscussions, pageCursor } from "@/lib/discussion-library";
 import { signInHref } from "@/lib/signin-return";
 import { DiscussionList } from "@/components/discussion-library-list";
+import { DuoCancelButton } from "@/components/duo-cancel-button";
 import { duoEnabled } from "@/lib/duo";
 import { hasIncomingDuoRequest, privateDuoActivity, type DuoActivityItem } from "@/lib/duo-activity";
 
@@ -80,7 +81,9 @@ function InvitationList({ invites }: { invites: DuoActivityItem[] | null }) {
     <ul className="plain-list">
       {invites.map((item) => {
         const heading =
-          item.state === "expired"
+          item.state === "cancelled"
+            ? "Duo booking canceled"
+            : item.state === "expired"
             ? "Invitation expired"
             : item.state === "accepted"
               ? "Duo invitation accepted"
@@ -92,8 +95,8 @@ function InvitationList({ invites }: { invites: DuoActivityItem[] | null }) {
             <div>
               <strong>{heading}</strong>
               <p className="meta">
-                {item.listingEnded ? "This listing has ended." : (
-                  <>Listing closes <time dateTime={item.expiresAt}>{new Date(item.expiresAt).toUTCString()}</time></>
+                {item.state === "cancelled" ? "Contact sharing for this booking ended." : item.listingEnded && !item.canCancel ? "This listing has ended." : (
+                  <>{item.canCancel ? "Booking ends" : "Listing closes"} <time dateTime={item.expiresAt}>{new Date(item.expiresAt).toUTCString()}</time></>
                 )}
               </p>
               {item.listingEnded && item.state === "accepted" && <Link href="/lfg">Open Duo Finder</Link>}
@@ -102,6 +105,7 @@ function InvitationList({ invites }: { invites: DuoActivityItem[] | null }) {
                   {item.state === "pending" && item.incoming ? "Review invitation" : "View request"}
                 </Link>
               )}
+              {item.canCancel && <DuoCancelButton id={item.id} />}
             </div>
           </li>
         );

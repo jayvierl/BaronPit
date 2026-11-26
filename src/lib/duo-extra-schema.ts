@@ -2,6 +2,7 @@
 export const duoExtraSchema = [
   `ALTER TABLE wp_duo_requests
     ADD COLUMN IF NOT EXISTS accepted_at timestamptz,
+    ADD COLUMN IF NOT EXISTS cancelled_at timestamptz,
     ADD COLUMN IF NOT EXISTS sender_requeue boolean NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS owner_requeue boolean NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS sender_thanked boolean NOT NULL DEFAULT false,

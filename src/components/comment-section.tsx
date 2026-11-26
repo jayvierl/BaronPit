@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { beginDraftSignIn, restoreAfterMount } from "@/lib/auth-draft";
+import { validId } from "@/lib/ids";
 import { signInHref } from "@/lib/signin-return";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -9,7 +10,7 @@ import type { CommentView } from "@/lib/social";
 import type { AvatarIdentity } from "@/lib/author-identity";
 import { PostCardLoading } from "./post-card-loading";
 import { WithdrawSubmission } from "./withdraw-submission";
-import { Avatar, timeAgo } from "./ui";
+import { Avatar, PermalinkTime } from "./ui";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SaveReply } from "./discussion-library-actions";
 import styles from "@/app/questions/questions.module.css";
@@ -48,7 +49,7 @@ export function CommentSection({
   const [thread, setThread] = useState<ThreadLoad | null>(null);
   const [revision, setRevision] = useState(0);
   const [draft, setDraft] = useState("");
-  const [replyTo, setReplyTo] = useState<{ rootId: number; name: string } | null>(null);
+  const [replyTo, setReplyTo] = useState<number | "reselect" | null>(null);
   const [oneFix, setOneFix] = useState(false);
   const [notice, setNotice] = useState("");
   const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
@@ -63,24 +64,15 @@ export function CommentSection({
     return restoreAfterMount(scope, saved => {
       if (typeof saved.body !== "string") return;
       setDraft(saved.body.slice(0, 1000));
-      if (typeof saved.rootId === "number" && Number.isSafeInteger(saved.rootId) && typeof saved.name === "string") {
-        setReplyTo({rootId: saved.rootId, name: saved.name});
-      }
-      setOneFix(saved.oneFix === true);
+      const hasStoredTarget = "parentId" in saved || "rootId" in saved;
+      const target = validId(saved.parentId) ? saved.parentId : hasStoredTarget ? "reselect" : null;
+      setReplyTo(target);
+      setOneFix(saved.oneFix === true && target === null);
       setNotice("Your reply is ready to review.");
       inputRef.current?.focus();
     });
   }, [scope, signedIn]);
 
-  function resumeAfterAuth() {
-    const destination = `/post/${postId}#replies-${postId}`;
-    const mode = action.authStep === "enrol" ? "enrol" : undefined;
-    if (!draft.trim()) { router.push(signInHref(destination, mode)); return; }
-    try {
-      router.push(beginDraftSignIn(window.localStorage, scope, destination,
-        {body: draft, rootId: replyTo?.rootId, name: replyTo?.name, oneFix}, mode));
-    } catch { setNotice("This browser couldn’t save your reply. Copy it before signing in."); }
-  }
   const useInitial = initialComments != null && visit === 1 && revision === 0;
   useEffect(() => {
     if (!active || useInitial) return;
@@ -106,16 +98,35 @@ export function CommentSection({
     ? { postId, revision, visit, comments: initialComments }
     : thread?.postId === postId && thread.revision === revision && thread.visit === visit ? thread : null;
   const renderedComments = current?.comments;
-  const replyCounts = useMemo(() => {
+  const { counts: replyCounts, commentsById } = useMemo(() => {
     const counts = new Map<number, number>();
+    const commentsById = new Map<number, CommentView>();
     function count(comment: CommentView): number {
+      commentsById.set(comment.id, comment);
       const descendants = comment.replies.reduce((sum, child) => sum + 1 + count(child), 0);
       counts.set(comment.id, descendants);
       return descendants;
     }
     renderedComments?.forEach(count);
-    return counts;
+    return { counts, commentsById };
   }, [renderedComments]);
+  const replyTarget = typeof replyTo === "number" ? commentsById.get(replyTo) : undefined;
+  const unavailableTarget = replyTo !== null && !replyTarget;
+  const replyContext = replyTarget ? `Replying to ${replyTarget.authorName}`
+    : replyTo === "reselect" ? "Choose a comment to address this draft to."
+    : current ? "This comment is unavailable. Choose another comment or cancel to reply to the post."
+    : "Loading the reply recipient…";
+
+  function resumeAfterAuth() {
+    if (unavailableTarget) return;
+    const destination = `/post/${postId}#replies-${postId}`;
+    const mode = action.authStep === "enrol" ? "enrol" : undefined;
+    if (!draft.trim() && !replyTarget) { router.push(signInHref(destination, mode)); return; }
+    try {
+      router.push(beginDraftSignIn(window.localStorage, scope, destination,
+        {body: draft, parentId: replyTarget?.id, oneFix}, mode));
+    } catch { setNotice("This browser couldn’t save your reply. Copy it before signing in."); }
+  }
 
   function setBranchOpen(id: number, open: boolean) {
     setCollapsed(previous => {
@@ -150,13 +161,14 @@ export function CommentSection({
   const payload = {
     postId,
     body: draft.trim(),
-    parentId: replyTo?.rootId,
-    oneFix: !!allowOneFix && oneFix && !replyTo,
+    parentId: typeof replyTo === "number" ? replyTo : undefined,
+    oneFix: !!allowOneFix && oneFix && replyTo === null,
   };
   const submissionKey = JSON.stringify(payload);
   const [attempted, setAttempted] = useState("");
   const reconsider = action.reconsider && attempted === submissionKey;
   async function submit(submitForReview = false) {
+    if (unavailableTarget) return;
     if (!signedIn) { resumeAfterAuth(); return; }
     if (!draft.trim() || action.busy || (reconsider && !submitForReview)) return;
     setNotice("");
@@ -178,7 +190,7 @@ export function CommentSection({
     setRevision((r) => r + 1);
   }
 
-  function showComment(c: CommentView, rootId: number, depth: number): React.ReactNode {
+  function showComment(c: CommentView, depth: number): React.ReactNode {
     const count = replyCounts.get(c.id) ?? 0;
     const replyLabel = count === 1 ? "1 reply" : `${count} replies`;
     return (
@@ -195,9 +207,8 @@ export function CommentSection({
               <Link href={`/u/${c.authorId}`} className="post-author">
                 {c.authorName}
               </Link>{" "}
-              <Link href={`/post/${postId}#reply-${c.id}`} className={threadStyles.permalink}
-                aria-label={`Link to reply by ${c.authorName}`}>
-                <time className="time" dateTime={c.createdAt} suppressHydrationWarning>{timeAgo(c.createdAt)}</time>
+              <Link href={`/post/${postId}#reply-${c.id}`} className={threadStyles.permalink}>
+                <PermalinkTime iso={c.createdAt} context={`Link to reply by ${c.authorName}`} />
               </Link>
             </div>
             <div className="post-body">
@@ -210,9 +221,10 @@ export function CommentSection({
                 type="button"
                 className="text-btn"
                 aria-label={`Reply to ${c.authorName}`}
+                disabled={action.busy}
                 onClick={() => {
-                  setBranchOpen(rootId, true);
-                  setReplyTo({ rootId, name: c.authorName });
+                  setBranchOpen(c.id, true);
+                  setReplyTo(c.id);
                   setOneFix(false);
                   inputRef.current?.focus();
                 }}
@@ -230,7 +242,7 @@ export function CommentSection({
           }}>
           <summary aria-label={`${replyLabel} under ${c.authorName}’s comment`}>{replyLabel}</summary>
           <div className={depth === 0 ? threadStyles.children : undefined}>
-            {c.replies.map((child) => showComment(child, rootId, depth + 1))}
+            {c.replies.map((child) => showComment(child, depth + 1))}
           </div>
         </details>}
       </div>
@@ -244,7 +256,7 @@ export function CommentSection({
         <PostCardLoading label="Loading replies…" />
       ) : current.comments ? (
         current.comments.length ? (
-          current.comments.map((c) => showComment(c, c.id, 0))
+          current.comments.map((c) => showComment(c, 0))
         ) : (
           <p className="meta">No replies yet.</p>
         )
@@ -272,7 +284,7 @@ export function CommentSection({
           <button
             type="button"
             className="btn small secondary"
-            disabled={action.busy}
+            disabled={action.busy || unavailableTarget}
             onClick={() => submit(true)}
           >
             Submit reply for review
@@ -293,21 +305,21 @@ export function CommentSection({
             void submit();
           }}
         >
-          {allowOneFix && !replyTo && (
+          {allowOneFix && replyTo === null && (
             <label className="meta">
               <input type="checkbox" checked={oneFix} onChange={(e) => setOneFix(e.target.checked)} /> Suggest one
               fix for the next game
             </label>
           )}
-          {replyTo && (
+          {replyTo !== null && (
             <p className="meta">
-              Replying to {replyTo.name}{" "}
-              <button type="button" className="text-btn" onClick={() => setReplyTo(null)}>
+              {replyContext}{" "}
+              <button type="button" className="text-btn" disabled={action.busy} onClick={() => setReplyTo(null)}>
                 Cancel
               </button>
             </p>
           )}
-          {decisionQuestion && !replyTo && (
+          {decisionQuestion && replyTo === null && (
             <details className={styles.replyGuide}>
               <summary>Help me frame my answer</summary>
               <p>What would you do? Why would it work here? When would you choose differently?</p>
@@ -329,7 +341,7 @@ export function CommentSection({
               onChange={(e) => setDraft(e.target.value)}
               maxLength={1000}
             />}
-            <button type="submit" className="btn small" disabled={action.busy || (signedIn && !draft.trim()) || reconsider}>
+            <button type="submit" className="btn small" disabled={action.busy || unavailableTarget || (signedIn && !draft.trim()) || reconsider}>
               {action.busy ? "Sending…" : signedIn ? "Reply" : "Sign in to reply"}
             </button>
           </div>
