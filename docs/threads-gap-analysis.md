@@ -1,5 +1,11 @@
 # Baron Pit and Threads
 
+## Wide-screen home and player profiles
+
+Jay’s desktop Threads reference places navigation to the left of a single conversation column and discovery to its right. This revises the earlier single-column-only desktop rule for Home at 1200px and wider. Phones retain the bottom navigation and one reading column. Activity counts and player suggestions come from visible community activity. The For you feed still uses recent posts and replies.
+
+Jay’s OP.GG profile separates Solo/Duo and Flex and puts champion performance close to results. On a verified social profile, Baron Pit now shows each available queue’s rank and win rate, the snapshot date, and the top role and champion from the recent sample. Up to six W/L buttons link directly to the corresponding games. Anyone can also open a public Riot lookup, including for a player who has never joined Baron Pit. [Reference player profile](https://op.gg/lol/summoners/na/Jay%20Lewis-NA1)
+
 Product and engineering review, 26 November 2026. The comparison is between the public Threads web product and Baron Pit’s social experience for League players. The first production baseline was deployment `dpl_J4uPrvRdYSfmtaFia1zNyVratjnH`. The controlled local baseline was commit `02ce63c`, which already included the profile editor and ranked-profile changes.
 
 ## What was missing

@@ -7,6 +7,7 @@ const space = localFont({src:"./fonts/spacegrotesk.woff2",variable:"--font-displ
 import "./globals.css";
 import { ExploreMenu } from "@/components/explore-menu";
 import { PrimaryNavigation } from "@/components/primary-navigation";
+import navStyles from "@/components/navigation.module.css";
 import { APP_NAME, APP_DESCRIPTION, SUPPORT_EMAIL } from "@/lib/brand";
 
 export const metadata: Metadata = {
@@ -21,48 +22,47 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { viewportFit: "cover" };
 
+function ExploreLinks({ desktop = false }: { desktop?: boolean }) {
+  return <ExploreMenu menuId={desktop ? "desktop-explore-destinations" : undefined}>
+    <Link href="/me" prefetch={false}>Account settings</Link>
+    {!desktop && <Link href="/rooms">Rooms</Link>}
+    <Link href="/questions">Match questions</Link>
+    <Link href="/review-hour">Bot lane review hour</Link>
+    {!desktop && <Link href="/playbook">My playbook</Link>}
+    <Link href="/builds">Builds</Link>
+    <Link href="/champions">Champions</Link>
+    <Link href="/pilot">Community pilot</Link>
+  </ExploreMenu>;
+}
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable + " " + space.variable}>
       <body>
         <a className="skip-link" href="#content">Skip to content</a>
-        <header className="topbar">
+        <header className={`topbar ${navStyles.topbar}`}>
           <div className="topbar-inner">
-            <Link href="/" className="wordmark">
+            <Link href="/" className={`wordmark ${navStyles.mobileWordmark}`}>
               <Image unoptimized src="/baron-emblem-96.webp" width={32} height={32} alt="" />
               <span>{APP_NAME}</span>
             </Link>
             <div className="topbar-right">
-              <ExploreMenu>
-                <Link href="/me" prefetch={false}>Account settings</Link>
-                <Link href="/rooms">Rooms</Link>
-                <Link href="/questions">Match questions</Link>
-                <Link href="/review-hour">Bot lane review hour</Link>
-                <Link href="/playbook">My playbook</Link>
-                <Link href="/builds">Builds</Link>
-                <Link href="/champions">Champions</Link>
-                <Link href="/pilot">Community pilot</Link>
-              </ExploreMenu>
-              <Link href="/profile" prefetch={false} className="btn small" aria-label="My profile">Profile</Link>
+              <ExploreLinks/>
+              <Link href="/profile" prefetch={false} className={`btn small ${navStyles.mobileProfile}`} aria-label="My profile">Profile</Link>
             </div>
           </div>
         </header>
-        <PrimaryNavigation />
+        <PrimaryNavigation brand={APP_NAME} explore={<ExploreLinks desktop/>}/>
         <div className="shell">
           <main className="page" id="content" tabIndex={-1}>{children}</main>
           <footer className="site">
             <div className="inner">
-              <nav className="footer-links" aria-label="Resources">
-                <Link href="/rooms">Rooms</Link>
-                <Link href="/lfg">Find a Duo</Link>
-                <Link href="/builds">Builds</Link>
-                <Link href="/champions">Champions</Link>
-                <Link href="/pilot">Community pilot</Link>
+              <nav className="footer-links" aria-label="Safety and legal">
                 <Link href="/safety">Safety centre</Link>
                 <Link href="/guidelines">Guidelines</Link>
                 <Link href="/terms">Terms</Link>
                 <Link href="/privacy">Privacy</Link>
-                <a href={`mailto:${SUPPORT_EMAIL}`}>Contact &amp; safety: {SUPPORT_EMAIL}</a>
+                <a href={`mailto:${SUPPORT_EMAIL}`}>Contact &amp; safety</a>
               </nav>
               <p style={{ margin: 0 }}>
                 {APP_NAME} is a fan-made community and isn&apos;t endorsed by Riot Games. {APP_NAME} doesn&apos;t reflect

@@ -16,6 +16,7 @@ import { readProfileLink } from "@/lib/profile-featured-link";
 import { signInHref } from "@/lib/signin-return";
 import { Avatar } from "@/components/ui";
 import { PlayerStats } from "@/components/player-stats";
+import { PlayerOverview } from "@/components/player-overview";
 import { EndorseRow, FollowButton, UserSafetyMenu } from "@/components/social-ui";
 import { publicAvatarIdentity } from "@/lib/author-identity";
 import { PostCard } from "@/components/post-card";
@@ -57,10 +58,10 @@ export default async function ProfilePage({ params, searchParams }: {
             <h1 className="profile-name">{profile.name}</h1>
             {player && <p className={styles.riotId}>{player.gameName}#{player.tagLine}
               <span> · {player.verified ? "Verified Riot link" : "Unverified Riot link"}</span></p>}
-            {player?.verified && <Link href={`/u/${userId}?tab=stats`} className={styles.identityRank}>
+            {player?.verified && activeTab !== "posts" && <Link href={`/u/${userId}?tab=stats`} className={styles.identityRank}>
               <RankBadge tier={placedRank(player).tier}>{socialRankLabel(player)}</RankBadge>
             </Link>}
-            {!player && isSelf && <Link href="/me" className={styles.link}>Link a Riot ID</Link>}
+            {!player && isSelf && activeTab === "replies" && <Link href="/me" className={styles.link}>Link a Riot ID</Link>}
           </div>
           <Avatar name={profile.name} hue={profile.hue} avatar={profile.avatar} size={76} />
         </div>
@@ -118,6 +119,13 @@ export default async function ProfilePage({ params, searchParams }: {
         </div>
       )}
       {activeTab === "posts" && <>
+        {player?.verified && lookupHref ? (
+          <PlayerOverview player={player} statsPath={`/u/${userId}?tab=stats`} historyPath={lookupHref} />
+        ) : lookupHref && player ? (
+          <p className={styles.lookupPrompt}><Link className={styles.link} href={lookupHref}>View stats for {player.gameName}#{player.tagLine} <span aria-hidden="true">→</span></Link></p>
+        ) : (
+          <p className={styles.lookupPrompt}>{isSelf ? null : <span>No Riot account linked · </span>}<Link className={styles.link} href={isSelf ? "/me" : "/player"}>{isSelf ? "Link a Riot ID" : "Look up a player"}</Link></p>
+        )}
         {highlight && player && (
           <div className="highlight-row">
             <ChampionPortrait id={highlight.champion} patch={patch} size={46} compact />
@@ -136,7 +144,6 @@ export default async function ProfilePage({ params, searchParams }: {
           </div>
         )}
 
-        {player && !player.verified && lookupHref && <p className="meta"><Link href={lookupHref}>View stats for {player.gameName}#{player.tagLine} →</Link></p>}
         {posts === null ? (
           <div className="empty">This player’s posts are temporarily unavailable.</div>
         ) : posts.length === 0 ? (

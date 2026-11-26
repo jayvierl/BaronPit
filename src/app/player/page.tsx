@@ -8,7 +8,7 @@ import { ChampionPortrait } from "@/components/champion-portrait";
 import { Avatar } from "@/components/ui";
 import Link from "next/link";
 import Form from "next/form";
-import { matchQueueName, recentMatchHistory } from "@/lib/match-history";
+import { MATCH_DETAIL_LIMIT, matchQueueName, matchSectionId, recentMatchHistory } from "@/lib/match-history";
 import styles from "./history.module.css";
 import { RefreshPlayer } from "@/components/refresh-player";
 import { getCurrentUser } from "@/lib/auth";
@@ -18,6 +18,7 @@ import { publicRiotOwner } from "@/lib/player-insights";
 import { playerStatsHref, splitRiotId } from "@/lib/platforms";
 import { LinkPlayerButton, LookupForm, ShareCardButton } from "@/components/social-ui";
 import { PlayerStats } from "@/components/player-stats";
+import { RecentResults } from "@/components/player-overview";
 import { gameCount, earnedBadges, formReads, type MatchSummary } from "@/lib/pure";
 
 export const dynamic = "force-dynamic";
@@ -72,9 +73,10 @@ export default async function PlayerPage({ searchParams }: {
   const linkedByMe = linked.length > 0;
   const badges = earnedBadges(snap);
   const history = recentMatchHistory(snap.matches, sp.queue, sp.champion);
-  const latest = history.matches.slice(0,3);
+  const latest = history.matches.slice(0, MATCH_DETAIL_LIMIT);
   const filtered = Boolean(history.queue || history.champion);
-  const historyHref = playerStatsHref(player.platform, player.gameName + "#" + player.tagLine) + "#match-history";
+  const lookupHref = playerStatsHref(player.platform, player.gameName + "#" + player.tagLine);
+  const historyHref = `${lookupHref}#match-history`;
   const reads = formReads(snap);
 
   // Match history establishes shared games only. Older snapshots have names without tags.
@@ -110,7 +112,8 @@ export default async function PlayerPage({ searchParams }: {
           </div>
           <Avatar name={player.gameName} hue={265} size={84} imageUrl={profileIconUrl(patch, player.profileIcon)} />
         </div>
-        <PlayerStats player={player} source={result.source} />
+        <RecentResults matches={snap.matches} historyPath={filtered ? lookupHref : ""} />
+        <PlayerStats player={player} source={result.source} lookupHref={history.sampleSize ? "#match-history" : undefined} />
         <div className="profile-actions">
           <RefreshPlayer />
           {user && !linkedByMe && <LinkPlayerButton platform={platform} gameName={player.gameName} tagLine={player.tagLine} />}
@@ -151,9 +154,9 @@ export default async function PlayerPage({ searchParams }: {
       {!filtered && frequent.length > 0 && (
         <p className="meta">Also on the same team recently · {frequent.map(([name,games]) => `${name} (${games} games)`).join(", ")}</p>
       )}
-      {history.matches.length > 3 && <details className="card" key={historyHref + history.queue + history.champion}>
-        <summary>Show {gameCount(history.matches.length - 3)} more</summary>
-        {history.matches.slice(3).map(m => <div key={m.matchId} className="match-row">
+      {history.matches.length > MATCH_DETAIL_LIMIT && <details className="card" key={historyHref + history.queue + history.champion}>
+        <summary>Show {gameCount(history.matches.length - MATCH_DETAIL_LIMIT)} more</summary>
+        {history.matches.slice(MATCH_DETAIL_LIMIT).map(m => <div key={m.matchId} id={matchSectionId(m.matchId)} tabIndex={-1} className={`match-row ${styles.matchTarget}`}>
           <ChampionPortrait id={m.champion} patch={patch} size={32} />
           <strong>{m.champion}</strong><span className={m.win ? "win" : "loss"}>{m.win ? "Victory" : "Defeat"}</span>
           <span className="meta">{m.kills}/{m.deaths}/{m.assists} · {new Date(m.playedAt).toLocaleDateString()}</span>
@@ -206,7 +209,7 @@ async function LatestGames({ matches, patch, platform, puuid, signedIn }: {
   return matches.map((m, index) => {
     const details = cardItems(catalog, m.items);
     return (
-      <div key={m.matchId} className={`game-row ${m.win ? "win" : "loss"}`}>
+      <div key={m.matchId} id={matchSectionId(m.matchId)} tabIndex={-1} className={`game-row ${m.win ? "win" : "loss"} ${styles.matchTarget}`}>
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap:"wrap" }}>
           <ChampionPortrait id={m.champion} patch={patch} size={48} />
           <div style={{ flex: "1 1 120px", minWidth: 0 }}>

@@ -149,6 +149,7 @@ try {
   if (!ready) throw new Error("Production server startup timed out");
   await journey("/", {
     includes: [
+      'aria-label="Conversations"', 'aria-label="Discover"', 'aria-label="Community search"',
       "Fixture win condition", "Fixture offrole question", "Fixture blocked discussion",
       "Never take Baron alone.", "/baron-emblem-96.webp", "/baron-icon-32.png",
       "Lobby rally clock", "Community objective progress", "Resets at 00:00 UTC",
@@ -156,6 +157,7 @@ try {
     ],
     excludes: ["BARON IS UP", "Objective progress is temporarily unavailable"],
   });
+  await journey("/?tab=following", {status:307, signInReturn:"/?tab=following"});
   await journey("/?tab=following", {
     session: true,
     includes: ["Fixture win condition", "Lobby rally clock"],

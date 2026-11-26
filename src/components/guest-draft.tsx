@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { beginDraftSignIn } from "@/lib/auth-draft";
 import { signInHref } from "@/lib/signin-return";
 
-export function GuestPostDraft({roomId, destination, label}: {roomId?: number; destination: string; label: string}) {
+export function GuestPostDraft({roomId, destination, label, anchorId = "compose", onDraftChange}: {
+  roomId?: number; destination: string; label: string; anchorId?: string | null; onDraftChange?: (hasDraft: boolean) => void;
+}) {
   const [body, setBody] = useState("");
   const [error, setError] = useState("");
   const router = useRouter();
-  return <form id="compose" className={`composer ${styles.editor}`} onSubmit={event => {
+  return <form id={anchorId ?? undefined} className={`composer ${styles.editor}`} onSubmit={event => {
     event.preventDefault();
     if (!body.trim()) { router.push(signInHref(destination)); return; }
     try {
@@ -19,7 +21,10 @@ export function GuestPostDraft({roomId, destination, label}: {roomId?: number; d
   }}>
     <label className={styles.guestLabel}>
       <strong>{label}</strong>
-      <textarea rows={2} placeholder="What’s on your mind?" maxLength={2000} value={body} onChange={event=>setBody(event.target.value)} />
+      <textarea rows={2} placeholder="What’s on your mind?" maxLength={2000} value={body} onChange={event => {
+        setBody(event.target.value);
+        onDraftChange?.(Boolean(event.target.value.trim()));
+      }} />
     </label>
     {error && <p className="notice err" role="alert">{error}</p>}
     <div className="composer-foot">

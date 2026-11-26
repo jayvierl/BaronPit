@@ -22,12 +22,16 @@ export function Composer({
   champions,
   viewerIdentity,
   viewerId,
+  anchorId = "compose",
+  onDraftChange,
 }: {
   roomId?: number;
   patch: string;
   champions: string[];
   viewerIdentity?: AvatarIdentity | null;
   viewerId: number;
+  anchorId?: string | null;
+  onDraftChange?: (hasDraft: boolean) => void;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState(emptyPostDraft);
@@ -47,6 +51,10 @@ export function Composer({
   const countId = useId();
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [storageError, setStorageError] = useState(false);
+
+  useEffect(() => {
+    onDraftChange?.(hasPostDraft(draft));
+  }, [draft, onDraftChange]);
 
   useEffect(() => {
     try { storage.current = openTabDraft(window.sessionStorage, window.localStorage, viewerId, scope); }
@@ -183,7 +191,7 @@ export function Composer({
     <fieldset
       disabled={action.busy}
       className={`composer ${styles.editor}`}
-      id="compose"
+      id={anchorId ?? undefined}
       aria-label="Start a thread"
     >
       <div className="composer-head">

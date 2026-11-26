@@ -89,10 +89,14 @@ describe("thread controls", () => {
     const post: PostView = { ...base, kind: "build", data: { champion: "Ashe", offMeta: true },
       roomSlug: "champ-ashe", roomName: "Ashe", roomId: 8, pollResults: null, myVote: null };
     const html = renderToStaticMarkup(createElement(PostCard, { post, patch: "16.23.1", signedIn: false }));
+    const author = html.indexOf('class="post-author"');
     const room = html.indexOf('href="/rooms/champ-ashe"');
+    const time = html.indexOf("<time");
     const message = html.indexOf("A lane swap");
-    expect(room).toBeGreaterThan(0);
-    expect(message).toBeGreaterThan(room);
+    expect(author).toBeGreaterThan(0);
+    expect(room).toBeGreaterThan(author);
+    expect(time).toBeGreaterThan(room);
+    expect(message).toBeGreaterThan(time);
     expect(html.indexOf("Ashe build")).toBeGreaterThan(message);
   });
 
@@ -117,6 +121,21 @@ describe("thread controls", () => {
     expect(html).toContain(">Report</button>");
     expect(html).toContain('aria-expanded="false" aria-controls="thread-replies-1"');
     expect(html).not.toContain("Loading replies");
+  });
+
+  it("uses stored engagement counts and keeps report and withdrawal scoped to the viewer", () => {
+    const post: PostView = { ...base, kind: "text", data: {}, reactions: { "❤️": 2, "🔥": 1, GG: 2 }, commentCount: 4 };
+    const props = { post, patch: "16.23.1", signedIn: true };
+    const other = renderToStaticMarkup(createElement(PostCard, { ...props, viewerId: 2 }));
+    expect(other).toContain('aria-label="Like, 2 likes"');
+    expect(other).toContain('aria-label="Show replies, 4 replies"');
+    expect(other).toContain('aria-label="More reactions, 3 total"');
+    expect(other).toMatch(/<details[^>]*><summary aria-label="Post options"/);
+    expect(other).toContain(">Report</button>");
+    expect(other).not.toContain(">Withdraw post</button>");
+    const owner = renderToStaticMarkup(createElement(PostCard, { ...props, viewerId: post.authorId }));
+    expect(owner).toContain(">Withdraw post</button>");
+    expect(owner).not.toContain(">Report</button>");
   });
 });
 describe("Baron call ballots", () => {

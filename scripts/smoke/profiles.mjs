@@ -71,27 +71,43 @@ export async function checkPlayerProfiles(journey) {
   };
   for (const session of [false, true]) {
     const options = { html: true, session };
+    const unlinkedDefault = await journey("/u/501", options);
+    assert.equal(linkFrom(unlinkedDefault, session ? /^Link a Riot ID$/ : /^Look up a player$/), session ? "/me" : "/player");
+    assert.doesNotMatch(unlinkedDefault, /aria-label="League overview"/);
     const unlinked = await journey("/u/501?tab=stats", options);
     assert.equal(linkFrom(unlinked, session ? /^Link a Riot ID$/ : /^Look up a Riot ID$/), session ? "/me" : "/player");
     const feed = await journey("/", options);
     const verified = await journey(linkFrom(feed, /^Fixture Other$/), options);
     assert.match(verified, /Verified Riot link/);
+    const overview = sectionFrom(verified, "League overview");
+    checkMarkers(overview, ["Ranked Solo/Duo", "Platinum III · 64 LP", "80% win rate", "Ranked Flex", "Silver IV · 11 LP", "10% win rate", "Last 3 games · all queues", "Top role Support · 2 games", "Top champion Nami · 2 games"], "League overview");
+    const form = sectionFrom(overview, "Recent form");
+    assert.match(form, /aria-label="W · Victory on Nami, game 1"/);
+    assert.match(form, /aria-label="L · Defeat on Nami, game 2"/);
+    const match = linkFrom(form, /^W$/);
+    const matchAnchor = new URL(match, "http://fixture.invalid").hash;
+    assert.equal(matchAnchor, "#match-NA1_999999");
     const statsTab = await journey(linkFrom(verified, /^Player stats$/), options);
     checkStats(statsTab, verifiedStats);
     assert.match(verified, /data-tier="PLATINUM"/);
     checkStats(await journey("/u/504?tab=players", options), verifiedStats);
 
     const history = linkFrom(statsTab, /match history/i);
+    assert.equal(linkFrom(overview, /View all player stats/), "/u/504?tab=stats");
+    sameLookup(linkFrom(overview, /View match history/), history);
+    sameLookup(match, history);
     sameLookup(linkFrom(feed, /^Platinum III · Nami main$/), history);
-    const lookup = await journey(history, options);
+    const lookup = await journey(match, options);
     checkStats(lookup, verifiedStats);
+    assert.match(lookup, /id="match-NA1_999999" tabindex="-1"/i);
+    assert.match(sectionFrom(lookup, "Recent form"), /href="#match-NA1_999999"/);
     if (!session) await checkMatchFilters(journey, history);
     assert.match(lookup, /Fixture Support/);
 
     const claim = await journey(linkFrom(feed, /^Fixture Teammate$/), options);
     assert.match(claim, /Unverified Riot link/);
     assert.match(claim, /Fixture win condition/);
-    assert.doesNotMatch(claim, /aria-label="League stats"/);
+    assert.doesNotMatch(claim, /aria-label="League (?:stats|overview)"/);
     const replies = await journey(linkFrom(claim, /^Replies$/), options);
     assert.match(replies, /Fixture followup/);
     assert.equal(linkFrom(replies, /View conversation/), "/post/521#reply-531");

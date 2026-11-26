@@ -1,7 +1,7 @@
 "use client";
 
 import { signInHref } from "@/lib/signin-return";
-import { useRef, useState } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { ItemIcons } from "./item-icons";
 import { useRouter } from "next/navigation";
@@ -25,6 +25,11 @@ import styles from "./thread.module.css";
 
 const reactionNames: Record<string, string> = { "🔥": "Fire", "❤️": "Like", "👏": "Applause", "🎯": "On target", "💜": "Purple heart", GG: "Good game" };
 
+function closeDisclosure(event: KeyboardEvent<HTMLDetailsElement>) {
+  if (event.key !== "Escape" || !event.currentTarget.open) return;
+  event.currentTarget.open = false;
+  event.currentTarget.querySelector("summary")?.focus();
+}
 
 export function PostCard({
   post,
@@ -94,33 +99,38 @@ export function PostCard({
 
   if (withdrawn) return <p role="status">You withdrew this post. <a href="/me#submissions">View my submissions</a></p>;
   return (
-    <article className={`thread-post ${styles.post}`} aria-label={`Post by ${post.authorName}`}>
+    <article className={`thread-post ${styles.post}${threadPage ? ` ${styles.detailPost}` : ""}`} aria-label={`Post by ${post.authorName}`}>
       <div className="thread-rail">
         <AvatarProfileLink userId={post.authorId} className={styles.avatarLink}
-          name={post.authorName} hue={post.authorHue} avatar={post.authorAvatar} size={40} />
-        {showComments && <span className="line" />}
+          name={post.authorName} hue={post.authorHue} avatar={post.authorAvatar} size={44} />
+        {showComments && <span className="line" aria-hidden="true" />}
       </div>
       <div className="thread-main">
-        {post.repostedBy && <div className="meta">
+        {post.repostedBy && <div className={styles.attribution}>
           <Link href={`/u/${post.repostedBy.id}`}>{post.repostedBy.name}</Link> reposted{" "}
           <a href={`/post/${post.id}`}>this {post.kind === "build" ? "build" : "discussion"}</a>
         </div>}
-        <div className={`thread-head ${styles.byline}`}>
+        <header className={`thread-head ${styles.byline}`}>
           <div className={styles.bylineText}>
             <Link className="post-author" href={`/u/${post.authorId}`}>
               {post.authorName}
             </Link>
-            <a className={styles.permalink} href={`/post/${post.id}`}>
-              <PermalinkTime iso={post.createdAt} context={`Open thread by ${post.authorName}`} />
-            </a>
             {post.roomName && post.roomSlug && <span className={styles.topic}>
               <span aria-hidden="true">›</span> <Link href={`/rooms/${post.roomSlug}`}>{post.roomName}</Link>
             </span>}
+            <a className={styles.permalink} href={`/post/${post.id}`}>
+              <span aria-hidden="true">·</span> <PermalinkTime iso={post.createdAt} context={`Open thread by ${post.authorName}`} />
+            </a>
           </div>
-          <div className={styles.report}>{signedIn && viewerId === post.authorId
-            ? <WithdrawSubmission kind="post" id={post.id} onWithdraw={()=>setWithdrawn(true)}/>
-            : <SafetyReport kind="post" targetId={post.id}/>}</div>
-        </div>
+          <details className={styles.options} onKeyDown={closeDisclosure}>
+            <summary aria-label="Post options" title="Post options"><ThreadIcon name="more" /></summary>
+            <div className={styles.optionsPanel}>
+              {signedIn && viewerId === post.authorId
+                ? <WithdrawSubmission kind="post" id={post.id} onWithdraw={() => setWithdrawn(true)} />
+                : <SafetyReport kind="post" targetId={post.id} />}
+            </div>
+          </details>
+        </header>
         {(post.authorFlair || d.briefing === true || post.status === "held") && (
           <div className={styles.context}>
             {post.authorFlair && (post.authorStatsHref
@@ -133,8 +143,8 @@ export function PostCard({
         )}
         {post.body && <RichBody body={post.body} />}
         {post.kind === "build" && (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div className={styles.buildAttachment}>
+            <div className={styles.attachmentHeading}>
               {typeof d.champion === "string" && <ChampionPortrait compact id={d.champion} patch={patch} size={36}/>}
               <div>
                 <strong>{String(d.champion ?? "")} build</strong>
@@ -156,8 +166,7 @@ export function PostCard({
                       {viewerId != null && viewerId === post.authorId && (
                         <button
                           type="button"
-                          className="text-btn"
-                          style={{ marginLeft: 8, fontSize: 13 }}
+                          className={`text-btn ${styles.reconfirm}`}
                           disabled={action.busy}
                           onClick={async () => {
                             const result = await action.send("/api/social/builds/reconfirm", { postId: post.id });
@@ -176,7 +185,7 @@ export function PostCard({
             <ItemIcons ids={Array.isArray(d.items) ? d.items : []} patch={post.itemPatch ?? patch} details={post.itemDetails}/>
             <a className="text-btn" href={`/builds/compare?build=${post.id}`}>Compare this build</a>
             {d.runes ? (
-              <div className="meta" style={{ color: "var(--ink-mid)" }}>
+              <div className={styles.runes}>
                 Runes: {String(d.runes)}
               </div>
             ) : null}
@@ -235,25 +244,22 @@ export function PostCard({
           <button type="button" className={`action-btn${mine.includes("❤️") ? " mine" : ""}`}
             aria-label={`Like, ${likeCount} ${likeCount === 1 ? "like" : "likes"}`} title="Like" aria-pressed={mine.includes("❤️")}
             disabled={action.busy} onClick={() => react("❤️")}>
-            <ThreadIcon name="heart" filled={mine.includes("❤️")} />{likeCount || ""}
+            <ThreadIcon name="heart" filled={mine.includes("❤️")} />{likeCount > 0 && <span className={styles.count}>{likeCount}</span>}
           </button>
           <button type="button" className="action-btn"
             onClick={() => { if (!showComments) setReplyVisit(n => n + 1); setShowComments(!showComments); }}
             aria-expanded={showComments} aria-controls={`thread-replies-${post.id}`} title="Replies"
             aria-label={`${showComments ? "Hide" : "Show"} replies, ${replyCount} ${replyCount === 1 ? "reply" : "replies"}`}>
-            <ThreadIcon name="reply" />{replyCount || ""}
+            <ThreadIcon name="reply" />{replyCount > 0 && <span className={styles.count}>{replyCount}</span>}
           </button>
           <details className={styles.reactionPicker} ref={reactionPicker}
             onBlur={event => {
               if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
             }}
-            onKeyDown={event => {
-              if (event.key === "Escape") {
-                event.currentTarget.open = false;
-                event.currentTarget.querySelector("summary")?.focus();
-              }
-            }}>
-            <summary title="More reactions" aria-label={`More reactions, ${otherReactionCount} total`}><ThreadIcon name="reactions" />{otherReactionCount || ""}</summary>
+            onKeyDown={closeDisclosure}>
+            <summary title="More reactions" aria-label={`More reactions, ${otherReactionCount} total`}>
+              <ThreadIcon name="reactions" />{otherReactionCount > 0 && <span className={styles.count}>{otherReactionCount}</span>}
+            </summary>
             <div className={styles.choices} role="group" aria-label="Choose a reaction">
               {REACTION_EMOJIS.filter(e => e !== "❤️").map(e => (
                 <button key={e} type="button" className={`action-btn${mine.includes(e) ? " mine" : ""}`}
