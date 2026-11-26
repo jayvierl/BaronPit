@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { checkCommunityDuo } from "./community-duo.mjs";
+import { checkImage, publicArtwork } from "../public-art.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 await access(new URL("../../.next/BUILD_ID", import.meta.url)).catch(() => {
@@ -160,14 +161,13 @@ try {
     ],
     excludes: ["Fixture blocked discussion", "/baron-hero.png"],
   });
-  for (const file of ["baron-room-480.webp", "baron-room-960.webp", "baron-emblem-96.webp", "baron-icon-32.png"]) {
+  for (const file of publicArtwork) {
     const image = await fetch(origin + "/" + file, { signal: AbortSignal.timeout(5000) });
     assert.equal(image.status, 200, file + " is missing");
     const type = file.endsWith(".webp") ? "image/webp" : "image/png";
     assert.equal(image.headers.get("content-type"), type, file + " did not return an image");
     const bytes = Buffer.from(await image.arrayBuffer());
-    if (type === "image/webp") assert.equal(bytes.toString("ascii", 8, 12), "WEBP", file);
-    else assert.equal(bytes.toString("hex", 0, 8), "89504e470d0a1a0a", file);
+    checkImage(file, bytes);
     completed++;
   }
   await journey("/post/521", {

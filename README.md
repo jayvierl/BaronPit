@@ -32,6 +32,6 @@ Deploy this directory to the existing `ward-party` project. Check the live alias
 
 ## Sharing the release with Muse
 
-Muse and Codex share [jayvierl/BaronPit](https://github.com/jayvierl/BaronPit) on `main`. Fetch `origin/main` before starting work. Compare `git rev-parse HEAD` with the release’s `sourceCommit` metadata on Vercel before deploying to `ward-party`. The public domain is `baronpit.com`.
+Muse and Codex share [jayvierl/BaronPit](https://github.com/jayvierl/BaronPit) on `main`. Fetch `origin/main` before starting work. Vercel deploys changes to the shared branch to `baronpit.com` on the `ward-party` project. For a release uploaded from local files, compare the deployment’s source file hashes with the checkout before pushing. The production build checks the original emblem and hero, optimized images, icons and champion portrait sheet in `public/`.
 
 To bring a bundled release into an existing clone, run `git fetch /path/to/Baron-Pit-social-duos.bundle main`, then `git merge --ff-only FETCH_HEAD`. This preserves the release’s commit identity. If either branch has advanced, compare the two histories and reconcile the changes before pushing.
