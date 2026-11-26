@@ -14,8 +14,30 @@ export async function checkNavigation(journey) {
     const text = markup.replace(/<[^>]+>/g, "").trim();
     assert.ok(text && attrs.includes('aria-label="' + text + '"'), "Navigation label must match its visible text");
   }
+  const desktop = search.match(/<nav\b[^>]*aria-label="Primary desktop"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
+  assert.equal((desktop.match(/<a\b/g) ?? []).length, 5);
+  for (const [label, path] of [["Home", "/"], ["Search", "/search"], ["Duos", "/lfg"], ["Activity", "/activity"], ["Profile", "/profile"]]) {
+    assert.ok([...desktop.matchAll(/<a\b[^>]*>/g)].some(([tag]) => tag.includes(`aria-label="${label}"`) && tag.includes(`href="${path}"`)));
+  }
+  assert.match(desktop, /aria-label="Search" aria-current="page"/);
+  const shortcuts = search.match(/<aside\b[^>]*aria-label="Site shortcuts"[^>]*>([\s\S]*?)<\/aside>/)?.[1] ?? "";
+  assert.match(shortcuts, /<a\b[^>]*href="\/"[^>]*><img\b[^>]*src="\/baron-emblem-96\.webp"/);
+  assert.match(search, /<a\b[^>]*aria-label="New thread"[^>]*href="\/#compose"/);
+  const roomRail = search.match(/<nav\b[^>]*aria-label="Rooms"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
+  for (const path of ["/rooms", "/rooms/general", "/rooms/patch-meta", "/rooms/off-meta-lab", "/rooms/new-players"]) {
+    assert.ok(roomRail.includes(`href="${path}"`));
+  }
+  const library = search.match(/<nav\b[^>]*aria-label="Library"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
+  assert.ok(library.includes('href="/?tab=following"') && library.includes('href="/playbook"'));
+  for (const id of ["explore-destinations", "desktop-explore-destinations"]) assert.ok(search.includes(`popoverTarget="${id}"`));
   assert.ok(search.includes('aria-label="My profile"'));
   assert.ok(search.includes('aria-label="Explore the community"'));
+  await journey("/?tab=following", {redirectTo:"/signin?next=%2F%3Ftab%3Dfollowing"});
+  const followed = await journey("/?tab=following", {session:true, html:true});
+  const followedPrimary = followed.match(/<nav\b[^>]*aria-label="Primary desktop"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
+  const followedLibrary = followed.match(/<nav\b[^>]*aria-label="Library"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
+  assert.doesNotMatch(followedPrimary, /aria-label="Home" aria-current=/);
+  assert.match(followedLibrary, /aria-label="Following" aria-current="page"/);
   await journey("/search?scope=players", {includes:['aria-label="League region"', 'name="q"', "Player stats"]});
   const cached = await journey("/search?scope=players&q=Fixture%20Support", {html:true});
   assert.ok(cached.includes("Fixture Support#WAVE") && !cached.includes(">Community profiles</h2>"));

@@ -162,6 +162,20 @@ footer.site .inner { display: grid; gap: 12px; }
   .primary-nav { top: calc(68px + env(safe-area-inset-top)); bottom: 5px; transform: none; overflow-y: auto; align-content: start; }
 }
 
+/* Home keeps the feed and discovery in the same responsive document. Other routes
+   retain a single reading column inside the navigation shell. */
+.page:has(> .home-layout) {
+  background: transparent; padding: 0; border: 0; border-radius: 0; box-shadow: none;
+}
+@media (min-width: 900px) {
+  .shell { padding-inline: 88px 20px; }
+  .page:has(> .home-layout) { max-width: 710px; }
+}
+@media (min-width: 1200px) {
+  .shell { padding: 16px clamp(20px, 2vw, 48px) 32px calc(228px + clamp(20px, 3vw, 64px)); }
+  .page:has(> .home-layout) { max-width: 1580px; }
+  .shell:has(.home-layout) { padding-top: 6px; }
+}
 /* Buttons */
 
 .btn {

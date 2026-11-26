@@ -1,5 +1,11 @@
 import type { MatchSummary } from "./pure";
 
+export const MATCH_DETAIL_LIMIT = 3;
+
+export function matchSectionId(matchId: string): string | undefined {
+  return /^[A-Za-z0-9_-]{1,80}$/.test(matchId) ? `match-${matchId}` : undefined;
+}
+
 const queueNames: Record<number, string> = {
   0: "Custom", 400: "Normal Draft", 420: "Ranked Solo/Duo", 430: "Blind Pick",
   440: "Ranked Flex", 450: "ARAM", 490: "Quickplay", 700: "Clash",

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { recentMatchHistory, matchQueueName } from "./match-history";
+import { matchSectionId, recentMatchHistory, matchQueueName } from "./match-history";
 import type { MatchSummary } from "./pure";
 
 function game(matchId: string, champion: string, queueId: number, win = true): MatchSummary {
@@ -23,4 +23,12 @@ it("caps the source at 20 and keeps unknown queues distinct from custom matches"
   expect(matchQueueName("unknown")).toBe("Queue unavailable");
   expect(matchQueueName("4444")).toBe("Queue 4444");
   expect(recentMatchHistory([])).toMatchObject({winRate:null, sampleSize:0});
+});
+
+it("uses stable fragment-safe anchors and skips malformed legacy match IDs", () => {
+  expect(matchSectionId("NA1_999999")).toBe("match-NA1_999999");
+  expect(matchSectionId("EUW1_123456")).toBe("match-EUW1_123456");
+  for (const id of ["", "no spaces", "bad#fragment", "bad%escape", "x".repeat(81)]) {
+    expect(matchSectionId(id)).toBeUndefined();
+  }
 });

@@ -1,0 +1,41 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  min-height: 54px;
+}
+
+.row > :global(.avatar) { flex: none; }
+
+.row :global(.btn) {
+  min-height: 44px;
+  padding-inline: .65rem;
+  border-color: var(--border-strong);
+  background: transparent;
+  color: var(--ink);
+  font-size: .82rem;
+}
+
+.row :global(.btn):hover { background: var(--hover); }
+
+.name {
+  width: fit-content;
+  max-width: 100%;
+  font-weight: 650;
+}
+
+.name:hover {
+  text-decoration: underline;
+  text-underline-offset: .15em;
+}
+
+.signIn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  flex: none;
+  padding-inline: .2rem;
+  color: var(--accent-ink);
+  font-size: .82rem;
+  font-weight: 650;
+}

@@ -19,6 +19,7 @@
 .empty { text-align: center; padding: 2.5rem 1rem; border-bottom: 1px solid var(--border); }
 .empty h2 { font-size: 1.1rem; margin: 0 0 .65rem; }
 .identityRank { display: inline-flex; align-items: center; min-height: 44px; }
+.lookupPrompt { margin: .65rem 0; padding: .35rem .15rem; color: var(--ink-soft); font-size: .85rem; overflow-wrap: anywhere; }
 .account, .reply { padding: 1rem .15rem; border-bottom: 1px solid var(--border); }
 .account h2 { margin: 0; font-size: 1.05rem; }
 .account > p { margin: .25rem 0 .6rem; }
