@@ -1,3 +1,4 @@
+import { DuoEveningTotals } from "@/components/duo-evening";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser, isAdmin, isBanned } from "@/lib/auth";
@@ -45,6 +46,7 @@ export default async function AdminPilotPage() {
           Results will appear as members participate.
         </p>
       )}
+      <DuoEveningTotals />
       <DuoPilotResults />
       <section className="card">
         <h2>Four-week decision</h2>

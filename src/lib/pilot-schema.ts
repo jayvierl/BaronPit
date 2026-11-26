@@ -3,6 +3,16 @@ export const pilotSchema = [
   `CREATE TABLE IF NOT EXISTS wp_duo_pilot_members (
     user_id integer PRIMARY KEY REFERENCES wp_users(id) ON DELETE CASCADE,
     joined_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE TABLE IF NOT EXISTS wp_evening_interest (
+    user_id integer PRIMARY KEY REFERENCES wp_users(id) ON DELETE CASCADE,
+    session_start timestamptz NOT NULL, role text NOT NULL CHECK (role IN ('Bottom','Support')))`,
+  `CREATE TABLE IF NOT EXISTS wp_duo_arrival_consent (
+    user_id integer PRIMARY KEY REFERENCES wp_duo_pilot_members(user_id) ON DELETE CASCADE,
+    study_start timestamptz NOT NULL, consented_at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE TABLE IF NOT EXISTS wp_duo_arrival_days (
+    user_id integer NOT NULL REFERENCES wp_duo_arrival_consent(user_id) ON DELETE CASCADE,
+    day date NOT NULL, available boolean NOT NULL, PRIMARY KEY(user_id,day))`,
+  "ALTER TABLE wp_duo_pilot_members ADD COLUMN IF NOT EXISTS study_version integer NOT NULL DEFAULT 1",
   "CREATE INDEX IF NOT EXISTS wp_duo_requests_recent ON wp_duo_requests(created_at DESC)",
 
   `CREATE TABLE IF NOT EXISTS wp_pilot_members (

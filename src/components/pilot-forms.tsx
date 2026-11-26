@@ -1,4 +1,5 @@
 "use client";
+import { DUO_STUDY_VERSION } from "@/lib/duo-study-version";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -106,8 +107,8 @@ export function PilotForms({ host, duoStarted, duoOpen, channel, joinedAt, inter
       <section className="card" id="duo-study">
         <h2>Duo Finder study</h2>
         <p>For 28 days, you can let us count whether you submit a listing, send a request, or accept one.
-          If both players agreed before a request, we can also count the pair’s acceptance, a confirmed game
-          together and a mutual choice to queue again. Staff see totals for the last seven days and an earlier completed week.</p>
+          If both players agreed before a request, we can also count the time to acceptance, a confirmed game
+          together, a separately observed second game on another UTC day within seven days, and a mutual choice to queue again. Staff see totals for the last seven days and an earlier completed week.</p>
         <p className="meta">This study keeps your account reference and consent date. Withdrawing removes
           your participation and any pair involving you from the results immediately.</p>
         {duoStarted === undefined ? <p role="status">Your duo study settings couldn’t load. Refresh to try again.</p>
@@ -119,7 +120,7 @@ export function PilotForms({ host, duoStarted, duoOpen, channel, joinedAt, inter
           : host ? <p>Staff and invited hosts are excluded from the duo study.</p>
           : current && <form onSubmit={event => {
             event.preventDefault();
-            void submit({action:"join-duo",consent:new FormData(event.currentTarget).has("duo-consent")}, "You joined the duo study.");
+            void submit({action:"join-duo",version:DUO_STUDY_VERSION,consent:new FormData(event.currentTarget).has("duo-consent")}, "You joined the duo study.");
           }}>
             <p>Enrollment requires an eligible verified Riot account. Duo Finder is available independently of this study.</p>
             <label><input type="checkbox" name="duo-consent" required /> I agree to this separate 28-day duo study.</label>

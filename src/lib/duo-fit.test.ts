@@ -6,8 +6,12 @@ import { loadDuoFit, saveDuoFit } from "./duo-fit-store";
 import { q } from "./db";
 import { getCurrentUser, type User } from "./auth";
 import { readDuoBoard } from "./duo";
+import { sessionOptions, sessionWindow, SESSION_QUEUE } from "./duo-session";
+import { SCHEDULE_BLOCKS } from "./pure";
 import { TERMS_VERSION } from "./account-policy";
 import { POST } from "../app/api/lfg/preferences/route";
+import { POST as selectPrimary } from "../app/api/account/primary/route";
+import { privateDuoReadiness } from "./duo-readiness";
 
 vi.mock("@neondatabase/serverless", async () => ({
   neon: (await import("../../test/postgres")).neonForTests,
@@ -77,37 +81,52 @@ it("saves private intent during a matching pause, scopes writes to the session, 
 });
 it("filters before the listing limit, preserves a player's own controls, and enforces same age and bilateral mute", async () => {
   vi.stubEnv("DUO_MATCHING_ENABLED", "true");
-  await saveDuoFit(1, fit);
+  const withinSession = {...fit, blocks:[...SCHEDULE_BLOCKS]};
+  await saveDuoFit(1, withinSession);
+  const asOf = Date.now();
+  const start = sessionOptions(asOf)[1];
+  const [slot,end] = sessionWindow(start);
+  const available = encodeWindows([[slot,end]]);
   await q`INSERT INTO wp_lfg(user_id,puuid,roles,blocks,vibe,voice,safe_listing)
     VALUES(1,'account-1',ARRAY['Support'],ARRAY['Weekday mornings'],'chill',true,true),
       (2,'account-2',ARRAY['Fill'],ARRAY['Weekend mornings'],'both',false,true),
       (5,'account-5',ARRAY['ADC'],ARRAY['Weekend mornings'],'chill',false,true)`;
-  // Fill the page with more recent non-matching listings, leaving an older eligible listing behind them.
-  await q`INSERT INTO wp_lfg(user_id,puuid,roles,blocks,vibe,voice,safe_listing)
-    SELECT 3,'account-3',ARRAY['Mid'],ARRAY['Weekend evenings'],'tryhard',true,true FROM generate_series(1,41)`;
-  const asOf = Date.parse("2026-01-05T00:00:00Z");
-  // Weekends 06:00–12:00 UTC overlap 00:00–06:00 local in Chicago.
-  const available = encodeWindows(scheduleWindows(["Weekend late nights"], "America/Chicago", asOf, 8));
-  await q`UPDATE wp_lfg SET blocks=ARRAY['Weekend late nights'], partner_role='Support',play_windows=${available}::int4multirange WHERE user_id=2`;
-  await q`INSERT INTO wp_lfg(user_id,puuid,roles,blocks,partner_role,play_windows,vibe,voice,safe_listing)
-    VALUES(3,'account-3',ARRAY['ADC'],ARRAY['Weekend mornings'],'Jungle',${available}::int4multirange,'chill',false,true),
-      (3,'account-3',ARRAY['ADC'],ARRAY['Weekend mornings'],'Support',NULL,'chill',false,true),
-      (3,'account-3',ARRAY['ADC'],ARRAY['Weekend mornings'],'Support',
-        ${encodeWindows(scheduleWindows(["Weekend mornings"],"Asia/Tokyo",asOf,8))}::int4multirange,'chill',false,true)`;
+  // Place an eligible session behind forty later nonmatching listings.
+  await q`INSERT INTO wp_lfg(user_id,puuid,roles,vibe,voice,safe_listing)
+    SELECT 3,'account-3',ARRAY['Mid'],'tryhard',true,true FROM generate_series(1,41)`;
+  await q`UPDATE wp_lfg SET partner_role='Support',session_start=${new Date(start).toISOString()},session_queue=${SESSION_QUEUE},
+    play_windows=${available}::int4multirange WHERE user_id<>1`;
+  await q`INSERT INTO wp_lfg(user_id,puuid,roles,partner_role,play_windows,vibe,voice,safe_listing,session_start,session_queue)
+    VALUES(3,'account-3',ARRAY['ADC'],'Jungle',${available}::int4multirange,'chill',false,true,${new Date(start).toISOString()},${SESSION_QUEUE}),
+      (3,'account-3',ARRAY['ADC'],'Support',NULL,'chill',false,true,NULL,NULL)`;
   const eligible = await readDuoBoard(1, true, asOf);
   expect(eligible.listings).toHaveLength(2);
   expect(eligible.listings.map(l => l.roles)).toEqual([["Support"], ["Fill"]]);
   expect((await readDuoBoard(1)).listings).toHaveLength(40);
-  await saveDuoFit(1, {...fit, role:"Fill"});
+  await saveDuoFit(1, {...withinSession, role:"Fill"});
   expect((await readDuoBoard(1, true, asOf)).listings.filter(l => !l.own).map(l => l.partnerRole).sort())
     .toEqual(["Jungle","Support"]);
   // An older plan can still be read and edited. Without its zone it cannot prove overlapping hours.
   await saveDuoFit(1, {...fit, timeZone:undefined});
   expect((await loadDuoFit(1))?.timeZone).toBeUndefined();
   expect((await readDuoBoard(1, true, asOf)).listings.every(l => l.own)).toBe(true);
-  await saveDuoFit(1, fit);
+  await saveDuoFit(1, withinSession);
   expect((await readDuoBoard(4, true)).listings).toHaveLength(0);
   await q`INSERT INTO wp_mutes(muter_id,muted_id) VALUES(2,1)`;
   expect((await readDuoBoard(1, true, asOf)).listings.map(l => l.roles)).toEqual([["Support"]]);
   expect((await readDuoBoard(2)).listings.every(l => !l.roles.includes("Support"))).toBe(true);
+});
+
+it("uses the player's selected verified account and keeps others' accounts private", async () => {
+  const viewer = { id: 1, termsCurrent: true, bannedUntil: null } as User;
+  vi.mocked(getCurrentUser).mockResolvedValue(viewer);
+  await q`INSERT INTO wp_players(puuid,platform,game_name,tag_line,rank_tier,snapshot)
+    VALUES('primary-euw','euw1','Europe','EUW','GOLD','{"matches":[{"matchId":"EUW1_a"}]}')`;
+  await q`INSERT INTO wp_links(user_id,puuid,verified) VALUES(1,'primary-euw',true)`;
+  expect((await selectPrimary(request({puuid:"account-2"}))).status).toBe(400);
+  expect((await selectPrimary(request({puuid:"primary-euw"}))).status).toBe(200);
+  expect(await privateDuoReadiness(1)).toMatchObject({ready:false,regionOutsidePilot:true});
+  expect((await selectPrimary(request({puuid:"account-1"}))).status).toBe(200);
+  expect(await privateDuoReadiness(1)).toEqual({ready:true,riotId:"Riot1#NA1"});
+  expect(await q`SELECT puuid FROM wp_links WHERE user_id=1 AND is_primary`).toEqual([{puuid:"account-1"}]);
 });

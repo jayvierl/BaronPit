@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { postgres } from "../../test/postgres";
 import { q } from "./db";
 import { librarySchema } from "./discussion-library-schema";
-import { changeLibrary, hasUnreadReplies, libraryState, publicDiscussion, replyActivity, savedPlaybook, watchedDiscussions } from "./discussion-library";
+import { changeLibrary, hasUnreadReplies, libraryState, publicDiscussion, replyActivity, savedPlaybook, setReplyMode, watchedDiscussions } from "./discussion-library";
 import { discussionMetadata } from "./discussion-library-preview";
 
 vi.mock("@neondatabase/serverless", async () => ({ neon: (await import("../../test/postgres")).neonForTests }));
@@ -44,12 +44,60 @@ describe("private discussion library", () => {
     await postgres.exec("INSERT INTO wp_comments(id,post_id,author_id,body,parent_id) VALUES(24,10,2,'The cannon wave',23),(25,10,1,'Thanks',23)");
     await changeLibrary(1, "post", 10, "watch", true);
     expect((await replyActivity(1, null)).entries.map(x => [x.id, x.unread])).toEqual([[24, true]]);
-    expect(await changeLibrary(3, "comment", 24, "read", true)).toBe(false);
+    expect(await changeLibrary(2, "comment", 24, "read", true)).toBe(false);
     expect(await hasUnreadReplies(1)).toBe(true);
     expect(await changeLibrary(1, "comment", 24, "read", true)).toBe(true);
     expect(await hasUnreadReplies(1)).toBe(false);
     expect((await replyActivity(1, null)).entries[0].unread).toBe(false);
     expect((await watchedDiscussions(1, null)).entries[0].postId).toBe(10);
+  });
+  it("delivers direct answers to authors and direct replies to commenters without an explicit watch", async () => {
+    expect((await libraryState(1, "post", 10))?.replyMode).toBe("direct");
+    expect((await replyActivity(2, null)).entries.map(e => [e.id,e.replyReason])).toEqual([[23,"comment"],[22,"post"]]);
+    expect((await replyActivity(1, null)).entries).toEqual([]);
+    await setReplyMode(2, 10, "all");
+    await postgres.exec("INSERT INTO wp_comments(id,post_id,author_id,body,parent_id) VALUES(24,10,3,'Top level',NULL),(25,10,3,'An answer to you',22),(26,10,2,'A follow-up',23)");
+    expect((await replyActivity(2, null)).entries.map(e => [e.id,e.replyReason])).toEqual([[25,"watch"],[24,"post"],[23,"comment"],[22,"post"]]);
+    expect((await replyActivity(2, "24")).entries.map(e => e.id)).toEqual([23,22]);
+    expect((await replyActivity(1, null)).entries.map(e => [e.id,e.replyReason])).toEqual([[25,"comment"]]);
+    expect(await changeLibrary(1, "comment", 24, "read", true)).toBe(false);
+    expect(await changeLibrary(1, "comment", 25, "read", true)).toBe(true);
+    expect(await hasUnreadReplies(1)).toBe(false);
+    expect((await watchedDiscussions(1, null)).entries).toEqual([]);
+  });
+  it("silences direct and watched replies per recipient and resumes without backfilling the muted period", async () => {
+    expect(await setReplyMode(2,10,"muted")).toBe(true);
+    await postgres.exec("INSERT INTO wp_comments(id,post_id,author_id,body) VALUES(24,10,1,'During mute')");
+    expect(await hasUnreadReplies(2)).toBe(false);
+    expect((await replyActivity(2,null)).entries).toEqual([]);
+    expect((await watchedDiscussions(2,null,"muted")).entries.map(e => e.id)).toEqual([10]);
+    expect((await libraryState(2,"post",10))?.replyMode).toBe("muted");
+    expect(await changeLibrary(2,"comment",24,"read",true)).toBe(false);
+    expect(await changeLibrary(2,"post",10,"mute",false)).toBe(true);
+    expect(await hasUnreadReplies(2)).toBe(false);
+    await setReplyMode(2,10,"all");
+    await postgres.exec("INSERT INTO wp_comments(id,post_id,author_id,body) VALUES(25,10,1,'After unmute')");
+    await setReplyMode(2,10,"all");
+    expect((await replyActivity(2,null)).entries.map(e => [e.id,e.replyReason])).toEqual([[25,"post"]]);
+    await setReplyMode(2,10,"muted");
+    expect((await watchedDiscussions(2,null)).entries).toEqual([]);
+    expect(await hasUnreadReplies(2)).toBe(false);
+    await setReplyMode(2,10,"all");
+    expect(await hasUnreadReplies(2)).toBe(false);
+    expect((await watchedDiscussions(2,null,"muted")).entries).toEqual([]);
+  });
+  it("drops default notifications when a parent, author or room becomes unavailable", async () => {
+    await postgres.exec("INSERT INTO wp_comments(id,post_id,author_id,body,parent_id) VALUES(24,10,3,'Reply to reader',22)");
+    expect(await hasUnreadReplies(1)).toBe(true);
+    await postgres.exec("UPDATE wp_comments SET status='held' WHERE id=22");
+    expect(await hasUnreadReplies(1)).toBe(false);
+    await postgres.exec("UPDATE wp_comments SET status='visible' WHERE id=22; INSERT INTO wp_mutes(muter_id,muted_id) VALUES(1,3)");
+    expect((await replyActivity(1,null)).entries).toEqual([]);
+    await postgres.exec("DELETE FROM wp_mutes; INSERT INTO wp_blocks(blocker_id,blocked_id) VALUES(3,1)");
+    expect(await changeLibrary(1,"comment",24,"read",true)).toBe(false);
+    await postgres.exec("DELETE FROM wp_blocks; UPDATE wp_rooms SET safety_status='held' WHERE id=1");
+    expect(await hasUnreadReplies(1)).toBe(false);
+    expect(await setReplyMode(1,10,"muted")).toBe(false);
   });
   it("rechecks ancestor, room and relationship visibility after an item was saved or watched", async () => {
     await changeLibrary(1, "post", 10, "save", true);

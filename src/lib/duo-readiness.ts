@@ -4,15 +4,15 @@ import { duoEligibilityCte } from "./duo";
 import { riotSignOnConfig } from "./riot-ownership";
 import { signInHref } from "./signin-return";
 
-type NextStep = { title: string; detail: string; href?: string; action?: string; availableAt?: string };
-export type DuoReadiness = { ready: true } | ({ ready: false } & NextStep);
+type NextStep = { regionOutsidePilot?: true; title: string; detail: string; href?: string; action?: string; availableAt?: string };
+export type DuoReadiness = { ready: true; riotId: string } | ({ ready: false } & NextStep);
 
 /** The caller supplies only the current session's user ID. The eligibility CTE is also used by every matching action. */
 export async function privateDuoReadiness(userId: number): Promise<DuoReadiness> {
   const [row] = await queryRows(
     duoEligibilityCte +
       `
-    SELECT EXISTS(SELECT 1 FROM me) AS ready,
+    SELECT (SELECT platform FROM me) AS eligible_platform, (SELECT game_name||'#'||tag_line FROM me) AS own_riot_id,
       u.safety_status <> 'visible' OR coalesce(u.banned_until > now(),false) AS restricted,
       u.age_band IN ('teen','adult') AND u.terms_version=$2 AND u.terms_accepted_at IS NOT NULL AS consent,
       CASE WHEN u.created_at>now()-interval '24 hours' THEN u.created_at+interval '24 hours' END AS opens_at,
@@ -28,7 +28,12 @@ export async function privateDuoReadiness(userId: number): Promise<DuoReadiness>
     [userId, TERMS_VERSION],
   );
   if (!row) throw new Error("Account unavailable");
-  if (row.ready === true) return { ready: true };
+  if (row.eligible_platform === "na1") return { ready: true, riotId:String(row.own_riot_id) };
+  if (row.eligible_platform) return {
+    ready: false, regionOutsidePilot: true, title: "The first sessions are on North America",
+    detail: "Your verified account plays on another server. You can save a private plan or choose a verified NA account.",
+    href: "/me", action: "Manage Riot accounts",
+  };
   if (row.restricted)
     return {
       ready: false,

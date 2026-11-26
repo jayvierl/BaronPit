@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ watch: vi.fn(), clean: vi.fn(), duo: vi.fn() }));
+vi.mock("@/lib/duo-game-check", () => ({ clearExpiredGameChecks: vi.fn() }));
 vi.mock("@/lib/pilot", () => ({ clearExpiredPilotData: vi.fn() }));
 vi.mock("@/lib/riot-ownership", () => ({ clearExpiredOwnership: vi.fn() }));
 vi.mock("@/lib/social", () => ({ runPatchWatch: mocks.watch }));

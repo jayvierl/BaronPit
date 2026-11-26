@@ -1,3 +1,4 @@
+import { submissionSchema } from "./submission-schema";
 import { communityObjectiveSchema } from "./community-objective-schema";
 import { APP_NAME } from "./brand";
 import { PATCH_PUBLISHER } from "./patch-notes";
@@ -24,7 +25,7 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
  */
 
 type Sql = NeonQueryFunction<false, false>;
-const SCHEMA_REVISION = "baron-social-duo-20261126-4";
+const SCHEMA_REVISION = "baron-social-duo-20261126-5";
 let client: Sql | undefined;
 let ready: Promise<void> | undefined;
 
@@ -259,6 +260,7 @@ export function schemaStatements(sql: Sql) {
     sql`ALTER TABLE wp_posts ADD COLUMN IF NOT EXISTS card_validated boolean NOT NULL DEFAULT false`,
     ...authSchemaSql.map(text => sql(text, [])),
     ...caseSchema(sql),
+    ...submissionSchema(sql),
     sql`UPDATE wp_users SET display_name=${APP_NAME},avatar_hue=265
       WHERE email=${PATCH_PUBLISHER} AND safety_status='visible'
         AND (display_name,avatar_hue) IS DISTINCT FROM (${APP_NAME},265)`,

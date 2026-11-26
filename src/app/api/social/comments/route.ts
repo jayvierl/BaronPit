@@ -20,9 +20,9 @@ export async function POST(req: Request) {
   const access = await requireUser(req);
   if (!access.ok) return access.response;
   const { user } = access;
-  const { postId, body, parentId, oneFix, submitForReview } = (await readObject(req)) as { postId?: number; body?: string; parentId?: number; oneFix?: boolean; submitForReview?: boolean };
+  const { postId, body, parentId, oneFix, submitForReview, submissionId } = (await readObject(req)) as { postId?: number; body?: string; parentId?: number; oneFix?: boolean; submitForReview?: boolean; submissionId?: string };
   if (!validId(postId) || typeof body !== "string" || (parentId != null && !validId(parentId)) || (oneFix != null && typeof oneFix !== "boolean") || (submitForReview != null && typeof submitForReview !== "boolean")) return NextResponse.json({ ok: false, error: "Missing comment." }, { status: 400 });
-  const result = await addComment(user, postId, body, parentId, Boolean(oneFix), submitForReview === true);
+  const result = await addComment(user, postId, body, parentId, Boolean(oneFix), submitForReview === true, submissionId);
   if (!result.ok) return NextResponse.json(result, { status: result.reconsider ? 422 : 400 });
   return NextResponse.json({ ok: true, commentId: result.postId, status: result.status });
 }

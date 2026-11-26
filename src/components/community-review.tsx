@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { dbAvailable } from "@/lib/db";
-import { featuredMatchup, type FeaturedMatchup } from "@/lib/community-review";
-import { reviewHour } from "@/lib/review-hour-time";
+import { featuredMatchup, reviewHosts, type FeaturedMatchup } from "@/lib/community-review";
+import { reviewHour, reviewHostStatus } from "@/lib/review-hour-time";
 import { LocalReviewTime } from "./review-hour-controls";
 import { SafetyReport } from "./safety-report";
 import { ShareDiscussion } from "./discussion-library-actions";
@@ -45,7 +45,10 @@ function Featured({ match }: { match: FeaturedMatchup }) {
 
 export async function CommunityReview({ viewerId }: { viewerId: number | null }) {
   const session = reviewHour();
-  const match = dbAvailable() ? await featuredMatchup(viewerId).catch(() => null) : null;
+  const [match, hosts] = dbAvailable() ? await Promise.all([
+    featuredMatchup(viewerId).catch(() => null),
+    reviewHosts(session.start, viewerId).catch(() => null),
+  ]) : [null, null];
   return (
     <aside className={styles.panel} aria-label="Community review">
       {match && <Featured match={match} />}
@@ -54,9 +57,10 @@ export async function CommunityReview({ viewerId }: { viewerId: number | null })
           <Link href="/review-hour">Bot lane review hour</Link>
         </h2>
         <p>
-          {session.live ? "Happening now" : "Next session"} ·{" "}
+          {session.live ? "Scheduled hour underway" : "Next session"} ·{" "}
           <LocalReviewTime start={session.start} end={session.end} />
         </p>
+        <p className="meta">{reviewHostStatus(hosts)}</p>
         <div className={styles.links}>
           <Link href="/review-hour">See the session and questions</Link>
         </div>

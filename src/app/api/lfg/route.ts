@@ -37,6 +37,6 @@ export async function POST(req: Request) {
     return reply({ ok: true });
   }
   if (action === "request" || action === "accept" || action === "decline")
-    return reply(await duoAction(user, id, action));
+    return reply(await duoAction(user, id, action, input));
   return reply({ ok: false, error: "Unknown duo action." });
 }

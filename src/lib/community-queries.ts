@@ -13,7 +13,7 @@ export const HIDDEN_AUTHORS = `hidden AS (
 
 // Older uploads were copied from public storage and never received private screening.
 export const visibleContentKind = "p.kind <> 'media' AND (p.kind <> 'clip' OR (p.clip_review_required IS TRUE AND p.status = 'visible'))";
-export const canDisplayPost = `${visibleContentKind} AND p.author_id NOT IN (SELECT id FROM hidden)
+export const canDisplayPost = `p.withdrawn_at IS NULL AND ${visibleContentKind} AND p.author_id NOT IN (SELECT id FROM hidden)
   AND (p.room_id IS NULL OR EXISTS (SELECT 1 FROM wp_rooms room WHERE room.id = p.room_id AND room.safety_status = 'visible'))`;
 export const visiblePostForInteraction = `p.status = 'visible' AND ${canDisplayPost}`;
 
@@ -21,15 +21,16 @@ const visibleComment = "c.status = 'visible' AND c.author_id NOT IN (SELECT id F
 
 // For a targeted operation walk just the ancestor chain. A legacy reply is visible only
 // if the chain reaches a visible root in the same visible post.
-export function visibleCommentsFor(scope: "posts" | "comment", posts: "parameter" | "candidates" = "parameter") {
-  if (scope === "comment") {
+export function visibleCommentsFor(scope: "posts" | "comment" | "candidateReplies", posts: "parameter" | "candidates" = "parameter") {
+  if (scope !== "posts") {
+    const target = scope === "comment" ? "c.id = $2" : "c.id IN (SELECT id FROM candidate_replies)";
     return `ancestors AS (
-      SELECT c.id, c.parent_id, c.post_id FROM wp_comments c JOIN wp_posts p ON p.id = c.post_id
-      WHERE c.id = $2 AND ${visibleComment} AND ${visiblePostForInteraction}
+      SELECT c.id AS reply_id, c.id, c.parent_id, c.post_id FROM wp_comments c JOIN wp_posts p ON p.id = c.post_id
+      WHERE ${target} AND ${visibleComment} AND ${visiblePostForInteraction}
       UNION
-      SELECT c.id, c.parent_id, c.post_id FROM ancestors a JOIN wp_comments c ON c.id = a.parent_id AND c.post_id = a.post_id
+      SELECT a.reply_id, c.id, c.parent_id, c.post_id FROM ancestors a JOIN wp_comments c ON c.id = a.parent_id AND c.post_id = a.post_id
       WHERE ${visibleComment}
-    ), thread AS (SELECT $2::int AS id WHERE EXISTS (SELECT 1 FROM ancestors WHERE parent_id IS NULL))`;
+    ), thread AS (SELECT reply_id AS id FROM ancestors WHERE parent_id IS NULL)`;
   }
   const postIds = posts === "candidates" ? "ARRAY(SELECT post_id FROM candidates)" : "$2::int[]";
   return `eligible_comments AS (

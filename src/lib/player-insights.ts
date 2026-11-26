@@ -5,11 +5,11 @@ import { playerFromRow, type Player } from "./riot";
 import { fnvHash } from "./pure";
 
 export async function linkedPlayers(userId: number) {
-  const rows = await q`SELECT p.*, p.snapshot #> '{champPool,0,champion}' AS main, (l.verified AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.verified AND other.puuid=l.puuid AND other.user_id<>l.user_id)) AS verified FROM wp_links l JOIN wp_players p ON p.puuid=l.puuid
+  const rows = await q`SELECT p.*, l.is_primary, p.snapshot #> '{champPool,0,champion}' AS main, (l.verified AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.verified AND other.puuid=l.puuid AND other.user_id<>l.user_id)) AS verified FROM wp_links l JOIN wp_players p ON p.puuid=l.puuid
     WHERE l.user_id=${userId} ORDER BY verified DESC,l.is_primary DESC,l.created_at,l.puuid`;
   return rows.map(row => {
     const player = playerFromRow(row);
-    return { ...player, verified: row.verified === true,
+    return { ...player, primary: row.is_primary === true, verified: row.verified === true,
       flair: row.verified === true ? playerFlair(player.rankTier, player.rankDiv, row.main) : null };
   });
 }

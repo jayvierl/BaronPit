@@ -20,6 +20,10 @@ export const librarySchema = [
     post_id int NOT NULL REFERENCES wp_posts(id) ON DELETE CASCADE,
     started_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,post_id)
   )`,
+  "ALTER TABLE wp_thread_watches ADD COLUMN IF NOT EXISTS reply_mode text NOT NULL DEFAULT 'all' CHECK (reply_mode IN ('all','direct','muted'))",
+  "ALTER TABLE wp_thread_watches ADD COLUMN IF NOT EXISTS direct_since timestamptz",
+  "CREATE INDEX IF NOT EXISTS wp_comments_author_replies ON wp_comments(author_id,id) WHERE status='visible'",
+  "CREATE INDEX IF NOT EXISTS wp_comments_parent_replies ON wp_comments(parent_id,id) WHERE parent_id IS NOT NULL AND status='visible'",
   `CREATE TABLE IF NOT EXISTS wp_discussion_read_replies (
     user_id int NOT NULL REFERENCES wp_users(id) ON DELETE CASCADE,
     comment_id int NOT NULL REFERENCES wp_comments(id) ON DELETE CASCADE, PRIMARY KEY(user_id,comment_id)

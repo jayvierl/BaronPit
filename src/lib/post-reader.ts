@@ -198,7 +198,8 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
 
 export async function readComments(postId: number, viewerId: number | null): Promise<CommentView[]> {
   const rows = await queryRows(`WITH RECURSIVE ${HIDDEN_AUTHORS}, ${visibleCommentsFor("posts")}
-    SELECT c.*, u.display_name AS author_name, u.avatar_hue AS author_hue
+    SELECT c.id, c.author_id, c.parent_id, c.body, c.status, c.created_at, c.one_fix,
+      u.display_name AS author_name, u.avatar_hue AS author_hue
     FROM thread t JOIN wp_comments c ON c.id = t.id JOIN wp_users u ON u.id = c.author_id
     ORDER BY c.created_at, c.id`, [viewerId, [postId]]);
   if (!rows.length) return [];

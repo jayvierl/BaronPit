@@ -12,6 +12,7 @@ export type CreatePostInput = {
   roomId?: number | null;
   data?: Record<string, unknown>;
   submitForReview?: boolean;
+  submissionId?: string;
 };
 type Draft = { ok: true; body: string; roomId: number | null; data: Record<string, unknown>; fields: string[] };
 type Problem = { ok: false; error: string };

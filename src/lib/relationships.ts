@@ -1,3 +1,5 @@
+import { duoEnabled, duoPairsCte } from "./duo";
+import { TERMS_VERSION } from "./account-policy";
 import { getSql, q } from "./db";
 import type { User } from "./auth";
 import { ENDORSE_KINDS } from "./pure";
@@ -41,32 +43,26 @@ export async function endorse(
 ): Promise<{ ok: boolean; error?: string }> {
   if (from.id === toUserId) return { ok: false, error: "You can't endorse yourself." };
   if (!ENDORSE_KINDS.some((k) => k.id === kind)) return { ok: false, error: "Unknown endorsement." };
+  if (kind !== "helpful" && !duoEnabled()) return { ok: false, error: "Verified duo matching is paused." };
   const sql = await getSql();
   const [, , rows] = await sql.transaction([
     sql`SELECT pg_advisory_xact_lock(hashtext('endorsements'),${from.id})`,
     sql`SELECT pg_advisory_xact_lock(least(${from.id}::int,${toUserId}::int),greatest(${from.id}::int,${toUserId}::int))`,
-    sql`INSERT INTO wp_endorsements (from_user,to_user,kind,interaction_checked)
-      SELECT ${from.id},u.id,${kind},true FROM wp_users u WHERE u.id=${toUserId}
+    sql(`INSERT INTO wp_endorsements (from_user,to_user,kind,interaction_checked)
+      SELECT $1,u.id,$3,true FROM wp_users u WHERE u.id=$4
       AND u.safety_status='visible' AND (u.banned_until IS NULL OR u.banned_until<=now())
-      AND NOT EXISTS(SELECT 1 FROM wp_blocks b WHERE (b.blocker_id,b.blocked_id) IN ((${from.id},u.id),(u.id,${from.id})))
-      AND (SELECT count(*) FROM wp_endorsements WHERE from_user=${from.id} AND interaction_checked AND created_at>now()-interval '24 hours')<3
-      AND NOT EXISTS(SELECT 1 FROM wp_endorsements WHERE from_user=${from.id} AND to_user=u.id AND interaction_checked AND created_at>now()-interval '30 days')
-      AND (CASE WHEN ${kind}='helpful' THEN EXISTS(
-        SELECT 1 FROM wp_comments c JOIN wp_posts p ON p.id=c.post_id WHERE c.author_id=u.id AND p.author_id=${from.id}
+      AND NOT EXISTS(SELECT 1 FROM wp_blocks b WHERE (b.blocker_id,b.blocked_id) IN (($1,u.id),(u.id,$1)))
+      AND (SELECT count(*) FROM wp_endorsements WHERE from_user=$1 AND interaction_checked AND created_at>now()-interval '24 hours')<3
+      AND NOT EXISTS(SELECT 1 FROM wp_endorsements WHERE from_user=$1 AND to_user=u.id AND interaction_checked AND created_at>now()-interval '30 days')
+      AND (CASE WHEN $3='helpful' THEN EXISTS(
+        SELECT 1 FROM wp_comments c JOIN wp_posts p ON p.id=c.post_id WHERE c.author_id=u.id AND p.author_id=$1
         AND p.status='visible' AND p.kind NOT IN ('media','clip') AND c.parent_id IS NULL AND c.status='visible' AND c.created_at>now()-interval '30 days'
       ) ELSE EXISTS(
-        SELECT 1 FROM wp_duo_requests r JOIN wp_lfg l ON l.id=r.listing_id
-        JOIN wp_links k ON k.user_id=r.sender_id AND k.verified AND k.puuid=r.sender_puuid
-        JOIN wp_links o ON o.user_id=l.user_id AND o.verified AND o.puuid=l.puuid
-        JOIN wp_players a ON a.puuid=k.puuid JOIN wp_players d ON d.puuid=o.puuid
-        WHERE (r.sender_id,l.user_id) IN ((${from.id},u.id),(u.id,${from.id})) AND r.status='accepted'
-          AND r.created_at>now()-interval '30 days' AND l.safe_listing
-          AND EXISTS(SELECT 1 FROM jsonb_array_elements(a.snapshot->'matches') am JOIN jsonb_array_elements(d.snapshot->'matches') dm
-            ON am->>'matchId'=dm->>'matchId' WHERE (am->>'playedAt')::bigint >= extract(epoch from r.created_at)*1000
-            AND EXISTS(SELECT 1 FROM jsonb_array_elements(am->'teammates') teammate WHERE teammate->>'name'=d.game_name AND teammate->>'tag'=d.tag_line))
+        ${duoPairsCte} SELECT 1 FROM pairs p WHERE p.status='accepted' AND p.can_thank
+          AND (p.sender_id,p.owner_id) IN (($1,$4),($4,$1))
       ) END)
       ON CONFLICT(from_user,to_user,kind) DO UPDATE SET interaction_checked=true, created_at=now()
-      WHERE NOT wp_endorsements.interaction_checked OR wp_endorsements.created_at<=now()-interval '30 days' RETURNING id`,
+      WHERE NOT wp_endorsements.interaction_checked OR wp_endorsements.created_at<=now()-interval '30 days' RETURNING id`,[from.id, TERMS_VERSION, kind, toUserId]),
   ]);
   return rows.length
     ? { ok: true }

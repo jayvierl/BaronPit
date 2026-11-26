@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import type { PilotPage } from "@/lib/pilot";
 
 /** Mount only for enrolled viewers. Next prefetch and background tabs are excluded. */
-export function PilotVisit({ kind, postId }: { kind: PilotPage; postId?: number }) {
+export function PilotVisit({ kind, postId }: { kind: PilotPage | "duo-board"; postId?: number }) {
   const marker = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
@@ -16,7 +16,7 @@ export function PilotVisit({ kind, postId }: { kind: PilotPage; postId?: number 
       timer = setTimeout(
         () => {
           sent = true;
-          void fetch("/api/pilot", {
+          void fetch(kind === "duo-board" ? "/api/pilot/evening" : "/api/pilot", {
             method: "POST",
             keepalive: true,
             headers: { "Content-Type": "application/json" },

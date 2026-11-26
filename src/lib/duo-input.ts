@@ -1,3 +1,4 @@
+import { SESSION_QUEUE, validSessionStart } from "./duo-session";
 import { partnerRoles } from "./duo-fit";
 import { timeZoneName } from "./duo-schedule";
 import { hasPaymentOffer } from "./duo-gratuity";
@@ -6,8 +7,9 @@ import { scoreContent, type ModResult } from "./moderation";
 
 type Choice = "chill" | "tryhard" | "both";
 export interface DuoPreferences {
+  start: number;
   roles: string[];
-  partnerRole: string | null;
+  partnerRole: string;
   timeZone: string | null;
   blocks: string[];
   voice: boolean;
@@ -29,12 +31,14 @@ function choices(value: unknown, allowed: readonly string[], min: number, max: n
 export function duoPreferences(value: unknown): ListingInput {
   if (!value || typeof value !== "object" || Array.isArray(value))
     return { ok: false, error: "Choose your duo preferences." };
-  const { roles, blocks, voice, vibe, note, partnerRole, timeZone } = value as Record<string, unknown>;
+  const { queue, start, roles, blocks = [], voice, vibe, note, partnerRole, timeZone } = value as Record<string, unknown>;
+  if (queue !== SESSION_QUEUE || !validSessionStart(start))
+    return { ok: false, error: "Choose a Normal Draft session starting in the next three hours." };
   if (
     (timeZone != null && !timeZoneName(timeZone)) ||
     (partnerRole != null && !partnerRoles.some(r => r === partnerRole)) ||
     !choices(roles, DUO_ROLES, 1, 3) ||
-    !choices(blocks, SCHEDULE_BLOCKS, 1, 8) ||
+    !choices(blocks, SCHEDULE_BLOCKS, 0, 8) ||
     typeof voice !== "boolean" ||
     (vibe !== "chill" && vibe !== "tryhard" && vibe !== "both") ||
     typeof note !== "string" ||
@@ -42,7 +46,7 @@ export function duoPreferences(value: unknown): ListingInput {
   )
     return {
       ok: false,
-      error: "Choose 1–3 roles, a play time and a playstyle. Keep your note within 300 characters.",
+      error: "Choose 1–3 roles and a playstyle. Keep your note within 300 characters.",
     };
   const result = scoreContent(note);
   if (hasPaymentOffer(note)) return { ok: false, error: "Keep payment requests and tip offers out of duo listings." };
@@ -61,7 +65,7 @@ export function duoPreferences(value: unknown): ListingInput {
     return { ok: false, error: "Revise the note to follow the community guidelines." };
   return {
     ok: true,
-    value: { roles, partnerRole: typeof partnerRole === "string" ? partnerRole : null, timeZone: timeZoneName(timeZone), blocks, voice, vibe, note: note.trim() },
+    value: { start, roles, partnerRole: typeof partnerRole === "string" ? partnerRole : "Any", timeZone: timeZoneName(timeZone), blocks, voice, vibe, note: note.trim() },
     moderation: result,
   };
 }

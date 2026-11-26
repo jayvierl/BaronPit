@@ -130,6 +130,17 @@ export function LinkForm() {
   );
 }
 
+export function PrimaryPlayerButton({ puuid }: { puuid: string }) {
+  const router = useRouter();
+  const action = usePostAction();
+  return <span>
+    <button type="button" className="text-btn" disabled={action.busy} onClick={async () => {
+      if (await action.send("/api/account/primary", { puuid })) router.refresh();
+    }}>Use as primary</button>
+    <ActionFeedback error={action.error} />
+  </span>;
+}
+
 export function UnlinkButton({ puuid, label }: { puuid: string; label: string }) {
   const router = useRouter();
   const action = usePostAction();

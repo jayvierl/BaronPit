@@ -17,18 +17,19 @@ export default async function Activity({
 }) {
   const [user, params] = await Promise.all([getCurrentUser(), searchParams]);
   const duos = params.tab === "duos";
-  const watching = params.tab === "watching";
+  const listTab = params.tab === "muted" || params.tab === "watching" ? params.tab : null;
   const before = duos ? null : pageCursor(params.before);
   if (!user) {
     const query = new URLSearchParams();
-    if (duos || watching) query.set("tab", duos ? "duos" : "watching");
+    if (duos) query.set("tab", "duos");
+    if (listTab) query.set("tab", listTab);
     if (before) query.set("before", before);
     redirect(signInHref(query.size ? "/activity?" + query : "/activity"));
   }
   const [page, invites, pending] = await Promise.all([
     duos
       ? null
-      : (watching ? watchedDiscussions : replyActivity)(user.id, before).catch(() => null),
+      : (listTab ? watchedDiscussions(user.id, before, listTab === "muted" ? "muted" : "all") : replyActivity(user.id, before)).catch(() => null),
     duos ? privateDuoActivity(user.id).catch(() => null) : null,
     duos ? false : hasIncomingDuoRequest(user.id).catch(() => false),
   ]);
@@ -38,15 +39,15 @@ export default async function Activity({
       <nav className="tabs" aria-label="Activity">
         <Link
           href="/activity"
-          aria-current={!duos && !watching ? "page" : undefined}
-          className={!duos && !watching ? "active" : undefined}
+          aria-current={!duos && !listTab ? "page" : undefined}
+          className={!duos && !listTab ? "active" : undefined}
         >
           Replies
         </Link>
         <Link
           href="/activity?tab=watching"
-          aria-current={watching ? "page" : undefined}
-          className={watching ? "active" : undefined}
+          aria-current={listTab === "watching" ? "page" : undefined}
+          className={listTab === "watching" ? "active" : undefined}
         >
           Watching
         </Link>
@@ -63,7 +64,8 @@ export default async function Activity({
       {duos ? (
         <InvitationList invites={invites} />
       ) : page ? (
-        <DiscussionList page={page} view={watching ? "watching" : "replies"} />
+        <>{listTab === "muted" && <h2>Muted threads</h2>}
+          <DiscussionList page={page} view={listTab ?? "replies"} /></>
       ) : (
         <p role="alert">Your activity couldn’t load. Please try again.</p>
       )}

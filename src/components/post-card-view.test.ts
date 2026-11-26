@@ -35,10 +35,21 @@ function render(kind: string, data: Record<string, unknown>, status = "visible")
   );
 }
 describe("thread controls", () => {
+  it("labels the server-designated patch briefing in feed and thread cards", () => {
+    const briefing = { ...base, kind: "text", data: { briefing: true, patch: "16.23.1" } };
+    for (const threadPage of [false, true]) {
+      const html = renderToStaticMarkup(createElement(PostCard, {
+        post: briefing, patch: "16.23.1", signedIn: false, threadPage,
+      }));
+      expect(html).toContain("Automated patch update");
+    }
+    expect(render("text", {})).not.toContain("Automated patch update");
+  });
+
   it("exposes named positive reactions, reply count, sharing, reporting and a permanent thread link", () => {
     const html = render("text",{});
     for (const label of ["Like, 0 likes","Fire, 0 reactions","Applause, 0 reactions","On target, 0 reactions",
-      "Purple heart, 0 reactions","Good game, 0 reactions","Show replies, 0 replies","Share thread","Save or watch thread","Open thread by River"]) {
+      "Purple heart, 0 reactions","Good game, 0 reactions","Show replies, 0 replies","Share thread","Save and manage thread notifications","Open thread by River"]) {
       expect(html).toContain(`aria-label="${label}"`);
     }
     expect(html).toContain(">Report</button>");

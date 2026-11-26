@@ -13,6 +13,7 @@ import { ChampionPortrait } from "./champion-portrait";
 import { MatchCard } from "./match-card";
 import { PostLibraryActions } from "./discussion-library-actions";
 import { RepostControl } from "./repost-control";
+import { WithdrawSubmission } from "./withdraw-submission";
 import { CommentSection } from "./comment-section";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SafetyReport } from "./safety-report";
@@ -40,6 +41,7 @@ export function PostCard({
   viewerHue?: number;
 }) {
   const router = useRouter();
+  const [withdrawn,setWithdrawn] = useState(false);
   const [reactions, setReactions] = useState(post.reactions);
   const [mine, setMine] = useState<string[]>(post.myReactions);
   const [showComments, setShowComments] = useState(threadPage);
@@ -85,6 +87,7 @@ export function PostCard({
   const otherReactionCount = REACTION_EMOJIS.reduce((n, emoji) => emoji === "❤️" ? n : n + (reactions[emoji] ?? 0), 0);
   const pollTotal = pollResults?.reduce((a, b) => a + b, 0) ?? 0;
 
+  if (withdrawn) return <p role="status">You withdrew this post. <a href="/me#submissions">View my submissions</a></p>;
   return (
     <article className={`thread-post ${styles.post}`} aria-label={`Post by ${post.authorName}`}>
       <div className="thread-rail">
@@ -106,10 +109,13 @@ export function PostCard({
           <a className={styles.permalink} href={`/post/${post.id}`} aria-label={`Open thread by ${post.authorName}`}>
             <time className="time" dateTime={post.createdAt} title={post.createdAt} suppressHydrationWarning>{timeAgo(post.createdAt)}</time>
           </a>
-          <div className={styles.report}><SafetyReport kind="post" targetId={post.id} /></div>
+          <div className={styles.report}>{signedIn && viewerId === post.authorId
+            ? <WithdrawSubmission kind="post" id={post.id} onWithdraw={()=>setWithdrawn(true)}/>
+            : <SafetyReport kind="post" targetId={post.id}/>}</div>
         </div>
-        {(post.roomName || post.status === "held") && (
+        {(d.briefing === true || post.roomName || post.status === "held") && (
           <div className={styles.context}>
+            {d.briefing === true && <span>Automated patch update{post.roomName ? " · " : ""}</span>}
             {post.roomName && (
               <>
                 in <a href={`/rooms/${post.roomSlug}`}>{post.roomName}</a>
@@ -269,6 +275,7 @@ export function PostCard({
             visit={replyVisit}
             postId={post.id}
             signedIn={signedIn}
+            viewerId={viewerId}
             viewerName={viewerName}
             viewerHue={viewerHue}
             onVisibleReply={() => setAddedReplies((n) => n + 1)}

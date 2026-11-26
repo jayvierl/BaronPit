@@ -6,6 +6,7 @@ import { signInHref } from "@/lib/signin-return";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { CommentView } from "@/lib/social";
+import { WithdrawSubmission } from "./withdraw-submission";
 import { Avatar, timeAgo } from "./ui";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SaveReply } from "./discussion-library-actions";
@@ -23,6 +24,7 @@ export function CommentSection({
   active = true,
   visit = 1,
   signedIn,
+  viewerId,
   viewerName,
   viewerHue,
   allowOneFix,
@@ -33,6 +35,7 @@ export function CommentSection({
   active?: boolean;
   visit?: number;
   signedIn: boolean;
+  viewerId?: number | null;
   viewerName?: string;
   viewerHue?: number;
   allowOneFix?: boolean;
@@ -119,7 +122,7 @@ export function CommentSection({
     if (!draft.trim() || action.busy || (reconsider && !submitForReview)) return;
     setNotice("");
     setAttempted(submissionKey);
-    const result = await action.send("/api/social/comments", {
+    const result = await action.sendDraft("/api/social/comments", {
       ...payload,
       submitForReview: submitForReview && reconsider,
     });
@@ -128,6 +131,7 @@ export function CommentSection({
     setReplyTo(null);
     setOneFix(false);
     if (result.status === "held") setNotice("Your reply is awaiting moderator review.");
+    else if (result.status !== "visible") setNotice("Your earlier submission is recorded in My submissions.");
     else {
       setNotice("Reply posted.");
       onVisibleReply?.();
@@ -174,7 +178,7 @@ export function CommentSection({
                 Reply
               </button>
               <SaveReply replyId={c.id} postId={postId} signedIn={signedIn}/>
-              <SafetyReport kind="comment" targetId={c.id} />
+              {signedIn && viewerId === c.authorId ? <WithdrawSubmission kind="comment" id={c.id} onWithdraw={()=>setRevision(r=>r+1)}/> : <SafetyReport kind="comment" targetId={c.id}/>}
             </div>
           </div>
         </div>
@@ -232,7 +236,7 @@ export function CommentSection({
       )}
       {notice && (
         <p role="status" className="meta">
-          {notice}
+          {notice} {signedIn && <Link href="/me#submissions">My submissions</Link>}
         </p>
       )}
       {signedIn && action.authStep && <button type="button" className="text-btn" onClick={resumeAfterAuth}>

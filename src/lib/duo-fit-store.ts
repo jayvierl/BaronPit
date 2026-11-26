@@ -23,6 +23,6 @@ export async function clearDuoFit(userId: number) {
 export const filterByDuoFit = `WHERE ($3::jsonb IS NULL OR b.user_id=$1 OR (
     ($3->>'partnerRole'='Any' OR $3->>'partnerRole'=ANY(b.roles) OR 'Fill'=ANY(b.roles)) AND
     b.partner_role IS NOT NULL AND (b.partner_role='Any' OR $3->>'role'='Fill' OR b.partner_role=$3->>'role') AND
-    ($4::int4multirange IS NULL OR b.play_windows && $4::int4multirange) AND
+    ($4::int4multirange IS NULL OR b.play_windows <@ $4::int4multirange) AND
     ($3->>'vibe'='both' OR b.vibe='both' OR $3->>'vibe'=b.vibe) AND
     ($3->>'communication'='any' OR ($3->>'communication'='voice' AND b.voice) OR ($3->>'communication'='text' AND NOT b.voice))))`;

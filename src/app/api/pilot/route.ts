@@ -1,3 +1,4 @@
+import { DUO_STUDY_VERSION } from "@/lib/duo-study-version";
 import { enrollDuoPilot, withdrawDuoPilot } from "@/lib/duo-pilot";
 import { validId } from "@/lib/ids";
 import { authError, requireUser, readObject } from "@/lib/auth-http";
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
       await leavePilot(access.user.id);
     } else if (data.action === "leave-duo") {
       await withdrawDuoPilot(access.user.id);
-    } else if (data.action === "join-duo" && data.consent === true) {
+    } else if (data.action === "join-duo" && data.consent === true && data.version === DUO_STUDY_VERSION) {
       if (!(await enrollDuoPilot(access.user.id)))
         return authError("The duo study requires an eligible verified player and open matching.", 409);
     } else if (data.action === "join" && data.consent === true && pilotChannel(data.channel)) {

@@ -1,3 +1,4 @@
+import { priorSubmission, submissionHash, validSubmissionId } from "./submissions";
 import { HIDDEN_AUTHORS, visiblePostForInteraction } from "./community-queries";
 import { publicPatch } from "./patch-notes";
 import { buildCatalog } from "./build-catalog";
@@ -27,6 +28,13 @@ export async function askDecision(user: User, input: Record<string, unknown>) {
       ok: false as const,
       error: "Write a question of 10–1,000 characters and choose its role and topic.",
     };
+  }
+  const key = input.submissionId;
+  if (key != null && !validSubmissionId(key)) return {ok:false as const,error:"This draft identifier is invalid."};
+  const hash = key ? submissionHash(["decision", input.body, input.champion, input.opponent, input.role, input.topic, input.puuid, input.matchId, input.itemId]) : undefined;
+  if (key && hash) {
+    const replay = await priorSubmission("post",user.id,key,hash);
+    if (replay) return replay;
   }
   const [champions, patch] = await Promise.all([championList(), confirmedPatch()]);
   const find = (v: unknown) =>
@@ -87,9 +95,10 @@ export async function askDecision(user: User, input: Record<string, unknown>) {
       body: input.body,
       roomId: Number(rooms[0].id),
       data: card,
+      submissionId: key ?? undefined,
       submitForReview: input.submitForReview === true,
     },
-    context,
+    context, hash,
   );
 }
 

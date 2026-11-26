@@ -30,7 +30,7 @@ export default async function BuildsPage({ searchParams }: { searchParams: Promi
       </form>
       {builds === null ? <p className="notice warn" role="status">Community builds are temporarily unavailable. Please try again shortly.</p> : builds.length === 0
         ? <div className="card empty">No builds match yet — post the first one from the composer on the <Link href="/">feed</Link>.</div>
-        : builds.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} />)}
+        : builds.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} />)}
     </div>
   );
 }

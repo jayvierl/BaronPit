@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getSql, q } from "./db";
+import { validId } from "./ids";
 import { isAdmin, isBanned, rateLimit, type User } from "./auth";
 import { viewerCanSeePostOrComment } from "./community-queries";
 import { canReportDuo } from "./duo";
@@ -74,7 +75,7 @@ function target(kind: TargetKind) {
     kind === "post"
       ? "CASE WHEN t.kind='clip' AND t.clip_review_required THEN t.data->>'url' END"
       : "NULL::text";
-  return `SELECT '${kind}' AS kind,t.id,${d.owner} AS author, t.${d.status} AS status,
+  return `SELECT '${kind}' AS kind,t.id,t.created_at,${d.owner} AS author, t.${d.status} AS status,
     left(${d.evidence},750) AS excerpt,${eligible} AS releasable,${url} AS link FROM ${d.table} t`;
 }
 const currentTarget = (kind: TargetKind) => target(kind) + " WHERE t.id=$2";
@@ -181,33 +182,87 @@ export async function fileReport(user: User, kind: TargetKind, id: number, rule:
   return results.at(-1)?.length ? { status: 200 } : { status: 404, error: "This item is unavailable." };
 }
 
-export async function reviewQueue(staff: User) {
+const reviewPageSize = 25;
+export const reviewAgeHours = [1, 4, 24, 72] as const;
+
+type QueueRow = Row & { id: number; kind: string; priority: number; opened_at: string; time_key: string };
+type QueueStats = { priority: number; total: number; oldest: string; pastMarker: number };
+
+function readCursor(value: unknown, appeals: boolean) {
+  if (typeof value !== "string" || value.length > 65) return null;
+  const parts = /^([0-3])\.([0-9]{1,18})\.([a-z_]+)\.([1-9]\d{0,9})$/.exec(value);
+  if (!parts) return null;
+  const [, priority, micros, kind, rawId] = parts;
+  const id = Number(rawId);
+  const validSection = appeals ? priority === "3" && kind === "appeal"
+    : priority !== "3" && targetKinds.includes(kind as TargetKind);
+  return validSection && validId(id) ? [Number(priority), micros, kind, id] : null;
+}
+
+// The summary and page share one statement and one reviewer-specific visibility filter.
+// Keyset paging retains the full database timestamp precision as text in the cursor.
+async function queuePage(
+  sql: Sql, source: string, staffId: number, owner: boolean, cursor: unknown[] | null, extra: unknown[] = [],
+) {
+  const [result] = await sql(`
+    ${source}, timed AS (
+      SELECT queue.*, (extract(epoch FROM opened_at)*1000000)::bigint AS opened_us FROM queue
+    ), page AS (
+      SELECT timed.*,opened_us::text AS time_key FROM timed
+      WHERE $3::int IS NULL OR (priority,opened_us,kind,id)>($3::int,$4::bigint,$5::text,$6::int)
+      ORDER BY priority,opened_us,kind,id LIMIT ${reviewPageSize + 1}
+    ), summary AS (
+      SELECT priority,count(*)::int AS total,min(opened_at) AS oldest,
+        count(*) FILTER (WHERE opened_at <= now() - make_interval(hours=>(ARRAY[${reviewAgeHours.join(",")}])[priority+1]))::int AS "pastMarker"
+      FROM queue GROUP BY priority
+    )
+    SELECT floor(extract(epoch FROM now()) * 1000)::bigint AS checked_ms,
+      coalesce((SELECT jsonb_agg((to_jsonb(page)-'opened_us') ORDER BY priority,opened_us,kind,id) FROM page),'[]'::jsonb) AS items,
+      coalesce((SELECT jsonb_agg(to_jsonb(summary) ORDER BY priority) FROM summary),'[]'::jsonb) AS summary`,
+    [staffId, owner, ...(cursor ?? [null, null, null, null]), ...extra],
+  );
+  const items = result.items as QueueRow[];
+  const rows = items.slice(0, reviewPageSize);
+  const last = rows.at(-1);
+  return {
+    rows,
+    next: items.length > reviewPageSize && last ? [last.priority, last.time_key, last.kind, last.id].join(".") : null,
+    summary: result.summary as QueueStats[], checkedAtMs: Number(result.checked_ms),
+  };
+}
+
+export async function reviewQueue(staff: User, cursors: { cases?: unknown; appeals?: unknown } = {}) {
   if (!isAdmin(staff.email) || isBanned(staff)) throw new Error("Staff access required");
-  const owner = isSafetyOwner(staff.email),
-    sql = await getSql();
+  const owner = isSafetyOwner(staff.email), sql = await getSql();
   const targets = targetKinds.map(target).join(" UNION ALL ");
   const [cases, appeals] = await Promise.all([
-    sql(
-      `WITH targets AS (${targets}), reports AS (
+    queuePage(sql, `WITH targets AS (${targets}), reports AS (
       SELECT target_kind,target_id,count(DISTINCT reporter_id)::int AS reports,min(created_at) AS opened,
-        bool_or(reporter_id=$1) AS mine, (array_agg(left(reason,300) ORDER BY created_at DESC) FILTER (WHERE reason<>''))[1] AS note, (array_agg(category ORDER BY CASE WHEN category=ANY($3::text[]) THEN 0
-          WHEN category IN ('hate','fraud','harassment','sexual') THEN 1 ELSE 2 END,created_at))[1] AS rule
-      FROM wp_reports WHERE status='open' GROUP BY target_kind,target_id)
-      SELECT t.kind,t.id, t.releasable,u.receipt,u.release_requested_by, coalesce(r.reports,0) AS reports, coalesce(u.rule,r.rule,'other') AS rule,
-      CASE WHEN u.receipt IS NULL THEN r.note END AS note, CASE WHEN u.receipt IS NULL THEN t.excerpt END AS excerpt, CASE WHEN u.receipt IS NULL THEN t.link END AS link,
-      CASE WHEN u.receipt IS NOT NULL THEN 0 WHEN r.rule IN ('hate','fraud','harassment','sexual') THEN 1 ELSE 2 END AS priority
+        bool_or(reporter_id=$1) AS mine, (array_agg(left(reason,300) ORDER BY created_at DESC,id DESC) FILTER (WHERE reason<>''))[1] AS note, (array_agg(category ORDER BY CASE WHEN category=ANY($7::text[]) THEN 0
+          WHEN category IN ('hate','fraud','harassment','sexual') THEN 1 ELSE 2 END,created_at,id))[1] AS rule
+      FROM wp_reports WHERE status='open' GROUP BY target_kind,target_id), queue AS (
+      SELECT t.kind,t.id,t.releasable,u.receipt,u.release_requested_by,coalesce(r.reports,0) AS reports,coalesce(u.rule,r.rule,'other') AS rule,
+        CASE WHEN u.receipt IS NULL THEN r.note END AS note, CASE WHEN u.receipt IS NULL THEN t.excerpt END AS excerpt, CASE WHEN u.receipt IS NULL THEN t.link END AS link,
+        CASE WHEN u.receipt IS NOT NULL THEN 0 WHEN r.rule IN ('hate','fraud','harassment','sexual') THEN 1 ELSE 2 END AS priority,
+        coalesce(least(r.opened,u.opened_at,
+          CASE WHEN t.status='held' AND (h.prior_status IS NULL OR h.prior_status='held') THEN t.created_at END),t.created_at) AS opened_at
       FROM targets t LEFT JOIN reports r ON r.target_kind=t.kind AND r.target_id=t.id
+      LEFT JOIN wp_safety_holds h ON h.target_kind=t.kind AND h.target_id=t.id
       LEFT JOIN wp_safety_urgent u ON u.target_kind=t.kind AND u.target_id=t.id AND u.reviewed_at IS NULL
       WHERE (t.status='held' OR r.reports>0 OR u.receipt IS NOT NULL) AND t.author IS DISTINCT FROM $1
-        AND NOT coalesce(r.mine,false) AND ($2 OR u.receipt IS NULL)
-      ORDER BY priority,r.opened NULLS LAST,t.kind,t.id LIMIT 100`,
-      [staff.id, owner, urgentRules],
-    ),
-    sql`SELECT a.id, d.rule, d.restricted, CASE WHEN d.restricted THEN NULL ELSE a.message END AS message FROM wp_safety_appeals a
-      JOIN wp_safety_decisions d ON d.id=a.decision_id WHERE a.status='pending' AND d.actor_id<>${staff.id}
-      AND a.applicant_id<>${staff.id} AND (${owner} OR NOT d.restricted) ORDER BY a.created_at LIMIT 100`,
+        AND NOT coalesce(r.mine,false) AND ($2 OR u.receipt IS NULL))`,
+      staff.id, owner, readCursor(cursors.cases, false), [urgentRules]),
+    queuePage(sql, `WITH queue AS (
+      SELECT a.id,'appeal'::text AS kind,3 AS priority,a.created_at AS opened_at,d.rule,d.restricted,
+        CASE WHEN d.restricted THEN NULL ELSE a.message END AS message
+      FROM wp_safety_appeals a JOIN wp_safety_decisions d ON d.id=a.decision_id
+      WHERE a.status='pending' AND d.actor_id<>$1 AND a.applicant_id<>$1 AND ($2 OR NOT d.restricted))`,
+      staff.id, owner, readCursor(cursors.appeals, true)),
   ]);
-  return { cases, appeals };
+  return {
+    cases: cases.rows, appeals: appeals.rows, nextCases: cases.next, nextAppeals: appeals.next,
+    summary: [...cases.summary, ...appeals.summary], checkedAtMs: cases.checkedAtMs,
+  };
 }
 
 /** A moderator can route a held item to a trained responder without rendering it in another general queue. */

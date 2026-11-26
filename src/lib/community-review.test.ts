@@ -3,10 +3,16 @@ import { postgres } from "../../test/postgres";
 import { GET as calendar } from "@/app/review-hour/calendar/route";
 import { confirmReviewHost, featuredMatchup, reviewHosts, withdrawReviewHost } from "./community-review";
 import { q } from "./db";
-import { reviewHour, featureWeek } from "./review-hour-time";
+import { reviewHour, reviewHostStatus, featureWeek } from "./review-hour-time";
 
 vi.mock("@neondatabase/serverless", async () => ({ neon: (await import("../../test/postgres")).neonForTests }));
 const now = new Date("2026-11-26T12:00:00Z");
+it("announces only the host confirmations visible to the reader", () => {
+  expect(reviewHostStatus(null)).toBe("Host confirmation is temporarily unavailable.");
+  expect(reviewHostStatus([])).toBe("Open discussion. No confirmed hosts to show.");
+  expect(reviewHostStatus([{role:"Bot"}])).toBe("Bot carry host confirmed.");
+  expect(reviewHostStatus([{role:"Support"}, {role:"Bot"}])).toBe("Support and bot carry hosts confirmed.");
+});
 beforeAll(async () => {
   vi.stubEnv("DATABASE_URL", "postgresql://fixture.invalid/review-hour");
   vi.stubEnv("VERCEL_ENV", "development");

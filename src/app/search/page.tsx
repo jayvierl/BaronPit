@@ -65,7 +65,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           {results.tagPosts.length > 0 && (
             <>
               <h2 className="section">Posts with this tag</h2>
-              {results.tagPosts.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} />)}
+              {results.tagPosts.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} />)}
             </>
           )}
           {results.players.length === 0 && results.users.length === 0 && results.rooms.length === 0 && results.tagPosts.length === 0 && (

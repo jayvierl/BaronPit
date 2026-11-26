@@ -3,6 +3,13 @@ export const reviewRoles = ["Support", "Bot"] as const;
 export type ReviewRole = (typeof reviewRoles)[number];
 export const reviewRoleLabel = (role: ReviewRole) => (role === "Bot" ? "Bot carry" : "Support");
 
+export function reviewHostStatus(hosts: ReadonlyArray<{ role: ReviewRole }> | null) {
+  if (hosts === null) return "Host confirmation is temporarily unavailable.";
+  if (hosts.length === 0) return "Open discussion. No confirmed hosts to show.";
+  if (hosts.length === 1) return `${reviewRoleLabel(hosts[0].role)} host confirmed.`;
+  return "Support and bot carry hosts confirmed.";
+}
+
 export function reviewHour(now = new Date()) {
   // A fixed UTC hour gives a single instant across regions and daylight-saving changes.
   const start = new Date(now);

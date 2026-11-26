@@ -71,6 +71,7 @@ export async function leavePilot(id: number) {
     sql`DELETE FROM wp_pilot_members WHERE user_id=${id}`,
     sql`DELETE FROM wp_duo_pilot_members WHERE user_id=${id}`,
     sql`DELETE FROM wp_pilot_interest WHERE user_id=${id}`,
+    sql`DELETE FROM wp_evening_interest WHERE user_id=${id}`,
   ]);
 }
 export async function recordInterest(id: number, data: Interest) {
@@ -108,6 +109,9 @@ export async function clearExpiredPilotData() {
   await sql.transaction([
     sql`DELETE FROM wp_pilot_members WHERE joined_at<=now()-interval '56 days'`,
     sql`DELETE FROM wp_duo_pilot_members WHERE joined_at<=now()-interval '28 days'`,
+    sql`DELETE FROM wp_evening_interest WHERE session_start<=now()`,
+    sql`DELETE FROM wp_duo_arrival_consent c USING wp_duo_pilot_members m
+        WHERE c.user_id=m.user_id AND c.study_start<>m.joined_at`,
     sql`DELETE FROM wp_pilot_interest WHERE updated_at<=now()-interval '56 days'`,
   ]);
 }

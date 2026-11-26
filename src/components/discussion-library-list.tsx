@@ -2,19 +2,29 @@ import Link from "next/link";
 import type { LibraryPage } from "@/lib/discussion-library";
 import { LibraryRowAction } from "./discussion-library-actions";
 
-type View = "playbook" | "replies" | "watching";
+type View = "playbook" | "replies" | "watching" | "muted";
+const emptyText: Record<View,string> = {
+  playbook: "Save a discussion or an individual reply to find it here.",
+  watching: "Choose All replies in a thread’s notification settings to watch it.",
+  muted: "Your muted threads will appear here.",
+  replies: "Replies to your posts and comments appear here. You can also watch all replies in a thread.",
+};
+const rowAction = { playbook: "remove", watching: "unwatch", muted: "unmute", replies: "read" } as const;
+const replyLabels = { post: " replied to your post", comment: " replied to your comment", watch: " replied in a thread you watch" };
 
 export function DiscussionList({ page, view }: { page: LibraryPage; view: View }) {
-  const base = view === "playbook" ? "/playbook?" : view === "watching" ? "/activity?tab=watching&" : "/activity?";
+  const base = view === "playbook" ? "/playbook?" : view === "replies" ? "/activity?" : "/activity?tab=" + view + "&";
   return <>
-    {page.entries.length === 0 && <p className="meta">{view === "playbook" ? "Save a discussion or an individual reply to find it here." :
-      view === "watching" ? "Choose Watch replies on a discussion to follow the conversation." : "New replies from other players will appear here when you watch a discussion."}</p>}
+    {page.entries.length === 0 && <p className="meta">{emptyText[view]}</p>}
+    {view === "replies" && <Link href="/activity?tab=muted">Manage muted threads</Link>}
     <ul className="library-list">
       {page.entries.map(item => <li key={item.cursor}>
-        <div className="meta">{item.kind === "comment" ? "Reply" : "Discussion"} by {item.author}{item.unread && <strong> · Unread</strong>}</div>
+        <div className="meta">{item.replyReason ? item.author + replyLabels[item.replyReason] :
+          (item.kind === "comment" ? "Reply" : "Discussion") + " by " + item.author}{item.unread && <strong> · Unread</strong>}</div>
         <Link href={`/post/${item.postId}${item.kind === "comment" ? "#reply-" + item.id : ""}`}>{item.excerpt}</Link>
         {(view !== "replies" || item.unread) && <div><LibraryRowAction kind={item.kind} id={item.id}
-          action={view === "playbook" ? "save" : view === "watching" ? "watch" : "read"} /></div>}
+          action={rowAction[view]} /></div>}
+        {view === "replies" && <LibraryRowAction kind="post" id={item.postId} action="mute" />}
       </li>)}
     </ul>
     {page.next && <Link href={base + "before=" + page.next}>Older {view === "replies" ? "replies" : "items"}</Link>}

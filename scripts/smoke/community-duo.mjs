@@ -5,6 +5,10 @@ export async function checkCommunityDuo(journey) {
   await journey("/review-hour", {includes: ["role=Support", "role=Bot", "Add this hour to calendar"]});
   await journey("/review-hour/calendar?day=2000-01-01", {status: 410});
   await journey("/lfg/thanks", {includes: ["Tip preview only", "Free thanks", "$4.50", "$0.50"]});
+  await journey("/pilot", {includes:["NA bot-lane duo evening","Sign in to share availability"]});
+  await journey("/api/pilot/evening", {method:"POST",body:{action:"save"},status:401});
+  await journey("/api/pilot/evening", {method:"POST",session:true,body:{action:"save",role:"Support",start:"2000-01-01T02:00:00.000Z",consent:true},status:400});
+  await journey("/api/pilot/evening", {method:"POST",session:true,body:{action:"sample",consent:true},status:409});
   const preferences = "/api/lfg/preferences";
   const settings = {action:"save", role:"Support", partnerRole:"ADC", timeZone:"America/Chicago", blocks:["Weekend mornings"], vibe:"chill", communication:"text"};
   await journey(preferences, {method:"POST", body:settings, status:401});

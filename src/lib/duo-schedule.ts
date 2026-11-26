@@ -1,6 +1,6 @@
 // Quarter-hour UTC slots cover modern IANA offsets, including Kathmandu and Chatham Islands.
 // Walking real instants handles repeated and skipped local hours at daylight-saving transitions.
-const SLOT_MS = 15 * 60_000;
+export const SLOT_MS = 15 * 60_000;
 export const scheduleHours = "Mornings 06:00–12:00, afternoons 12:00–18:00, evenings 18:00–00:00, late nights 00:00–06:00.";
 export type PlayWindow = [start: number, end: number];
 const partsOfDay = ["late nights", "mornings", "afternoons", "evenings"] as const;

@@ -12,6 +12,8 @@ export interface MatchSummary {
   queueId: number;
   role: string;
   playedAt: number;
+  /** Authoritative Riot start time; older summaries only have the end time above. */
+  startedAt?: number;
   /** Riot major.minor version for this match, where available. */
   gamePatch?: string;
   /** Champion at the same position on the opposing team, when unambiguous. */
@@ -172,6 +174,10 @@ export interface PlayerSnapshot {
   champPool: { champion: string; games: number; wins: number; kda: number }[];
   roles: Record<string, number>;
   matches: MatchSummary[];
+  /** Earliest instant covered by this complete, visible Match-V5 sample. */
+  coverageFrom?: number;
+  /** Latest completed game end in that window; an in-progress game is not observable. */
+  coverageThrough?: number;
 }
 
 export const EMPTY_SNAPSHOT: PlayerSnapshot = {

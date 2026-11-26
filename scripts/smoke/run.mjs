@@ -6,6 +6,7 @@ import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
+import { checkSubmissions } from "./submissions.mjs";
 import { checkCommunityDuo } from "./community-duo.mjs";
 import { checkImage, publicArtwork } from "../public-art.mjs";
 
@@ -223,10 +224,15 @@ try {
   const postId=question.postId;
   await journey("/post/"+postId, {includes:["Help me frame my answer", "Sign in to reply"]});
   await journey("/questions?role=Bot", {includes:["Should Ashe rotate before the next dragon?"]});
-  await journey("/api/library", {session:true,method:"POST",body:{action:"watch",kind:"post",id:postId,active:true},includes:['"ok":true']});
+  await journey("/api/library?kind=post&id="+postId, {session:true,includes:['"replyMode":"direct"','"watching":false']});
   const reply=await journey("/api/social/comments", {session:"helper",method:"POST",
     body:{postId,body:"Spend the gold before dragon and coordinate the wave with your support."},includes:['"ok":true']});
-  await journey("/activity", {session:true,includes:["Spend the gold before dragon","Unread"]});
+  await journey("/activity", {session:true,includes:["replied to your post","Spend the gold before dragon","Unread"]});
+  await journey("/api/library", {session:true,method:"POST",body:{action:"reply-mode",kind:"post",id:postId,mode:"muted"},includes:['"ok":true']});
+  await journey("/activity", {session:true,excludes:["Spend the gold before dragon"]});
+  await journey("/activity?tab=muted", {session:true,includes:["Should Ashe rotate before the next dragon?","Resume replies to me"]});
+  await journey("/api/library", {session:true,method:"POST",body:{action:"mute",kind:"post",id:postId,active:false},includes:['"ok":true']});
+  await journey("/activity", {session:true,excludes:["Spend the gold before dragon"]});
   await journey("/api/questions", {session:true,method:"POST",body:{action:"accept",postId,answerId:reply.commentId},includes:['"ok":true']});
   await journey("/api/questions", {session:true,method:"POST",body:{action:"trial",postId,answerId:reply.commentId,outcome:"helped"},includes:['"ok":true']});
   await journey("/api/library", {session:true,method:"POST",body:{action:"save",kind:"comment",id:reply.commentId,active:true},includes:['"ok":true']});
@@ -236,6 +242,7 @@ try {
   await journey("/post/"+postId, {includes:["Spend the gold before dragon","It helped"]});
   await journey("/builds/compare", {includes:["Compare"]});
   await journey("/api/account/riot/start",{session:true,method:"POST",status:503,body:{puuid:"fixture-owner"},includes:["awaiting provider configuration"]});
+  await checkSubmissions(journey);
   await checkCommunityDuo(journey);
   console.log(completed + " production HTTP journeys passed against the local PostgreSQL fixture.");
 } catch (error) {

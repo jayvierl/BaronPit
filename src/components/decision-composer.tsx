@@ -78,7 +78,7 @@ export function DecisionComposer({ champions, match, starter, destination, signe
     <form className={styles.form} onSubmit={async event => {
       event.preventDefault();
       if (needsSignIn) { continueSignIn(); return; }
-      const result = await action.send("/api/questions", {
+      const result = await action.sendDraft("/api/questions", {
         ...draft,
         action: "ask",
         ...(match && { puuid: match.puuid, matchId: match.matchId, champion: match.champion,
@@ -89,7 +89,7 @@ export function DecisionComposer({ champions, match, starter, destination, signe
       if (!result) { setConfirm(true); return; }
       setPosted(true);
       if (result.status === "held") setNotice("Your question was submitted for moderator review.");
-      router.push("/post/" + result.postId);
+      router.push(result.status === "visible" ? "/post/" + result.postId : "/me#submissions");
     }}>
       {match && (
         <p className="meta">

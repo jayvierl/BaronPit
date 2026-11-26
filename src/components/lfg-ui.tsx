@@ -1,14 +1,24 @@
 "use client";
-import { useMemo, useState } from "react";
-import { DuoTimeZone, useBrowserTimeZone } from "./duo-time-zone";
-import { nextWindowLabel, overlaps, sharedWindows, scheduleHours, scheduleWindows, timeZoneName } from "@/lib/duo-schedule";
-import { duoFitReasons, partnerRoles, type DuoFit } from "@/lib/duo-fit";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { useBrowserTimeZone } from "./duo-time-zone";
+import { scheduleWindows, timeZoneName } from "@/lib/duo-schedule";
+import { coversSession, SESSION_QUEUE, SESSION_QUEUE_LABEL, sessionOptions, sessionTime, sessionWindow } from "@/lib/duo-session";
+import { duoFitReasons, partnerRoles, playstyles, type DuoFit } from "@/lib/duo-fit";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { DUO_ROLES, SCHEDULE_BLOCKS } from "@/lib/pure";
+import { DUO_ROLES } from "@/lib/pure";
 import type { DuoListing, DuoRequest } from "@/lib/duo";
 import { postJson } from "@/lib/client";
 import { SafetyReport } from "./safety-report";
+
+function subscribeClock(notify: () => void) {
+  const timer = window.setInterval(notify, 30_000);
+  return () => window.clearInterval(timer);
+}
+const currentMinute = () => Math.floor(Date.now() / 60_000) * 60_000;
+function useSessionClock(asOf: number) {
+  return useSyncExternalStore(subscribeClock, currentMinute, () => asOf);
+}
 
 function toggled(selected: string[], value: string) {
   return selected.includes(value) ? selected.filter((r) => r !== value) : [...selected, value];
@@ -44,14 +54,16 @@ function DuoButton({ action, id, children }: { action: string; id: number; child
     </span>
   );
 }
-export function LfgForm({ fit }: { fit: DuoFit | null }) {
+export function LfgForm({ fit, asOf }: { fit: DuoFit | null; asOf: number }) {
   const router = useRouter();
   const browserZone = useBrowserTimeZone();
   const [partnerRole, setPartnerRole] = useState<string>(fit?.partnerRole ?? "Any");
-  const [chosenZone, setChosenZone] = useState(fit?.timeZone);
-  const timeZone = chosenZone ?? browserZone;
-  const [roles, setRoles] = useState<string[]>(fit ? [fit.role] : []),
-    [blocks, setBlocks] = useState<string[]>(fit?.blocks ?? []);
+  const timeZone = fit?.timeZone ?? browserZone;
+  const now = useSessionClock(asOf);
+  const starts = sessionOptions(now);
+  const [chosenStart, setStart] = useState<number | null>(null);
+  const start = chosenStart !== null && starts.includes(chosenStart) ? chosenStart : 0;
+  const [roles, setRoles] = useState<string[]>(fit ? [fit.role] : []);
   // Voice on a listing is about this player. A partner preference never opts the player into voice.
   const [voice, setVoice] = useState(false),
     [vibe, setVibe] = useState<string>(fit?.vibe ?? "both"),
@@ -60,13 +72,13 @@ export function LfgForm({ fit }: { fit: DuoFit | null }) {
     [message, setMessage] = useState("");
   async function publish(e: React.FormEvent) {
     e.preventDefault();
-    if (!timeZoneName(timeZone)) { setMessage("Choose a valid schedule time zone."); return; }
+    if (!start) { setMessage("Choose an upcoming session."); return; }
     setBusy(true);
     setMessage("");
     try {
-      const { ok, data } = await postJson("/api/lfg", { action: "create", roles, partnerRole, blocks, timeZone, voice, vibe, note });
+      const { ok, data } = await postJson("/api/lfg", { action: "create", queue: SESSION_QUEUE, start, roles, partnerRole, voice, vibe, note });
       if (ok) {
-        setMessage(data.held ? "Your listing is in review." : "Your listing is open for four hours.");
+        setMessage(data.held ? "Your listing is in review." : "Your session is open for requests.");
         setNote("");
         router.refresh();
       } else setMessage(String(data.error ?? "Couldn’t publish that listing."));
@@ -99,24 +111,12 @@ export function LfgForm({ fit }: { fit: DuoFit | null }) {
           {partnerRoles.map(r => <option key={r} value={r}>{r === "Any" ? "Any role" : r}</option>)}
         </select>
       </label>
-      <DuoTimeZone value={timeZone} onChange={setChosenZone} />
-      <div className="field" role="group" aria-label="Play times">
-        <strong>When do you play?</strong>
-        <p className="meta">{scheduleHours}</p>
-        <div className="duo-controls">
-          {SCHEDULE_BLOCKS.map((b) => (
-            <button
-              type="button"
-              key={b}
-              aria-pressed={blocks.includes(b)}
-              className={`kind-tab${blocks.includes(b) ? " active" : ""}`}
-              onClick={() => setBlocks(toggled(blocks, b))}
-            >
-              {b}
-            </button>
-          ))}
-        </div>
-      </div>
+      <label className="field">Normal Draft session · {timeZone}
+        <select value={start} required onChange={e => setStart(Number(e.target.value))}>
+          <option value={0}>Choose one hour to play</option>
+          {starts.map(t => <option value={t} key={t}>{sessionTime(t, timeZone)}</option>)}
+        </select>
+      </label>
       <label className="field">
         Playstyle
         <select value={vibe} onChange={(e) => setVibe(e.target.value)}>
@@ -139,24 +139,21 @@ export function LfgForm({ fit }: { fit: DuoFit | null }) {
         />
       </label>
       <p className="meta">Use the in-app request. Keep account details and contact handles private.</p>
-      <button className="btn" disabled={busy || !roles.length || !blocks.length}>
+      <button className="btn" disabled={busy || !roles.length || !start}>
         {busy ? "Posting…" : "Post listing"}
       </button>
       {message && <p role="status">{message}</p>}
     </form>
   );
 }
-export function LfgBoard({ listings, requests, fit, onlyFit, asOf }: {
-  listings: DuoListing[]; requests: DuoRequest[]; fit: DuoFit | null; onlyFit: boolean; asOf:number;
+export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly = false }: {
+  listings: DuoListing[]; requests: DuoRequest[]; fit: DuoFit | null; onlyFit: boolean; asOf:number; requestsOnly?: boolean;
 }) {
-  const [filter, setFilter] = useState<string[]>([]);
+  const now = useSessionClock(asOf);
   const browserZone = useBrowserTimeZone();
   const viewZone = timeZoneName(fit?.timeZone) ?? browserZone;
-  const selected = useMemo(() => scheduleWindows(filter, viewZone, asOf), [filter, viewZone, asOf]);
-  const preferred = useMemo(() => scheduleWindows(fit?.blocks ?? [], fit?.timeZone, asOf), [fit, asOf]);
-  const displayed = listings.filter(
-    (l) => l.own || !filter.length || overlaps(selected, l.playWindows),
-  );
+  const preferred = useMemo(() => scheduleWindows(fit?.blocks ?? [], fit?.timeZone, asOf, 1), [fit, asOf]);
+  const displayed = listings.filter(l => l.own || (l.start !== null && l.start > now));
   return (
     <>
       {!!requests.length && (
@@ -170,6 +167,8 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf }: {
               <p>
                 {r.rank} · {r.platform}
               </p>
+              {r.session && <p>{SESSION_QUEUE_LABEL} · {sessionTime(r.session.start, viewZone)}<br/>
+                {r.session.roles.join(" / ")} · {playstyles[r.session.vibe as keyof typeof playstyles]} · {r.session.voice ? "Open to voice" : "Text only"}</p>}
               {r.requeue && (
                 <div>
                   <p>
@@ -212,11 +211,13 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf }: {
               )}
               {r.riotId && (
                 <p>
-                  Both players agreed to connect. Add <strong>{r.riotId}</strong> in League.
+                  Both players agreed to connect. Add <strong>{r.riotId}</strong> in League. Either player can check recent games for this pairing.
                 </p>
               )}
+              {r.status === "pending" && !r.session && <p>Earlier invitation. Ask for a new session to choose a time together.</p>}
+              {r.status === "pending" && r.session && r.session.start <= now && <p>This session has started. You can choose another listing.</p>}
               <div className="duo-controls">
-                {r.status === "pending" && r.incoming && (
+                {r.status === "pending" && r.incoming && r.session && r.session.start > now && (
                   <DuoButton action="accept" id={r.id}>
                     Accept and share Riot IDs
                   </DuoButton>
@@ -235,43 +236,23 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf }: {
           ))}
         </section>
       )}
+      {!requestsOnly && <>
       <h2 id="open-listings">Open listings</h2>
       <nav className="duo-list-views" aria-label="Open listing views">
         {fit && <Link href="/lfg?view=fit#open-listings" aria-current={onlyFit ? "page" : undefined}>Matches my plan</Link>}
         <Link href="/lfg?view=all#open-listings" aria-current={!onlyFit || !fit ? "page" : undefined}>All eligible listings</Link>
         <Link href="#duo-plan">{fit ? "Edit my plan" : "Set my preferences"}</Link>
       </nav>
-      <p className="meta">Play times use {viewZone}. Filter the displayed listings by your availability over the next seven days.</p>
-      <div role="group" className="duo-controls" aria-label="Filter by play time">
-        {SCHEDULE_BLOCKS.map((b) => (
-          <button
-            key={b}
-            type="button"
-            className={`kind-tab${filter.includes(b) ? " active" : ""}`}
-            aria-pressed={filter.includes(b)}
-            onClick={() => setFilter(toggled(filter, b))}
-          >
-            {b}
-          </button>
-        ))}
-      </div>
+      <p className="meta">One hour of {SESSION_QUEUE_LABEL} on NA. Times shown in {viewZone}.</p>
       {!displayed.some(listing => !listing.own) && (
         <p className="empty">
-          {listings.some(listing => !listing.own)
-            ? "No other listings match these times."
-            : fit && onlyFit ? "No listings match your plan yet. Try all eligible listings or edit your preferences."
-              : "No open listings for your region and age group yet."}
+          {fit && onlyFit ? "No upcoming sessions match your plan. Browse all sessions or choose a time to host."
+             : "No upcoming sessions for your region and age group. You can choose a time to host."}
         </p>
       )}
       {displayed.map(l => {
-        const mutual = sharedWindows(preferred, l.playWindows);
-        const filtered = filter.length ? sharedWindows(selected, l.playWindows) : [];
-        const shared = filtered.length ? filtered : mutual;
-        const hasSharedTime = !l.own && shared.length > 0;
-        const next = nextWindowLabel(hasSharedTime ? shared : l.playWindows, viewZone, asOf);
-        const playTime = next
-          ? (hasSharedTime ? "Shared play time · " : "Next play time · ") + next
-          : "Time zone unconfirmed · " + l.blocks.join(" / ");
+        const hasSharedTime = l.start !== null && coversSession(preferred, sessionWindow(l.start));
+        const playTime = l.start !== null ? sessionTime(l.start, viewZone) : "Earlier listing · choose a new session to receive invitations";
         return (
           <article key={l.id} className="card">
             <strong>{l.own ? (l.held ? "Your listing is in review" : "Your listing") : l.rank}</strong>
@@ -282,7 +263,7 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf }: {
               {playTime} · {l.voice ? "Open to voice" : "Text only"} ·{" "}
               {l.vibe === "both" ? "Flexible" : l.vibe === "tryhard" ? "Competitive" : "Chill"}
             </p>
-            {fit && !l.own && <FitReasons fit={fit} listing={l} sharedTime={mutual.length > 0} />}
+            {fit && !l.own && <FitReasons fit={fit} listing={l} sharedTime={hasSharedTime} />}
             {!!l.champs.length && <p>Recent champions · {l.champs.join(", ")}</p>}
             {l.note && <p>{l.note}</p>}
             {l.own ? (
@@ -294,9 +275,7 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf }: {
                 {l.requested ? (
                   <span className="meta">Request already sent</span>
                 ) : (
-                  <DuoButton action="request" id={l.id}>
-                    Request a duo
-                  </DuoButton>
+                  <SessionRequest listing={l} fit={fit} zone={viewZone} />
                 )}
                 <DuoButton action="block-listing" id={l.id}>
                   Block player
@@ -307,6 +286,7 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf }: {
           </article>
         );
       })}
+      </>}
     </>
   );
 }
@@ -314,4 +294,47 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf }: {
 function FitReasons({ fit, listing, sharedTime }: { fit: DuoFit; listing: DuoListing; sharedTime: boolean }) {
   const reasons = duoFitReasons(fit, listing, sharedTime);
   return reasons.length ? <p className="duo-reasons"><strong>Shared preferences</strong> · {reasons.join(" · ")}</p> : null;
+}
+
+function SessionRequest({listing, fit, zone}: {listing: DuoListing; fit: DuoFit | null; zone: string}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const allowedRoles = DUO_ROLES.filter(r => listing.partnerRole === "Any" || r === "Fill" || r === listing.partnerRole);
+  const [role, setRole] = useState<string>(fit && allowedRoles.some(r => r === fit.role) ? fit.role : "");
+  const [voice, setVoice] = useState(false);
+  const [vibe, setVibe] = useState(fit?.vibe ?? "both");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  if (listing.start === null) return null;
+  if (!open) return <button className="btn small secondary" type="button" onClick={() => setOpen(true)}>Request this session</button>;
+  async function send(e: React.FormEvent) {
+    e.preventDefault();
+    if (!role || busy) return;
+    setBusy(true);
+    try {
+      const result = await postJson("/api/lfg", {action:"request", id:listing.id, queue:SESSION_QUEUE, start:listing.start, role, voice, vibe});
+      setMessage(result.ok ? "Request sent." : String(result.data.error ?? "Please try again."));
+      if (result.ok) router.refresh();
+    } finally { setBusy(false); }
+  }
+  return <form className="card" onSubmit={send}>
+    <h3>Request this session</h3>
+    <p>{SESSION_QUEUE_LABEL} · {sessionTime(listing.start,zone)}</p>
+    <label className="field">My role this game
+      <select required value={role} onChange={e => setRole(e.target.value)}>
+        <option value="">Choose a role</option>
+        {allowedRoles.map(r => <option key={r}>{r}</option>)}
+      </select>
+    </label>
+    <label className="field">My playstyle
+      <select value={vibe} onChange={e => setVibe(e.target.value as DuoFit["vibe"])}>
+        {Object.entries(playstyles).map(([value,label]) => <option key={value} value={value}>{label}</option>)}
+      </select>
+    </label>
+    <label><input type="checkbox" checked={voice} onChange={e => setVoice(e.target.checked)} /> I’m open to voice</label>
+    <p className="meta">They’ll see these choices, your rank and server. Accepting shares both Riot IDs and lets either of you check for a shared game.</p>
+    <button className="btn small" disabled={busy || !role}>Send session request</button>{" "}
+    <button className="text-btn" type="button" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
+    {message && <p role="status">{message}</p>}
+  </form>;
 }

@@ -4,7 +4,7 @@ import { dbAvailable } from "@/lib/db";
 import { reviewHosts } from "@/lib/community-review";
 import { isPilotHost } from "@/lib/pilot";
 import { signInHref } from "@/lib/signin-return";
-import { reviewHour, reviewRoleLabel, reviewRoles } from "@/lib/review-hour-time";
+import { reviewHour, reviewHostStatus, reviewRoleLabel, reviewRoles } from "@/lib/review-hour-time";
 import { LocalReviewTime, HostAction } from "@/components/review-hour-controls";
 import styles from "@/components/community-review.module.css";
 
@@ -24,13 +24,14 @@ export default async function ReviewHourPage() {
         open all week.
       </p>
       <section className={styles.panel}>
-        <h2>{session.live ? "Happening now" : "Next community hour"}</h2>
+        <h2>{session.live ? "Scheduled hour underway" : "Next community hour"}</h2>
         <p>
           <strong>
             <LocalReviewTime start={session.start} end={session.end} />
           </strong>
         </p>
         <p className="meta">Every Saturday at 21:00 UTC for one hour. Open to support and bot carry players.</p>
+        {hosts && <p>{reviewHostStatus(hosts)}</p>}
         <div className={styles.links}>
           <a className="btn small" href={`/review-hour/calendar?day=${session.start.slice(0, 10)}`}>
             Add this hour to calendar

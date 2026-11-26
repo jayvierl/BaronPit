@@ -1,3 +1,5 @@
+import { recentSubmissions } from "@/lib/submissions";
+import { WithdrawSubmission } from "@/components/withdraw-submission";
 import { riotSignOnConfig } from "@/lib/riot-ownership";
 import { VerifyRiotButton } from "@/components/verify-riot";
 import Link from "next/link";
@@ -6,7 +8,7 @@ import { getCurrentUser, isAdmin } from "@/lib/auth";
 import { myNotices, myReports, followCounts } from "@/lib/social";
 import { linkedPlayers } from "@/lib/player-insights";
 import { Avatar, rankLabel } from "@/components/ui";
-import { LinkForm, ProfileForm, SignOutButton, UnlinkButton } from "@/components/me-ui";
+import { LinkForm, ProfileForm, SignOutButton, UnlinkButton, PrimaryPlayerButton } from "@/components/me-ui";
 
 const verificationMessages: Record<string,string> = {
   verified: "Riot confirmed ownership of your linked profile.",
@@ -18,11 +20,11 @@ const verificationMessages: Record<string,string> = {
 
 export const dynamic = "force-dynamic";
 
-export default async function MePage({ searchParams }: { searchParams: Promise<{ welcome?: string; verification?: string }> }) {
+export default async function MePage({ searchParams }: { searchParams: Promise<{ welcome?: string; verification?: string; beforeSubmission?: string }> }) {
   const [sp,user] = await Promise.all([searchParams,getCurrentUser()]);
   if (!user) redirect("/signin");
-  const [counts,reports,notices,linked] = await Promise.all([
-    followCounts(user.id),myReports(user.id),myNotices(user.id),linkedPlayers(user.id),
+  const [counts,reports,notices,linked,receipts] = await Promise.all([
+    followCounts(user.id),myReports(user.id),myNotices(user.id),linkedPlayers(user.id),recentSubmissions(user.id,sp.beforeSubmission),
   ]);
 
   return (
@@ -54,10 +56,11 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
           <div key={p.puuid} className="match-row">
             <div style={{ flex: 1 }}>
               <strong>{p.gameName}#{p.tagLine}</strong>
-              <div className="meta">{rankLabel(p.rankTier, p.rankDiv, p.rankLp)} · {p.platform.toUpperCase()} · {p.verified ? "Verified link" : "Unverified link"}</div>
+              <div className="meta">{rankLabel(p.rankTier, p.rankDiv, p.rankLp)} · {p.platform.toUpperCase()} · {p.verified ? "Verified link" : "Unverified link"}{p.primary && " · Primary"}</div>
             </div>
             <Link className="text-btn" href={`/player?platform=${p.platform}&riotId=${encodeURIComponent(`${p.gameName}#${p.tagLine}`)}`}>Stats →</Link>
             {!p.verified && riotSignOnConfig() && <VerifyRiotButton puuid={p.puuid}/>}
+            {p.verified && !p.primary && <PrimaryPlayerButton puuid={p.puuid} />}
             <UnlinkButton puuid={p.puuid} label={`${p.gameName}#${p.tagLine}`} />
           </div>
         ))}
@@ -66,15 +69,35 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
         </div>
       </div>
 
+      <section className="card" id="submissions" aria-labelledby="my-submissions">
+        <h2 id="my-submissions">My submissions</h2>
+        {receipts.entries.some(entry => entry.status === "held") && (
+          <p className="meta">A moderator will review your submission before other players can see it. You can withdraw it here at any time.</p>
+        )}
+        {receipts.entries.length === 0 && <p className="meta">Your post and reply receipts appear here.</p>}
+        {receipts.entries.map(entry=><article className="match-row" key={entry.kind+entry.id}>
+          <div style={{flex:1}}>
+            <strong>{entry.kind==="post"?"Post":"Reply"} #{entry.id}</strong>
+            <span className="chip">{({visible:entry.canOpen ? "Published" : "Thread unavailable",held:"Awaiting review",removed:"Removed",withdrawn:"Withdrawn"})[entry.status]}</span>
+            {entry.excerpt && <p>{entry.excerpt}</p>}
+            <div className="meta">Submitted <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString("en-US",{timeZone:"UTC"})} UTC</time></div>
+          </div>
+          {entry.canOpen && <Link href={`/post/${entry.postId}${entry.kind==="comment"?"#reply-"+entry.id:""}`}>Open thread</Link>}
+          {entry.status==="removed" && <Link href="/me/safety">Safety inbox</Link>}
+          {entry.status!=="withdrawn" && <WithdrawSubmission kind={entry.kind} id={entry.id}/>}
+        </article>)}
+        {receipts.next && <Link href={`/me?beforeSubmission=${receipts.next}#submissions`}>Older submissions</Link>}
+        {sp.beforeSubmission && <Link href="/me#submissions"> Latest submissions</Link>}
+      </section>
+
       <div className="card">
         <h2 style={{ margin: "0 0 6px", fontSize: 18 }}>Moderation &amp; my reports</h2><p><Link href="/me/safety">Open my safety inbox</Link></p>
         {notices.length > 0 && (
           <>
-            <strong style={{ fontSize: 15 }}>Notices about your content</strong>
+            <strong style={{ fontSize: 15 }}>Prepublication checks</strong>
             {notices.map((n) => (
               <div key={n.id} className="notice warn" style={{ margin: "8px 0" }}>
-                Your content was <strong>{n.action === "remove" ? "removed" : n.action === "hold" ? "held for review" : "blocked"}</strong>
-                {n.detail ? <> — {n.detail}</> : null}. Review the decision and appeal in your <Link href="/me/safety">safety inbox</Link>.
+                A safety check blocked a submission. You can edit your wording and submit a new draft. <Link href="/guidelines">Community guidelines</Link>
                 <div className="meta">{new Date(n.createdAt).toLocaleString()}</div>
               </div>
             ))}

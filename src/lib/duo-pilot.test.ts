@@ -18,9 +18,9 @@ beforeAll(async()=>{
   await q`UPDATE wp_users SET email='fixture@sample.invalid' WHERE id=9`;
   await q`INSERT INTO wp_players(puuid,platform,game_name,tag_line,rank_tier,snapshot)
     SELECT 'riot-'||n,'na1','Player '||n,'NA1','GOLD',
-    jsonb_build_object('matches',jsonb_build_array(jsonb_build_object('matchId','match','playedAt',
+    jsonb_build_object('matches',jsonb_build_array(jsonb_build_object('matchId','match','startedAt',floor(extract(epoch FROM now()-interval '2 hours')*1000)::bigint,'playedAt',
     floor(extract(epoch FROM now()-interval '1 hour')*1000)::bigint,
-    'teammates',CASE WHEN n=1 THEN '[{"name":"Player 2","tag":"NA1"}]'::jsonb ELSE '[]'::jsonb END)))
+    'teammates',CASE WHEN n=1 THEN '[{"name":"Player 2","tag":"NA1"}]'::jsonb WHEN n=2 THEN '[{"name":"Player 1","tag":"NA1"}]'::jsonb ELSE '[]'::jsonb END)))
     FROM generate_series(1,10) n`;
   await q`INSERT INTO wp_links(user_id,puuid,is_primary,verified) SELECT n,'riot-'||n,true,n<>10 FROM generate_series(1,10) n`;
   await q`INSERT INTO wp_lfg(id,user_id,puuid,safe_listing,created_at)
@@ -50,10 +50,11 @@ it("requires independent eligible verification and active matching; retrying enr
 });
 
 it("deduplicates pairs in either direction, counts distinct people, and keeps one-sided actions unpaired",async()=>{
-  await q`INSERT INTO wp_duo_pilot_members SELECT n,now()-interval '5 days' FROM generate_series(1,3) n`;
-  await q`INSERT INTO wp_duo_pilot_members VALUES (5, now()-interval '5 days'),(6, now()-interval '5 days')`;
+  await q`INSERT INTO wp_duo_pilot_members SELECT n,now()-interval '5 days',2 FROM generate_series(1,3) n`;
+  await q`INSERT INTO wp_duo_pilot_members VALUES (5, now()-interval '5 days',2),(6, now()-interval '5 days',2)`;
   expect(await duoPilotResults()).toEqual({enrolled:5,listed:5,sent:3,acceptedInvites:3,
-    pairs:2,pairedPeople:3,accepted:2,acceptedPeople:3,played:1,playedPeople:2,mutual:0,mutualPeople:0});
+    pairs:2,pairedPeople:3,accepted:2,acceptedRequests:3,medianAcceptanceMinutes:60,acceptedPeople:3,played:1,playedPeople:2,mutual:0,mutualPeople:0,
+    maturePlayed:0,observedRepeat:0,repeatUnknown:0});
   await q`UPDATE wp_duo_requests SET sender_requeue=true WHERE listing_id=2 AND sender_id=1`;
   expect(await duoPilotResults()).toMatchObject({played:1,mutual:0});
   await q`UPDATE wp_duo_requests SET owner_requeue=true WHERE listing_id=2 AND sender_id=1`;
@@ -63,7 +64,7 @@ it("deduplicates pairs in either direction, counts distinct people, and keeps on
 });
 
 it("enforces the rolling cutoff and forbids pre-consent pair tracking, including after rejoining",async()=>{
-  await q`INSERT INTO wp_duo_pilot_members VALUES (1,now()-interval '14 days'),(2,now()-interval '14 days')`;
+  await q`INSERT INTO wp_duo_pilot_members VALUES (1,now()-interval '14 days',2),(2,now()-interval '14 days',2)`;
   await q`UPDATE wp_duo_requests SET created_at=now()-interval '8 days' WHERE (listing_id,sender_id) IN ((1,2),(2,1))`;
   try { expect(await duoPilotResults()).toMatchObject({pairs:0}); }
   finally { await q`UPDATE wp_duo_requests SET created_at=now()-interval '2 days' WHERE (listing_id,sender_id) IN ((1,2),(2,1))`; }
@@ -76,11 +77,11 @@ it("enforces the rolling cutoff and forbids pre-consent pair tracking, including
   await clearExpiredPilotData();
   expect(await q`SELECT user_id FROM wp_duo_pilot_members`).toEqual([{user_id:1}]);
   const cols=await q`SELECT column_name FROM information_schema.columns WHERE table_name='wp_duo_pilot_members' ORDER BY column_name`;
-  expect(cols.map(r=>r.column_name)).toEqual(["joined_at","user_id"]);
+  expect(cols.map(r=>r.column_name)).toEqual(["joined_at","study_version","user_id"]);
 });
 
 it("keeps pending requests in the denominator and rejects games played before acceptance", async () => {
-  await q`INSERT INTO wp_duo_pilot_members SELECT n,now()-interval '5 days' FROM generate_series(1,3) n`;
+  await q`INSERT INTO wp_duo_pilot_members SELECT n,now()-interval '5 days',2 FROM generate_series(1,3) n`;
   await q`UPDATE wp_duo_requests SET status='pending',accepted_at=NULL WHERE listing_id=3`;
   await q`UPDATE wp_duo_requests SET accepted_at=now() WHERE (listing_id,sender_id) IN ((1,2),(2,1))`;
   try {
@@ -95,7 +96,7 @@ it("compares a fixed UTC week with at least seven days of follow-up, excluding t
     start: "2026-11-09T00:00:00.000Z", end: "2026-11-16T00:00:00.000Z",
   });
   const window = duoPilotWindows().mature;
-  await q`INSERT INTO wp_duo_pilot_members SELECT n,now()-interval '25 days' FROM generate_series(1,3) n`;
+  await q`INSERT INTO wp_duo_pilot_members SELECT n,now()-interval '25 days',2 FROM generate_series(1,3) n`;
   await q`UPDATE wp_duo_requests SET created_at=${window.start},accepted_at=${window.end}::timestamptz+interval '2 hours'
     WHERE listing_id=2 AND sender_id=1`;
   await q`UPDATE wp_duo_requests SET created_at=${window.end} WHERE listing_id=3 AND sender_id=2`;

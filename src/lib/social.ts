@@ -1,3 +1,4 @@
+import { insertSubmission, priorSubmission, submissionHash, validSubmissionId, type SubmissionResult } from "./submissions";
 import { includesRoomLink, roomWriteError } from "./room-safety";
 import { inProbation } from "./account-policy";
 import { validId } from "./ids";
@@ -27,13 +28,15 @@ export { dailyHighlight, todaysSpotlight } from "./player-insights";
 
 /* ---------------------------------- posts ---------------------------------- */
 
-export type CreateResult =
-  | { ok: true; postId: number; status: "visible" | "held" }
-  | { ok: false; error: string; reconsider?: boolean };
+export type CreateResult = SubmissionResult;
+const badKey = { ok: false as const, error: "This draft identifier is invalid. Start a new submission." };
 
-
-
-export async function createPost(user: User, input: CreatePostInput, decision?: DecisionContext): Promise<CreateResult> {
+export async function createPost(user: User, input: CreatePostInput, decision?: DecisionContext, decisionHash?: string): Promise<CreateResult> {
+  const key = input.submissionId ?? null;
+  if (key !== null && !validSubmissionId(key)) return badKey;
+  const hash = key ? decisionHash ?? submissionHash([input.kind,input.body,input.roomId ?? null,input.data ?? null,decision ?? null]) : null;
+  const replay = await priorSubmission("post",user.id,key,hash);
+  if (replay) return replay;
   if (!(await rateLimit(user.id, "post", 30, 60))) return { ok: false, error: "You're posting too fast — take a breath and try again in a bit." };
   const draft = await preparePost(input);
   if (!draft.ok) return draft;
@@ -60,10 +63,13 @@ export async function createPost(user: User, input: CreatePostInput, decision?: 
 
   let rows;
   try {
-    rows = await q`WITH inserted AS (
-    INSERT INTO wp_posts (author_id, kind, body, room_id, data, status, clip_review_required, card_validated)
-    SELECT ${user.id}, ${input.kind}, ${body}, ${roomId}::int, ${JSON.stringify(data)}::jsonb, ${status}, ${input.kind === "clip"}, ${input.kind === "card"}
-    WHERE wp_reserve_room_turn(${roomId}::int,${user.id},${input.kind==="clip"||includesRoomLink(fields)})
+    const sql = await getSql();
+    rows = await insertSubmission(sql,sql`WITH inserted AS (
+    INSERT INTO wp_posts (author_id, kind, body, room_id, data, status, clip_review_required, card_validated, submission_id, submission_hash)
+    SELECT ${user.id}, ${input.kind}, ${body}, ${roomId}::int, ${JSON.stringify(data)}::jsonb, ${status}, ${input.kind === "clip"}, ${input.kind === "card"}, ${key}::uuid, ${hash}
+    WHERE CASE WHEN EXISTS(SELECT 1 FROM wp_posts WHERE author_id=${user.id} AND submission_id=${key}::uuid)
+      THEN false ELSE wp_reserve_room_turn(${roomId}::int,${user.id},${input.kind==="clip"||includesRoomLink(fields)}) END
+    ON CONFLICT (author_id,submission_id) WHERE submission_id IS NOT NULL DO NOTHING
     RETURNING id
   ), question AS (
     INSERT INTO wp_decisions (post_id,champion,opponent,role,topic,patch,item_id,item_name)
@@ -72,9 +78,9 @@ export async function createPost(user: User, input: CreatePostInput, decision?: 
   ), audit AS (
     INSERT INTO wp_mod_log (target_kind, target_id, author_id, score, action, detail)
     SELECT 'post',id,${user.id},${mod.score},'hold',${mod.hits.join(",")} FROM inserted WHERE ${status}='held'
-  ) SELECT id FROM inserted`;
-  } catch(error) { return {ok:false,error:roomWriteError(error)}; }
-  if (!rows.length) return { ok: false, error: "That room is unavailable." };
+  ) SELECT id FROM inserted`,key,user.id);
+  } catch(error) { return await priorSubmission("post",user.id,key,hash) ?? {ok:false,error:roomWriteError(error)}; }
+  if (!rows.length) return await priorSubmission("post",user.id,key,hash) ?? { ok: false, error: "That room is unavailable." };
   const postId = Number(rows[0].id);
   return { ok: true, postId, status };
 }
@@ -120,11 +126,15 @@ export async function listComments(postId: number, viewer: User | null): Promise
   return readComments(postId, viewer?.id ?? null);
 }
 
-export async function addComment(user: User, postId: number, bodyRaw: string, parentId?: number, oneFix = false, submitForReview = false): Promise<CreateResult> {
+export async function addComment(user: User, postId: number, bodyRaw: string, parentId?: number, oneFix = false, submitForReview = false, key: string | null = null): Promise<CreateResult> {
   if (!validId(postId) || (parentId != null && !validId(parentId))) return { ok: false, error: "Conversation unavailable." };
   const body = typeof bodyRaw === "string" ? bodyRaw.trim() : "";
   if (body.length < 1 || body.length > 1000) return { ok: false, error: "Comments are 1–1000 characters." };
   if (oneFix && parentId != null) return { ok: false, error: "Start a new One Fix directly on the game card." };
+  if (key !== null && !validSubmissionId(key)) return badKey;
+  const hash = key ? submissionHash([postId,body,parentId ?? null,oneFix]) : null;
+  const replay = await priorSubmission("comment",user.id,key,hash);
+  if (replay) return replay;
   if (!(await rateLimit(user.id, "comment", 60, 60))) return { ok: false, error: "You're commenting too fast — slow down a little." };
   const lowTrust = inProbation(user.createdAt);
   const mod = await screenText(scoreContent(body, { lowTrust }), [body], user.id, "comment");
@@ -138,22 +148,26 @@ export async function addComment(user: User, postId: number, bodyRaw: string, pa
   const status = lowTrust || mod.action === "hold" ? "held" : "visible";
   let rows;
   try {
-    rows = await queryRows(`WITH ${HIDDEN_AUTHORS}, candidate AS MATERIALIZED (
+    const sql = await getSql();
+    rows = await insertSubmission(sql,sql(`WITH ${HIDDEN_AUTHORS}, candidate AS MATERIALIZED (
     SELECT p.id,p.room_id FROM wp_posts p WHERE p.id=$2 AND ${visiblePostForInteraction} AND (NOT $6 OR p.kind='card')
       AND ($3::int IS NULL OR EXISTS (
         SELECT 1 FROM wp_comments c WHERE c.id=$3 AND c.post_id=p.id AND c.parent_id IS NULL
           AND c.status='visible' AND c.author_id NOT IN (SELECT id FROM hidden)))
   ), submitted AS (
-    INSERT INTO wp_comments(post_id,author_id,parent_id,body,status,one_fix)
-    SELECT id,$1,$3::int,$4,$5,$6::boolean FROM candidate WHERE wp_reserve_room_turn(room_id,$1,$9)
+    INSERT INTO wp_comments(post_id,author_id,parent_id,body,status,one_fix,submission_id,submission_hash)
+    SELECT id,$1,$3::int,$4,$5,$6::boolean,$10::uuid,$11 FROM candidate
+    WHERE CASE WHEN EXISTS(SELECT 1 FROM wp_comments WHERE author_id=$1 AND submission_id=$10::uuid)
+      THEN false ELSE wp_reserve_room_turn(room_id,$1,$9) END
+    ON CONFLICT (author_id,submission_id) WHERE submission_id IS NOT NULL DO NOTHING
     RETURNING id
   ), hold_log AS (
     INSERT INTO wp_mod_log (target_kind, target_id, author_id, score, action, detail)
     SELECT 'comment', id, $1, $7, 'hold', $8 FROM submitted WHERE $5 = 'held'
   ) SELECT id FROM submitted`,
-  [user.id, postId, parentId ?? null, body, status, oneFix, mod.score, mod.hits.join(","),includesRoomLink([body])]);
-  } catch(error) { return {ok:false,error:roomWriteError(error)}; }
-  if (!rows.length) return { ok: false, error: oneFix ? "One Fix needs an available game card." : "That post or reply is unavailable." };
+  [user.id, postId, parentId ?? null, body, status, oneFix, mod.score, mod.hits.join(","),includesRoomLink([body]),key,hash]),key,user.id);
+  } catch(error) { return await priorSubmission("comment",user.id,key,hash) ?? {ok:false,error:roomWriteError(error)}; }
+  if (!rows.length) return await priorSubmission("comment",user.id,key,hash) ?? { ok: false, error: oneFix ? "One Fix needs an available game card." : "That post or reply is unavailable." };
   return { ok: true, postId: Number(rows[0].id), status };
 }
 
@@ -185,7 +199,7 @@ export async function myReports(userId: number): Promise<{ id: number; targetKin
 
 /** Reform-card notices: what was held/removed of yours, and why (spec §1.1). */
 export async function myNotices(userId: number): Promise<{ id: number; action: string; detail: string; createdAt: string }[]> {
-  const rows = await q`SELECT * FROM wp_mod_log WHERE author_id = ${userId} AND action IN ('hold','block','remove') ORDER BY created_at DESC LIMIT 10`;
+  const rows = await q`SELECT * FROM wp_mod_log WHERE author_id = ${userId} AND action = 'block' ORDER BY created_at DESC LIMIT 10`;
   return rows.map((r) => ({ id: Number(r.id), action: String(r.action), detail: String(r.detail), createdAt: String(r.created_at) }));
 }
 

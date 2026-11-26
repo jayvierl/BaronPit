@@ -116,7 +116,7 @@ export function Composer({
     if (!canPost || action.busy) return;
     setMsg(null);
     setAttempted(submissionKey);
-    const result = await action.send("/api/social/post", {
+    const result = await action.sendDraft("/api/social/post", {
       ...payload,
       submitForReview: submitForReview && reconsider,
     });
@@ -124,7 +124,7 @@ export function Composer({
     const held = result.status === "held";
     setMsg({
       tone: held ? "warn" : "ok",
-      text: held ? "Submitted for moderator review. It will appear here if approved." : "Posted.",
+      text: held ? "Submitted for moderator review." : result.status === "visible" ? "Posted." : "Your earlier submission is recorded in My submissions.",
     });
     setBody("");
     setChampion("");
@@ -344,7 +344,7 @@ export function Composer({
       )}
       {msg && (
         <div role="status" className={`notice ${msg.tone}`} style={{ marginLeft: 52 }}>
-          {msg.text}
+          {msg.text} {msg.tone !== "err" && <a href="/me#submissions">My submissions</a>}
         </div>
       )}
       <div className="composer-foot">

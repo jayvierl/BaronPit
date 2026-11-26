@@ -54,7 +54,7 @@ it("explains private requirements without changing eligibility or claiming an un
   await q`UPDATE wp_players SET rank_tier='GOLD' WHERE puuid='test-one'`;
   expect(await privateDuoReadiness(1)).toMatchObject({ action: "View my recent form" });
   await q`UPDATE wp_players SET snapshot='{"matches":[{"matchId":"NA1_1"}]}' WHERE puuid='test-one'`;
-  expect(await privateDuoReadiness(1)).toEqual({ ready: true });
+  expect(await privateDuoReadiness(1)).toMatchObject({ ready: true, riotId: "Example#NA1" });
   expect(await duoEligible(1)).toBe(true);
   await q`UPDATE wp_users SET safety_status='held' WHERE id=1`;
   expect(await privateDuoReadiness(1)).toMatchObject({ href: "/me/safety" });

@@ -193,6 +193,7 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string): 
   // A reassigned Riot ID must never inherit the prior holder’s cached profile.
   if (cached && cached.puuid !== puuid) fallback = null;
 
+  const observedAt = new Date().toISOString();
   const [summ, league, ids] = await Promise.all([
     riotJson(`https://${platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`),
     riotJson(`https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}`),
@@ -249,6 +250,7 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string): 
           gameVersion?: string;
           queueId: number;
           gameEndTimestamp: number;
+          gameStartTimestamp?: number;
           teams?: { teamId: number; objectives?: { baron?: { kills?: number } } }[];
           participants: {
             puuid: string;
@@ -302,6 +304,7 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string): 
         opponentChampion: opposite.length === 1 ? opposite[0].championName : undefined,
         gamePatch,
         playedAt: m.info.gameEndTimestamp,
+        startedAt: Number.isSafeInteger(m.info.gameStartTimestamp) && m.info.gameStartTimestamp! > 0 && m.info.gameStartTimestamp! <= m.info.gameEndTimestamp ? m.info.gameStartTimestamp : undefined,
         items: [me.item0, me.item1, me.item2, me.item3, me.item4, me.item5, me.item6].filter((x) => x > 0),
         gold: me.goldEarned,
         teamGold: team.reduce((a, p) => a + p.goldEarned, 0),
@@ -321,18 +324,29 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string): 
   if (!matches.length && (matchIds.length > 0 || (fallback?.snapshot.games ?? 0) > 0)) return unavailable(502);
 
   const snapshot = summarize(matches);
+  // Missing details or hidden teammates can prove a positive match but cannot rule one out.
+  if (matches.length && matches.length === ids.body.length && matches.every(m =>
+    m.startedAt && m.teammates?.length && m.teammates.every(t => t.name && t.tag))) {
+    snapshot.coverageThrough = Math.max(...matches.map(m => m.playedAt));
+    snapshot.coverageFrom = matches.length < 20 ? 0 : Math.min(...matches.map(m => m.startedAt!));
+  }
   const rows = await q`INSERT INTO wp_players
       (puuid, platform, game_name, tag_line, summoner_level, profile_icon,
        rank_tier, rank_div, rank_lp, rank_wins, rank_losses, snapshot, fetched_at)
     VALUES (${puuid}, ${platform}, ${realName}, ${realTag}, ${level}, ${icon},
-       ${tier}, ${div}, ${lp}, ${wins}, ${losses}, ${JSON.stringify(snapshot)}::jsonb, now())
+       ${tier}, ${div}, ${lp}, ${wins}, ${losses}, ${JSON.stringify(snapshot)}::jsonb, ${observedAt})
     ON CONFLICT (puuid) DO UPDATE SET
       platform = EXCLUDED.platform, game_name = EXCLUDED.game_name, tag_line = EXCLUDED.tag_line,
       summoner_level = EXCLUDED.summoner_level, profile_icon = EXCLUDED.profile_icon,
       rank_tier = EXCLUDED.rank_tier, rank_div = EXCLUDED.rank_div, rank_lp = EXCLUDED.rank_lp,
       rank_wins = EXCLUDED.rank_wins, rank_losses = EXCLUDED.rank_losses,
-      snapshot = EXCLUDED.snapshot, fetched_at = now()
+      snapshot = EXCLUDED.snapshot, fetched_at = EXCLUDED.fetched_at
+    WHERE wp_players.fetched_at <= EXCLUDED.fetched_at
     RETURNING *`;
+  if (!rows.length) {
+    const newer = await getCachedPlayer(puuid);
+    return newer ? { ok: true, player: newer, fresh: false, source: "cache" } : unavailable(503);
+  }
   return { ok: true, player: playerFromRow(rows[0]), fresh: true, source: "live" };
 }
 

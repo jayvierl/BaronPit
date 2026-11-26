@@ -1,3 +1,4 @@
+import { DuoEvening } from "@/components/duo-evening";
 import Link from "next/link";
 import { getCurrentUser, isBanned } from "@/lib/auth";
 import { isPilotHost, pilotState } from "@/lib/pilot";
@@ -18,6 +19,7 @@ export default async function PilotPage({ searchParams }: { searchParams: Promis
         Bring one decision from your latest game. Ask a support or bot carry what they would try, mark the
         reply that helped, and tell the room how your next game went.
       </p>
+      <DuoEvening user={user}/>
       <section className="card">
         <h2>Four weeks with NA players</h2>
         <p>

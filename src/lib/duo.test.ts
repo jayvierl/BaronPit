@@ -3,6 +3,8 @@ import { postgres } from "../../test/postgres";
 import { q } from "./db";
 import type { User } from "./auth";
 import { TERMS_VERSION } from "./account-policy";
+import { SESSION_QUEUE, sessionOptions } from "./duo-session";
+import { privateDuoReadiness } from "./duo-readiness";
 import { duoPreferences } from "./duo-input";
 import {
   canReportDuo,
@@ -34,7 +36,10 @@ const user = (id: number): User => ({
   ageBand: "adult",
   termsCurrent: true,
 });
+const start = sessionOptions(Date.now())[2];
+const offer = { queue: SESSION_QUEUE, start, role: "ADC", vibe: "chill", voice: false };
 const prefs = {
+  queue: SESSION_QUEUE, start,
   roles: ["Support"],
   partnerRole: "ADC",
   timeZone: "America/Chicago",
@@ -101,11 +106,15 @@ describe("verified duo and relationship controls", () => {
     expect(JSON.stringify(listings)).not.toMatch(/PRIVATE-|private-puuid|America\/Chicago/);
     for (const id of [3, 4, 5, 6]) {
       expect((await readDuoBoard(id)).listings).toHaveLength(0);
-      expect(await duoAction(user(id), l.id, "request")).toMatchObject({ ok: false });
+      expect(await duoAction(user(id), l.id, "request", offer)).toMatchObject({ ok: false });
     }
-    expect(await duoAction(user(2), l.id, "request")).toMatchObject({ ok: true });
+    expect(await duoAction(user(2), l.id, "request")).toMatchObject({ ok: false });
+    expect(await duoAction(user(2), l.id, "request", {...offer, queue:"ranked"})).toMatchObject({ ok: false });
+    expect(await duoAction(user(2), l.id, "request", {...offer, role:"Top"})).toMatchObject({ ok: false });
+    expect(await duoAction(user(2), l.id, "request", {...offer, start:sessionOptions(Date.now())[3]})).toMatchObject({ ok: false });
+    expect(await duoAction(user(2), l.id, "request", offer)).toMatchObject({ ok: true });
     const req = (await readDuoBoard(1)).requests[0];
-    expect(req).toMatchObject({ incoming: true, riotId: null });
+    expect(req).toMatchObject({ incoming: true, riotId: null, session:{roles:["ADC"],vibe:"chill",voice:false,start} });
     expect(await duoAction(user(2), req.id, "accept")).toMatchObject({ ok: false });
     expect(await duoAction(user(1), req.id, "accept")).toMatchObject({ ok: true });
     expect((await readDuoBoard(2)).requests[0].riotId).toBe("PRIVATE-RIOT-1#TEST");
@@ -120,10 +129,27 @@ describe("verified duo and relationship controls", () => {
     expect(await closeDuoListing(2, l.id)).toMatchObject({ ok: false });
     expect(await closeDuoListing(1, l.id)).toMatchObject({ ok: true });
   });
+  it("honors the session deadline, region and one accepted partner per overlapping session", async () => {
+    expect(await privateDuoReadiness(5)).toMatchObject({ ready:false, regionOutsidePilot:true });
+    expect(await createDuoListing(user(5),prefs)).toMatchObject({ok:false});
+    expect(await createDuoListing(user(7),{...prefs,start:start + 24*3_600_000})).toMatchObject({ok:false});
+    expect(await createDuoListing(user(7),prefs)).toMatchObject({ok:true});
+    const listing=(await readDuoBoard(2)).listings.find(l=>l.start===start)!;
+    expect(await duoAction(user(1),listing.id,"request",offer)).toMatchObject({ok:true});
+    expect(await duoAction(user(2),listing.id,"request",offer)).toMatchObject({ok:true});
+    const incoming=(await readDuoBoard(7)).requests;
+    await q`UPDATE wp_lfg SET session_start=now()-interval '1 minute' WHERE id=${listing.id}`;
+    expect(await duoAction(user(7),incoming[0].id,"accept")).toMatchObject({ok:false});
+    await q`UPDATE wp_lfg SET session_start=${new Date(start).toISOString()} WHERE id=${listing.id}`;
+    expect(await duoAction(user(7),incoming[0].id,"accept")).toMatchObject({ok:true});
+    expect(await duoAction(user(7),incoming[1].id,"accept")).toMatchObject({ok:false});
+    expect((await readDuoBoard(9)).listings.some(l=>l.id===listing.id)).toBe(false);
+    await closeDuoListing(7,listing.id);
+  });
   it("lets verified partners opt into another session independently after playing on the same team", async () => {
     await createDuoListing(user(8), prefs);
     const listing = (await readDuoBoard(8)).listings.find((l) => l.own)!;
-    await duoAction(user(9), listing.id, "request");
+    await duoAction(user(9), listing.id, "request", offer);
     const request = (await readDuoBoard(8)).requests[0];
     await duoAction(user(8), request.id, "accept");
     expect(await setRequeue(9, request.id, true)).toMatchObject({ ok: false });
@@ -132,6 +158,7 @@ describe("verified duo and relationship controls", () => {
     await q`UPDATE wp_lfg SET expires_at=now()-interval '2 hours' WHERE id=${listing.id}`;
     const game = {
       matchId: "NA1_500",
+      startedAt: Date.now() - 120_000,
       playedAt: Date.now() - 60_000,
       teammates: [] as { name: string; tag: string }[],
     };
@@ -142,6 +169,7 @@ describe("verified duo and relationship controls", () => {
     await setSnapshot(9, game);
     expect(await thankDuo(9, request.id)).toMatchObject({ ok: false });
     expect((await readDuoBoard(8)).requests).toEqual([]); // An opposing player in the same game is insufficient.
+    await setSnapshot(8, { ...game, teammates: [{ name: "PRIVATE-RIOT-9", tag: "TEST" }] });
     await setSnapshot(9, { ...game, teammates: [{ name: "PRIVATE-RIOT-8", tag: "TEST" }] });
     const peerView = async () => (await readDuoBoard(9)).requests[0];
     expect(await peerView()).toMatchObject({ requeue: "available", riotId: null, thanks: { canSend: true, sent: false, received: false, adultPair: true } });

@@ -80,7 +80,7 @@ describe("recent-form refresh", () => {
     const legacy = {matchId:"NA1_6", champion:"Ashe", kills:1, deaths:2, assists:3, win:false, cs:80,
       durationSec:1200, playedAt:100, role:"BOTTOM", queueId:420, items:[], baron:true};
     mocked.q.mockResolvedValueOnce([{...sample,snapshot:{...sample.snapshot,matches:[legacy]}}]).mockImplementationOnce(async (_sql, ...args) => {
-      const encoded = args[args.length - 1];
+      const encoded = args[args.length - 2];
       return [{ ...sample, snapshot: JSON.parse(encoded) }];
     });
     const me = { puuid: "ref", championName: "Ashe", teamPosition: "BOTTOM", teamId: 100, kills: 2,
@@ -97,14 +97,16 @@ describe("recent-form refresh", () => {
       const teams = [{teamId: 200, objectives: {baron: {kills: 5}}}];
       if (matchId !== ids[2]) teams.push({teamId: 100, objectives: {baron: {kills: matchId === ids[0] ? 2 : 0}}});
       return Response.json({metadata:{matchId},info:{gameVersion:"16.22.739.1234",gameDuration:1800,
-        gameEndTimestamp:Date.now(),queueId:420,teams,participants: matchId === ids[0] ? [me,enemy,support] :
+        gameStartTimestamp:matchId === ids[0] ? 123456 : undefined,gameEndTimestamp:Date.now(),queueId:420,teams,participants: matchId === ids[0] ? [me,enemy,support] :
           [me,enemy,{...enemy,puuid:"third",championName:"Ezreal"}]}});
     });
     vi.stubGlobal("fetch",transport);
     const result = await lookup();
     if (!result.ok) throw Error(result.code);
     const [first,second,third,cached] = result.player.snapshot.matches;
-    expect(first).toMatchObject({opponentChampion:"Jhin",gamePatch:"16.22",teamBaronKills:2});
+    expect(first).toMatchObject({opponentChampion:"Jhin",gamePatch:"16.22",teamBaronKills:2,startedAt:123456});
+    expect(second.startedAt).toBeUndefined();
+    expect(cached.startedAt).toBeUndefined();
     expect(second.teamBaronKills).toBe(0);
     expect(third).not.toHaveProperty("teamBaronKills");
     expect(cached).toMatchObject({matchId:legacy.matchId,baron:true});

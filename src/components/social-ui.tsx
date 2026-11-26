@@ -207,7 +207,7 @@ export function ShareCardButton({ puuid, match }: { puuid: string; match: { matc
         className="btn small gold"
         disabled={action.busy || !!result}
         onClick={async () => {
-          const data = await action.send("/api/social/post", {
+          const data = await action.sendDraft("/api/social/post", {
             kind: "card",
             body: "",
             data: { puuid, matchId: match.matchId },
@@ -217,6 +217,7 @@ export function ShareCardButton({ puuid, match }: { puuid: string; match: { matc
             setResult("Awaiting review");
             return;
           }
+          if (data.status !== "visible") { setResult("Submission received"); router.push("/me#submissions"); return; }
           setResult("Shared ✓");
           if (typeof data.postId === "number") router.push(`/post/${data.postId}`);
           else router.refresh();
