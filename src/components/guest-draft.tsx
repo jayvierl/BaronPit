@@ -1,36 +1,45 @@
 "use client";
 import styles from "./thread.module.css";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { beginDraftSignIn } from "@/lib/auth-draft";
 import { POST_TO_THE_PIT } from "@/lib/brand";
 import { signInHref } from "@/lib/signin-return";
+import { useHydrated } from "./use-hydrated";
 
 export function GuestPostDraft({roomId, destination, label, anchorId = "compose", onDraftChange}: {
   roomId?: number; destination: string; label: string; anchorId?: string | null; onDraftChange?: (hasDraft: boolean) => void;
 }) {
-  const [body, setBody] = useState("");
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  const hydrated = useHydrated();
   const [error, setError] = useState("");
   const router = useRouter();
-  return <form id={anchorId ?? undefined} className={`composer ${styles.editor}`} aria-label={roomId === undefined ? POST_TO_THE_PIT : undefined} onSubmit={event => {
-    event.preventDefault();
-    if (!body.trim()) { router.push(signInHref(destination)); return; }
+  const signIn = signInHref(destination);
+
+  useEffect(() => {
+    onDraftChange?.(Boolean(textarea.current?.value.trim()));
+  }, [onDraftChange]);
+
+  function continueToSignIn() {
+    const body = textarea.current?.value ?? "";
+    if (!body.trim()) { router.push(signIn); return; }
     try {
       const href = beginDraftSignIn(window.localStorage, `post:${roomId ?? "home"}`, destination, {body});
       router.push(href);
     } catch { setError("This browser couldn’t save your draft. Copy it before signing in, or allow site storage and try again."); }
-  }}>
+  }
+
+  return <div id={anchorId ?? undefined} role="form" className={`composer ${styles.editor}`} aria-label={roomId === undefined ? POST_TO_THE_PIT : label}>
     <label className={styles.guestLabel}>
       <strong>{label}</strong>
-      <textarea rows={2} placeholder="What’s on your mind?" maxLength={2000} value={body} onChange={event => {
-        setBody(event.target.value);
-        onDraftChange?.(Boolean(event.target.value.trim()));
-      }} />
+      <textarea ref={textarea} rows={2} placeholder="What’s on your mind?" maxLength={2000}
+        onChange={event => onDraftChange?.(Boolean(event.currentTarget.value.trim()))} />
     </label>
-    {error && <p className="notice err" role="alert">{error}</p>}
+    {error && <p className="notice err" role="alert">{error} <a href={signIn}>Open sign-in</a></p>}
     <div className="composer-foot">
-      <small className="meta">Your draft stays in this browser during sign-in.</small>
-      <button type="submit" className="btn small">Sign in to post</button>
+      {hydrated && <small className="meta">Your draft stays in this browser during sign-in.</small>}
+      <button type="button" className="btn small" disabled={!hydrated} onClick={continueToSignIn}>Sign in to post</button>
     </div>
-  </form>;
+    <noscript><p className="meta">Copy your draft before signing in. <a href={signIn}>Open sign-in</a></p></noscript>
+  </div>;
 }

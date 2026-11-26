@@ -39,6 +39,18 @@ it("uses native fragment links in a thread and focuses the reply row independent
   expect(html).not.toContain('href="/post/40#reply-11"');
 });
 
+it.each([false, true])("renders an editable private guest draft without a native submit before hydration (question=%s)", decisionQuestion => {
+  const html = renderToStaticMarkup(createElement(CommentSection, {
+    postId: 40, initialComments: [], signedIn: false, decisionQuestion,
+  }));
+  const textbox = html.match(/<(?:input|textarea)\b[^>]*aria-label="Your reply"[^>]*>/)?.[0];
+  expect(textbox).toBeTruthy();
+  expect(textbox).not.toMatch(/\s(?:disabled|name|value)=/);
+  expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled="">Sign in to reply<\/button>/);
+  expect(html).toContain("Copy your reply before signing in.");
+  expect(html).toContain('href="/signin?next=%2Fpost%2F40%23replies-40"');
+});
+
 it("names the reply author's avatar link using the monogram that remains behind the artwork", () => {
   const reply = { ...comment(10), authorName: "top lane", authorAvatar: { kind: "champion", id: "Nami" } as const };
   const html = renderToStaticMarkup(createElement(CommentSection, { postId: 40, initialComments: [reply], signedIn: false }));
