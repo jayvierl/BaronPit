@@ -1,68 +1,15 @@
-"use client";
+import { safeReturnTo } from "@/lib/signin-return";
+import { SignInForm } from "./signin-form";
 
-import { useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+type Params = Record<string, string | string[] | undefined>;
+const first = (value: Params[string]) => Array.isArray(value) ? value[0] : value;
 
-function SignInForm() {
-  const params = useSearchParams();
-  const [email, setEmail] = useState("");
-  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">(
-    params.get("error") === "expired" ? "error" : "idle",
-  );
-  const [message, setMessage] = useState(
-    params.get("error") === "expired" ? "That link expired or was already used. Request a fresh one below." : "",
-  );
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setState("sending");
-    const res = await fetch("/api/auth/request-link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    const j = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string };
-    if (j.ok) {
-      setState("sent");
-      setMessage("Check your inbox — your sign-in link is on its way. It expires in 15 minutes.");
-    } else {
-      setState("error");
-      setMessage(j.message ?? "Something went wrong. Try again.");
-    }
-  };
-
-  return (
-    <div style={{ maxWidth: 460, margin: "30px auto" }}>
-      <div className="card">
-        <h1 style={{ margin: "0 0 6px", fontSize: 24 }}>Welcome to the party</h1>
-        <p className="meta" style={{ marginTop: 0 }}>
-          Passwordless sign-in: enter your email and we&apos;ll send a one-time link. New here? That same link creates your account.
-        </p>
-        {message && <div className={`notice ${state === "sent" ? "ok" : state === "error" ? "err" : "warn"}`}>{message}</div>}
-        {state !== "sent" && (
-          <form onSubmit={submit}>
-            <div className="field">
-              <label htmlFor="email">Email</label>
-              <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
-            </div>
-            <button type="submit" className="btn" disabled={state === "sending"} style={{ width: "100%", justifyContent: "center" }}>
-              {state === "sending" ? "Sending…" : "Email me a sign-in link"}
-            </button>
-          </form>
-        )}
-        <p className="meta" style={{ marginBottom: 0 }}>
-          By signing in you agree to the <a href="/terms">Terms</a> and <a href="/guidelines">Community Guidelines</a>.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-export default function SignInPage() {
-  return (
-    <Suspense>
-      <SignInForm />
-    </Suspense>
-  );
+export default async function SignInPage({ searchParams }: { searchParams: Promise<Params> }) {
+  const params = await searchParams;
+  const returnTo = safeReturnTo(first(params.next));
+  const enrol = first(params.enrol) === "1";
+  const initialSignup = first(params.mode) === "signup";
+  const expired = first(params.error) === "expired";
+  return <SignInForm key={JSON.stringify([returnTo, enrol, initialSignup, expired])}
+    returnTo={returnTo} enrol={enrol} initialSignup={initialSignup} expired={expired}/>;
 }

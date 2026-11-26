@@ -1,23 +1,23 @@
 import { NextResponse } from "next/server";
 import { requestMagicLink } from "@/lib/auth";
+import { authError, emailOrigin, isSameOriginWrite, readObject } from "@/lib/auth-http";
+import { isAgeBand } from "@/lib/account-policy";
 
 export async function POST(req: Request) {
-  const origin = req.headers.get("origin");
-  const host = req.headers.get("host");
-  if (origin && host && !origin.endsWith(host)) {
-    return NextResponse.json({ ok: false, error: "invalid_origin" }, { status: 403 });
-  }
-  const { email } = (await req.json().catch(() => ({}))) as { email?: string };
-  if (!email) return NextResponse.json({ ok: false, error: "invalid_email" }, { status: 400 });
-  const proto = req.headers.get("x-forwarded-proto") ?? "https";
-  const base = origin ?? `${proto}://${host}`;
-  const result = await requestMagicLink(email, base);
+  if (!isSameOriginWrite(req)) return authError("Request your link from the sign-in page.",403);
+  const base = emailOrigin(req);
+  if (!base) return authError("Email sign-in is unavailable on this address.",503);
+  const body = await readObject(req);
+  const signup = body.mode === "signup";
+  if (typeof body.email !== "string" || (signup && !isAgeBand(body.ageBand))) return authError("Check your email address and eligibility.",400);
+  const ip = process.env.VERCEL
+    ? (req.headers.get("x-vercel-forwarded-for") || req.headers.get("x-real-ip") || "unknown").split(",")[0].trim()
+    : "local";
+  const result = await requestMagicLink(body.email, base, ip, signup, body.next);
   if (!result.ok) {
-    const message =
-      result.error === "not_configured" ? "Email sign-in isn't switched on yet."
-      : result.error === "invalid_email" ? "That email doesn't look right."
-      : "Sign-in is unavailable right now. Try again in a moment.";
-    return NextResponse.json({ ok: false, error: result.error, message }, { status: result.error === "invalid_email" ? 400 : 503 });
+    if (result.error === "rate_limited") return authError("Too many requests. Try again in 15 minutes.",429);
+    if (result.error === "invalid_email") return authError("That email address looks incomplete.",400);
+    return authError("Email sign-in is temporarily unavailable. Please try again later.",503);
   }
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true },{headers:{"Cache-Control":"private, no-store"}});
 }

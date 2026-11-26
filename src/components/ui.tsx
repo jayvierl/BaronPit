@@ -1,4 +1,11 @@
-export function Avatar({ name, hue, size = 40 }: { name: string; hue: number; size?: number }) {
+import { publicAvatar, championAvatarArt, avatarImageUrl, isOfficialRiotIcon, type AvatarRef } from "@/lib/avatar";
+
+export function Avatar({ name, hue, size = 40, imageUrl, avatar }: {
+  name: string; hue: number; size?: number; imageUrl?: string; avatar?: AvatarRef;
+}) {
+  const ref = publicAvatar(avatar);
+  const url = avatarImageUrl(ref) ?? (imageUrl && isOfficialRiotIcon(imageUrl) ? imageUrl : undefined);
+  const art = ref.kind === "champion" ? championAvatarArt(ref.id, true) : url ? { backgroundImage: `url("${url}")` } : undefined;
   const initials = name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("") || "?";
   return (
     <span
@@ -7,6 +14,7 @@ export function Avatar({ name, hue, size = 40 }: { name: string; hue: number; si
       aria-hidden
     >
       {initials}
+      {art && <span className="avatar-art" style={art} />}
     </span>
   );
 }
@@ -20,27 +28,23 @@ export function timeAgo(iso: string): string {
   if (h < 24) return `${h}h`;
   const d = Math.floor(h / 24);
   if (d < 30) return `${d}d`;
-  return new Date(iso).toLocaleDateString();
+  return new Date(iso).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric", timeZone:"UTC" });
 }
 
-export function rankLabel(tier: string | null, div: string | null, lp: number | null): string {
-  if (!tier) return "Unranked";
-  const t = tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
-  return `${t} ${div ?? ""}${lp != null ? ` · ${lp} LP` : ""}`.trim();
-}
+export { rankLabel } from "@/lib/rank";
 
-/** Renders #hashtags inside post bodies as links. */
+/** Only the official game news site is linked automatically. Other URLs stay as text. */
 export function RichBody({ body }: { body: string }) {
-  const parts = body.split(/(#[\p{L}\p{N}_]+)/gu);
+  const parts = body.split(/(https?:\/\/[^\s]+|#[\p{L}\p{N}_]+)/gu);
   return (
     <p className="post-body">
-      {parts.map((part, i) =>
-        part.startsWith("#") ? (
-          <a key={i} className="tag" href={`/search?q=${encodeURIComponent(part)}`}>{part}</a>
-        ) : (
-          <span key={i}>{part}</span>
-        ),
-      )}
+      {parts.map((part, i) => {
+        if (part.startsWith("#")) return <a key={i} className="tag" href={`/search?q=${encodeURIComponent(part)}`}>{part}</a>;
+        if (/^https:\/\/www\.leagueoflegends\.com\/[a-z-]+\/news\/[a-z0-9-]+(?:\/[a-z0-9-]+)*\/?$/i.test(part)) {
+          return <a key={i} href={part} rel="noopener noreferrer" target="_blank">leagueoflegends.com ↗</a>;
+        }
+        return part;
+      })}
     </p>
   );
 }

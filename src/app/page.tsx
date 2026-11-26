@@ -1,167 +1,205 @@
+import styles from "./home.module.css";
+import { FollowingStarter } from "@/components/following-starter";
+import { hasIncomingDuoRequest } from "@/lib/duo-activity";
+import { Suspense } from "react";
+import { CommunityObjective } from "@/components/community-objective";
+import { CommunityWelcome } from "@/components/community-welcome";
+import { LobbyRally } from "@/components/lobby-rally";
+import { CommunityReview } from "@/components/community-review";
+import { duoEnabled } from "@/lib/duo";
+import { gameCount } from "@/lib/pure";
+import { hasUnreadReplies } from "@/lib/discussion-library";
+import { PilotVisit } from "@/components/pilot-visit";
+import { buildCatalog, cardItems } from "@/lib/build-catalog";
+import { signInHref } from "@/lib/signin-return";
+import { GuestPostDraft } from "@/components/guest-draft";
+import Image from "next/image";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
-import { dbAvailable, q } from "@/lib/db";
-import { feed, listRooms, todaysSpotlight, dailyHighlight } from "@/lib/social";
-import { currentPatch, championList, championIconUrl } from "@/lib/riot";
-import { BaronTimer, Composer, JoinButton, MatchCard, PostCard } from "@/components/social-ui";
-import { rankLabel } from "@/components/ui";
+import { publicAvatarIdentity } from "@/lib/author-identity";
+import { dbAvailable } from "@/lib/db";
+import { trendingChampions } from "@/lib/player-insights";
+import { listFeaturedRooms } from "@/lib/rooms";
+import { feed, todaysSpotlight, dailyHighlight } from "@/lib/social";
+import { currentPatch, championList } from "@/lib/riot";
+import { PLATFORMS } from "@/lib/platforms";
+import { JoinButton, LookupForm } from "@/components/social-ui";
+import { Composer } from "@/components/composer";
+import { MatchCard } from "@/components/match-card";
+import { ChampionPortrait } from "@/components/champion-portrait";
+import { PostCard } from "@/components/post-card";
+import { socialRankLabel } from "@/lib/player-summary";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-  const { tab } = await searchParams;
-  const user = await getCurrentUser().catch(() => null);
+  const [{tab},user] = await Promise.all([searchParams,getCurrentUser()]);
+  const viewerIdentity = publicAvatarIdentity(user);
   const activeTab = tab === "following" && user ? "following" : "everyone";
   const today = new Date().toISOString().slice(0, 10);
-  const [patch, champions] = await Promise.all([currentPatch(), championList()]);
-
-  let posts: Awaited<ReturnType<typeof feed>> = [];
-  let rooms: Awaited<ReturnType<typeof listRooms>> = [];
-  let spotlight: Awaited<ReturnType<typeof todaysSpotlight>> = null;
-  let trending: { champion: string; games: number }[] = [];
-  let objective: { label: string; count: number; target: number } | null = null;
-  if (dbAvailable()) {
-    // Independent loads run in parallel; trending is aggregated in SQL over
-    // champPool — full snapshots never leave the database (audit D3/D4).
-    const [postsR, roomsR, spotlightR, trendRows, objRows] = await Promise.all([
-      feed(user, activeTab).catch(() => []),
-      listRooms(user?.id).catch(() => []),
-      todaysSpotlight(today).catch(() => null),
-      q`SELECT elem->>'champion' AS champion, sum((elem->>'games')::int)::int AS games
-        FROM wp_players, jsonb_array_elements(snapshot->'champPool') AS elem
-        WHERE snapshot <> '{}'::jsonb
-        GROUP BY 1 ORDER BY 2 DESC LIMIT 6`.catch(() => []),
-      q`SELECT
-          (SELECT count(*)::int FROM wp_posts WHERE kind = 'card' AND created_at::date = CURRENT_DATE) AS cards,
-          (SELECT count(*)::int FROM wp_posts WHERE kind = 'build' AND created_at::date = CURRENT_DATE) AS builds,
-          (SELECT count(*)::int FROM wp_comments WHERE one_fix AND created_at::date = CURRENT_DATE) AS fixes,
-          (SELECT count(*)::int FROM wp_lfg WHERE created_at::date = CURRENT_DATE) AS lfg,
-          (SELECT count(*)::int FROM wp_reactions WHERE created_at::date = CURRENT_DATE) AS reactions`.catch(() => []),
-    ]);
-    posts = postsR; rooms = roomsR; spotlight = spotlightR;
-    trending = trendRows.map((r) => ({ champion: String(r.champion), games: Number(r.games) }));
-    if (objRows.length) {
-      const o = objRows[0];
-      const menu = [
-        { label: "Share 10 game cards", count: Number(o.cards), target: 10 },
-        { label: "Post 5 builds", count: Number(o.builds), target: 5 },
-        { label: "Drop 15 one-fix comments", count: Number(o.fixes), target: 15 },
-        { label: "Open 8 duo listings", count: Number(o.lfg), target: 8 },
-        { label: "Give 25 reactions", count: Number(o.reactions), target: 25 },
-      ];
-      const dayIndex = Math.floor(Date.parse(today) / 86400000) % menu.length;
-      objective = menu[dayIndex];
-    }
-  }
-  const spotlightGame = spotlight ? dailyHighlight(spotlight.player, today) : null;
-
+  const available = dbAvailable();
+  const rooms = available ? listFeaturedRooms(user?.id).catch(() => []) : Promise.resolve([]);
+  const trending = available ? trendingChampions().catch(() => []) : Promise.resolve([]);
+  const [patch, posts, champions, unread, duoInvite] = await Promise.all([
+    currentPatch(),
+    available ? feed(user,activeTab).catch(() => null) : null,
+    user ? championList() : [],
+    user && available ? hasUnreadReplies(user.id).catch(() => false) : false,
+    user && available ? hasIncomingDuoRequest(user.id).catch(() => false) : false,
+  ]);
   return (
     <div>
-      <div className="tabs">
-        <Link href="/?tab=everyone" className={activeTab === "everyone" ? "active" : ""}>For you</Link>
-        {user
-          ? <Link href="/?tab=following" className={activeTab === "following" ? "active" : ""}>Following</Link>
-          : <Link href="/signin">Following</Link>}
-      </div>
+      {user?.pilotActive && <PilotVisit kind="social"/>}
+      <header className={styles.heading}>
+        <h1>Home</h1>
+        <div className={styles.headingLinks}>
+          <Link href="/lfg">Find a duo</Link>
+          {user ? <Link href="/rooms">Browse rooms</Link> : <Link className={styles.signup} href={signInHref("/#compose","signup")}>Create account</Link>}
+        </div>
+      </header>
+      <nav className="tabs" aria-label="Feed selection">
+        <Link href="/?tab=everyone" aria-current={activeTab === "everyone" ? "page" : undefined} className={activeTab === "everyone" ? "active" : ""}>Everyone</Link>
+        <Link href={user ? "/?tab=following" : signInHref("/?tab=following")} aria-current={activeTab === "following" ? "page" : undefined} className={activeTab === "following" ? "active" : ""}>Following</Link>
+      </nav>
+      {(unread || duoInvite) && <div className={styles.activity} aria-label="New activity">
+        {unread && <Link href="/activity">New replies</Link>}
+        {duoInvite && <Link href="/activity?tab=duos">New duo request</Link>}
+      </div>}
 
       {user ? (
-        <Composer patch={patch} champions={champions.map((c) => c.id)} userName={user.displayName} userHue={user.avatarHue} />
+        <Composer key={user.id} viewerId={user.id} patch={patch} champions={champions.map((c) => c.id)} viewerIdentity={viewerIdentity} />
       ) : (
-        <div style={{ padding: "22px 2px", borderBottom: "1px solid var(--border)", textAlign: "center" }}>
-          <img className="brand-emblem" src="/baron-emblem.png" alt="Baron Pit emblem" style={{ marginBottom: 12 }} />
-          <br />
-          <strong style={{ fontSize: 16 }}>Never take Baron alone.</strong>
-          <p className="meta" style={{ margin: "6px auto 14px", maxWidth: 420 }}>
-            Follow players, trade takes and builds, gather in champion rooms, find a duo whose rank is real.
-            Passwordless sign-in — we email you a link.
-          </p>
-          <Link href="/signin" className="btn">Create your account</Link>
-        </div>
+        <details className={styles.draft}>
+          <summary>Start a conversation <span aria-hidden="true">＋</span></summary>
+          <GuestPostDraft destination="/#compose" label="Your post"/>
+        </details>
       )}
 
-      {spotlight && spotlightGame && (
-        <div className="spotlight">
-          <div className="spot-label">🟣 Holding the Baron buff today</div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", margin: "9px 0 2px" }}>
-            <img className="champ-icon" src={championIconUrl(patch, spotlightGame.champion)} alt="" />
-            <div>
-              <strong>{spotlight.player.gameName}#{spotlight.player.tagLine}</strong>
-              <div className="meta">{rankLabel(spotlight.player.rankTier, spotlight.player.rankDiv, spotlight.player.rankLp)}</div>
-            </div>
-          </div>
-          <MatchCard patch={patch} data={{ riotId: `${spotlight.player.gameName}#${spotlight.player.tagLine}`, match: spotlightGame }} />
-          {spotlight.ownerId && (
-            <p style={{ margin: "10px 0 0", fontSize: 14.5 }}>
-              <Link href={`/u/${spotlight.ownerId}`}>Visit {spotlight.ownerName}&apos;s profile →</Link>
-            </p>
-          )}
-        </div>
-      )}
+      <HomeTimeline user={user} activeTab={activeTab} patch={patch} rooms={rooms} posts={posts} />
+      <nav className={styles.destinations} aria-label="Community shortcuts">
+        <Link href="/questions">Match questions</Link><Link href="/rooms">Rooms</Link><Link href="/player">Player lookup</Link>
+      </nav>
+      {activeTab === "everyone" && <>
+        <Suspense fallback={null}><CommunityReview viewerId={user?.id ?? null} /></Suspense>
+        {available && <Suspense fallback={null}><CommunityObjective viewerId={user?.id ?? null} /></Suspense>}
+      </>}
 
-      {objective && (
-        <div className="objective">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-            <span className="spot-label">🟣 Today&apos;s objective</span>
-            <span className="meta">{Math.min(objective.count, objective.target)}/{objective.target}</span>
-          </div>
-          <div style={{ fontWeight: 600, margin: "5px 0 7px" }}>
-            {objective.count >= objective.target ? "Objective secured — the pit provides. 🟣" : objective.label}
-          </div>
-          <div className="obj-bar"><span style={{ width: `${Math.min(100, Math.round((objective.count / objective.target) * 100))}%` }} /></div>
-        </div>
-      )}
+      {available && <Suspense fallback={null}><HomeSpotlight today={today} viewerId={user?.id ?? null} patch={patch}/></Suspense>}
 
-      <div>
-        {posts.length === 0 ? (
-          <div className="empty">
-            <p><strong style={{ color: "var(--ink)" }}>The floor is open.</strong></p>
-            <p>Nothing here yet — the first posts set the tone. Look up a player, share a game card, or open a room and say hello.</p>
-          </div>
-        ) : (
-          posts.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} />)
-        )}
-      </div>
+      <Suspense fallback={null}>
+        <HomeDiscovery roomsRead={rooms} trendsRead={trending} patch={patch} signedIn={!!user} />
+      </Suspense>
+      <details className="community-lookup">
+        <summary>Look up a player</summary>
+        <LookupForm platforms={PLATFORMS.map(({id,label}) => ({id,label}))}/>
+      </details>
+      <LobbyRally />
+      {!user && <CommunityWelcome/>}
 
+    </div>
+  );
+}
+
+async function HomeDiscovery({ roomsRead, trendsRead, patch, signedIn }: {
+  roomsRead: ReturnType<typeof listFeaturedRooms>;
+  trendsRead: ReturnType<typeof trendingChampions>;
+  patch: string;
+  signedIn: boolean;
+}) {
+  const [rooms, trending] = await Promise.all([roomsRead, trendsRead]);
+  return <>
       {rooms.length > 0 && (
         <>
-          <h2 className="section">Rooms</h2>
-          <div style={{ marginBottom: 10 }}><BaronTimer /></div>
+          <h2 className="section">Featured rooms</h2>
           <div>
-            {rooms.slice(0, 6).map((r) => (
+            {rooms.map((r) => (
               <div key={r.id} className="list-row">
                 <span style={{ display: "inline-flex", gap: 9, alignItems: "center" }}>
-                  {r.championId && <img src={championIconUrl(patch, r.championId)} alt="" style={{ width: 26, height: 26, borderRadius: 7 }} />}
+                  {r.championId && <ChampionPortrait compact id={r.championId} patch={patch} size={26} />}
                   <span>
                     <Link href={`/rooms/${r.slug}`} style={{ fontWeight: 600 }}>{r.name}</Link>
-                    <span className="meta"> · {r.members} member{r.members === 1 ? "" : "s"}</span>
+                    <span className="meta">{r.host ? <> · Hosted by <Link href={`/u/${r.host.id}`}>{r.host.name}</Link></> : <> · {r.members} member{r.members === 1 ? "" : "s"}</>}</span>
                   </span>
                 </span>
-                {user && <JoinButton roomId={r.id} initial={r.joined} />}
+                {signedIn && <JoinButton roomId={r.id} initial={r.joined} />}
               </div>
             ))}
           </div>
-          <p style={{ fontSize: 14.5 }}><Link href="/rooms">All rooms →</Link></p>
+          <p style={{ fontSize: 14.5 }}><Link href="/rooms">Find a room</Link></p>
         </>
       )}
 
       {trending.length > 0 && (
         <>
-          <h2 className="section">Trending champions</h2>
+          <h2 className="section">Popular in recent champion pools</h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingBottom: 8 }}>
             {trending.map((t) => (
               <Link key={t.champion} href={`/rooms/champ-${t.champion.toLowerCase()}`} className="chip" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                <img src={championIconUrl(patch, t.champion)} alt="" style={{ width: 18, height: 18, borderRadius: 5 }} />
-                {t.champion} · {t.games} games
+                <ChampionPortrait compact id={t.champion} patch={patch} size={18} />
+                {t.champion} · {gameCount(t.games)}
               </Link>
             ))}
           </div>
         </>
       )}
 
-      <p className="meta" style={{ marginTop: 18 }}>
-        House rules, short version: be kind, back your takes with games, keep first contact in-app. Moderation is
-        fast and shows its work — <Link href="/guidelines">read the guidelines</Link>.
-      </p>
+  </>;
+}
+
+async function HomeTimeline({ user, activeTab, patch, rooms, posts }: {
+  user: Awaited<ReturnType<typeof getCurrentUser>>;
+  activeTab: "following" | "everyone";
+  patch: string;
+  rooms: ReturnType<typeof listFeaturedRooms>;
+  posts: Awaited<ReturnType<typeof feed>> | null;
+}) {
+  const viewerIdentity = publicAvatarIdentity(user);
+  const matching = duoEnabled();
+  function renderPost(post: NonNullable<typeof posts>[number]) {
+    return <PostCard key={post.id} post={post} patch={patch} signedIn={!!user}
+      viewerId={user?.id ?? null} viewerIdentity={viewerIdentity} />;
+  }
+
+  return <>
+    {posts === null ? (
+      <div className="empty" role="status">The feed is temporarily unavailable. Refresh to try again.</div>
+    ) : posts.length === 0 ? (
+      activeTab === "following" && user ? <FollowingStarter userId={user.id} rooms={await rooms}/> :
+        <div className="empty"><p>Start the first conversation.</p><Link href="/questions/new">Ask a match question</Link></div>
+    ) : posts.slice(0, 3).map(renderPost)}
+    <section className={styles.duo} aria-labelledby="duo-invite-title">
+      <Image unoptimized src="/baron-duo.webp" alt="" width={72} height={60} className={styles.duoArt} />
+      <div><h2 id="duo-invite-title">Find your duo</h2>
+        <p>{matching ? "Find a partner who plays your hours and needs your role." : "Save your role and play times for verified matching."}</p>
+        <Link href="/lfg">{matching ? "Browse duos" : "Set duo preferences"} <span aria-hidden="true">→</span></Link>
+      </div>
+    </section>
+    {posts?.slice(3).map(renderPost)}
+  </>;
+}
+
+async function HomeSpotlight({ today, viewerId, patch }: { today: string; viewerId: number | null; patch: string }) {
+  const spotlight = await todaysSpotlight(today, viewerId).catch(() => null);
+  if (!spotlight) return null;
+  const spotlightGame = dailyHighlight(spotlight.player, today);
+  if (!spotlightGame) return null;
+  const spotlightItems = await buildCatalog(patch);
+  return (
+    <div className="spotlight">
+      <div className="spot-label">Hand of Baron · community spotlight</div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", margin: "9px 0 2px" }}>
+        <ChampionPortrait compact id={spotlightGame.champion} patch={patch} size={48} />
+        <div>
+          <strong>{spotlight.player.gameName}#{spotlight.player.tagLine}</strong>
+          <div className="meta">{socialRankLabel(spotlight.player, true)}</div>
+        </div>
+      </div>
+      <MatchCard patch={patch} itemPatch={spotlightItems?.patch} itemDetails={spotlightItems ? cardItems(spotlightItems,spotlightGame.items) : []} data={{ puuid: spotlight.player.puuid, matchId: spotlightGame.matchId, riotId: `${spotlight.player.gameName}#${spotlight.player.tagLine}`, match: spotlightGame }} />
+      {spotlight.ownerId && (
+        <p style={{ margin: "10px 0 0", fontSize: 14.5 }}>
+          <Link href={`/u/${spotlight.ownerId}`}>Verified player · {spotlight.ownerName}</Link>
+        </p>
+      )}
     </div>
   );
 }

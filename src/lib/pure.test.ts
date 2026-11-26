@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { earnedBadges, formReads, samePatch, summarize, type MatchSummary } from "./pure";
+import { earnedBadges, formReads, samePatch, summarize, teamBaronFields, teamBaronLabel, type MatchSummary } from "./pure";
 
 function match(partial: Partial<MatchSummary>): MatchSummary {
   return {
@@ -28,10 +28,11 @@ describe("samePatch", () => {
 });
 
 describe("earnedBadges", () => {
-  it("awards Baron caller when the team secured Baron in 5+ games", () => {
-    const games = Array.from({ length: 6 }, () => match({ baron: true, kills: 2, deaths: 4, assists: 3 }));
-    const badges = earnedBadges(summarize(games));
-    expect(badges.some((b) => b.includes("Baron caller · 6 secured"))).toBe(true);
+  it("counts team Baron games across exact and historical results, once per game", () => {
+    const games = [match({teamBaronKills: 4}), match({}), match({baron: true}), match({teamBaronKills: 1}),
+      match({baron: true}), match({baron: false}), match({teamBaronKills: 0, baron: true})];
+    expect(earnedBadges(summarize(games)).some(b => b.includes("Baron"))).toBe(false);
+    expect(earnedBadges(summarize([...games, match({teamBaronKills: 2})]))).toContain("Team secured Baron in 5 games");
   });
   it("awards one-trick and sharpshooter from a dominant snapshot", () => {
     const games = Array.from({ length: 6 }, () => match({ kills: 9, deaths: 1, assists: 9 }));
@@ -41,6 +42,20 @@ describe("earnedBadges", () => {
   });
   it("awards nothing for a thin snapshot", () => {
     expect(earnedBadges(summarize([match({}), match({})]))).toEqual([]);
+  });
+});
+
+describe("team Baron tags", () => {
+  it("shows proven team objectives and preserves uncertainty in older data", () => {
+    expect(teamBaronLabel({teamBaronKills: 2})).toBe("Team secured 2 Barons");
+    expect(teamBaronLabel({teamBaronKills: 1})).toBe("Team secured Baron");
+    expect(teamBaronLabel({baron: true})).toBe("Team secured Baron");
+    expect(teamBaronFields({teamBaronKills: 0, baron: true})).toEqual({teamBaronKills: 0});
+    expect(teamBaronFields({baron: false})).toEqual({baron: false});
+    for (const invalid of [null, Infinity, -1, 1.5, "1", undefined]) {
+      expect(teamBaronFields({teamBaronKills: invalid})).toEqual({});
+      expect(teamBaronLabel({teamBaronKills: invalid})).toBeNull();
+    }
   });
 });
 

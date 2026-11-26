@@ -1,4 +1,8 @@
-import { createHash, randomBytes } from "node:crypto";
+import { publicAvatar, type AvatarRef } from "./avatar";
+import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
+import { cache } from "react";
+import { TERMS_VERSION, isAgeBand, type AgeBand } from "./account-policy";
+import { safeReturnTo } from "./signin-return";
 import { cookies } from "next/headers";
 import { q, dbAvailable } from "./db";
 import { sendMagicLinkEmail } from "./auth-email";
@@ -12,14 +16,24 @@ export interface User {
   email: string;
   displayName: string;
   avatarHue: number;
+  avatar?: AvatarRef;
+  profileVersion?: number;
+  profileLink?: string | null;
   bio: string;
   createdAt: string;
   bannedUntil: string | null;
   strikeCount: number;
+  ageBand: AgeBand | null;
+  termsCurrent: boolean;
+  pilotActive?: boolean;
 }
 
 function hash(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+function hasCurrentConsent(row: Record<string, unknown>): boolean {
+  return isAgeBand(row.age_band) && row.terms_version === TERMS_VERSION && row.terms_accepted_at != null;
 }
 
 function rowToUser(r: Record<string, unknown>): User {
@@ -28,10 +42,16 @@ function rowToUser(r: Record<string, unknown>): User {
     email: String(r.email),
     displayName: String(r.display_name),
     avatarHue: Number(r.avatar_hue),
+    avatar: publicAvatar(r.avatar_ref),
+    profileVersion: Number(r.profile_version ?? 0),
+    profileLink: typeof r.profile_link === "string" ? r.profile_link : null,
     bio: String(r.bio ?? ""),
     createdAt: String(r.created_at),
     bannedUntil: r.banned_until ? String(r.banned_until) : null,
     strikeCount: Number(r.strike_count ?? 0),
+    pilotActive: r.pilot_active === true,
+    ageBand: isAgeBand(r.age_band) ? r.age_band : null,
+    termsCurrent: hasCurrentConsent(r),
   };
 }
 
@@ -43,79 +63,90 @@ export function isAdmin(email: string): boolean {
   return list.includes(email.toLowerCase());
 }
 
-export type RequestLinkResult =
-  | { ok: true }
-  | { ok: false; error: "not_configured" | "unavailable" | "invalid_email" };
+type LinkError = "not_configured" | "unavailable" | "invalid_email" | "rate_limited";
+export type RequestLinkResult = { ok: true } | { ok: false; error: LinkError };
+const validToken = (token: unknown): token is string => typeof token === "string" && /^[a-f0-9]{64}$/.test(token);
 
-export async function requestMagicLink(emailRaw: string, origin: string): Promise<RequestLinkResult> {
+export async function requestMagicLink(emailRaw: string, origin: string, clientIp: string, signup: boolean, destination?: unknown): Promise<RequestLinkResult> {
   const email = emailRaw.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
-    return { ok: false, error: "invalid_email" };
-  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return { ok: false, error: "invalid_email" };
   if (!dbAvailable()) return { ok: false, error: "unavailable" };
+  if (!process.env.RESEND_API_KEY) return { ok: false, error: "not_configured" };
+  const digest = (s: string) => createHmac("sha256", process.env.AUTH_RATE_KEY || process.env.RESEND_API_KEY!).update(s).digest("hex");
   const token = randomBytes(32).toString("hex");
   try {
-    await q`INSERT INTO wp_magic_links (email, token_hash, expires_at)
-            VALUES (${email}, ${hash(token)}, ${new Date(Date.now() + LINK_TTL_MS).toISOString()})`;
-  } catch {
-    return { ok: false, error: "unavailable" };
-  }
-  const link = `${origin}/api/auth/verify?token=${token}`;
-  const sent = await sendMagicLinkEmail(email, link);
-  if (!sent.ok) {
-    return { ok: false, error: sent.error === "not_configured" ? "not_configured" : "unavailable" };
-  }
-  return { ok: true };
+    if (!await consumeWindow("email-ip:" + digest(clientIp), 20, 15)) return { ok: false, error: "rate_limited" };
+    if (!await consumeWindow("email:" + digest(email), 3, 15)) return { ok: true };
+    // The response for a sign-in request stays the same for unknown addresses.
+    const issued = await q`INSERT INTO wp_magic_links (email,token_hash,expires_at,may_create,return_to)
+      SELECT ${email},${hash(token)},${new Date(Date.now() + LINK_TTL_MS).toISOString()},${signup},${safeReturnTo(destination)}
+      WHERE ${signup} OR EXISTS (SELECT 1 FROM wp_users WHERE email=${email}) RETURNING id`;
+    if (!issued.length) return { ok: true };
+    const sent = await sendMagicLinkEmail(email, origin + "/signin/confirm#" + token, signup);
+    if (!sent.ok) {
+      await q`DELETE FROM wp_magic_links WHERE token_hash=${hash(token)}`;
+      return { ok: false, error: sent.error === "not_configured" ? "not_configured" : "unavailable" };
+    }
+    return { ok: true };
+  } catch { return { ok: false, error: "unavailable" }; }
 }
 
-export async function redeemMagicLink(token: string): Promise<{ user: User; sessionToken: string } | null> {
-  if (!dbAvailable() || !/^[a-f0-9]{64}$/.test(token)) return null;
-  const rows = await q`SELECT * FROM wp_magic_links
-                       WHERE token_hash = ${hash(token)} AND used_at IS NULL AND expires_at > now()
-                       LIMIT 1`;
-  if (rows.length === 0) return null;
-  const email = String(rows[0].email);
-  const claimed = await q`UPDATE wp_magic_links SET used_at = now() WHERE id = ${Number(rows[0].id)} AND used_at IS NULL RETURNING id`;
-  if (claimed.length === 0) return null;
+export async function inspectMagicLink(token: unknown) {
+  if (!validToken(token) || !dbAvailable()) return null;
+  const [row] = await q`SELECT u.age_band,u.terms_version,u.terms_accepted_at FROM wp_magic_links l LEFT JOIN wp_users u ON u.email=l.email
+    WHERE l.token_hash=${hash(token)} AND l.used_at IS NULL AND l.expires_at>now() AND (l.may_create OR u.id IS NOT NULL)`;
+  return row ? { needsConsent: !hasCurrentConsent(row),
+    ageBand: isAgeBand(row.age_band) ? row.age_band : null } : null;
+}
 
-  let users = await q`SELECT * FROM wp_users WHERE email = ${email} LIMIT 1`;
-  if (users.length === 0) {
-    const name = email.split("@")[0].replace(/[._-]+/g, " ").slice(0, 40) || "Player";
-    const hue = Math.floor(Math.random() * 360);
-    users = await q`INSERT INTO wp_users (email, display_name, avatar_hue)
-                     VALUES (${email}, ${name}, ${hue}) RETURNING *`;
-  }
-  const user = rowToUser(users[0]);
+export async function redeemMagicLink(token: unknown, band: AgeBand | null): Promise<{ user: User; sessionToken: string; returnTo: string } | null> {
+  if (!dbAvailable() || !validToken(token)) return null;
   const sessionToken = randomBytes(32).toString("hex");
-  await q`INSERT INTO wp_sessions (user_id, token_hash, expires_at)
-          VALUES (${user.id}, ${hash(sessionToken)}, ${new Date(Date.now() + SESSION_TTL_MS).toISOString()})`;
-  return { user, sessionToken };
+  const name = "Player " + randomBytes(4).toString("hex");
+  const rows = await q`WITH consumed AS (
+    UPDATE wp_magic_links l SET used_at=now()
+    WHERE token_hash=${hash(token)} AND used_at IS NULL AND expires_at>now()
+      AND (l.may_create OR EXISTS(SELECT 1 FROM wp_users u WHERE u.email=l.email))
+      AND (${band}::text IS NOT NULL OR EXISTS(SELECT 1 FROM wp_users u WHERE u.email=l.email
+        AND u.age_band IN ('teen','adult') AND u.terms_version=${TERMS_VERSION} AND u.terms_accepted_at IS NOT NULL))
+      AND NOT EXISTS(SELECT 1 FROM wp_users u WHERE u.email=l.email AND u.age_band IS NOT NULL AND u.age_band<>${band})
+    RETURNING email, return_to
+  ), account AS (
+    INSERT INTO wp_users(email,display_name,avatar_hue,age_band,terms_version,terms_accepted_at)
+    SELECT email,${name},${randomInt(360)},${band},${TERMS_VERSION},now() FROM consumed
+    ON CONFLICT(email) DO UPDATE SET age_band=coalesce(wp_users.age_band,excluded.age_band),terms_version=excluded.terms_version,
+      terms_accepted_at=CASE WHEN wp_users.terms_version IS DISTINCT FROM excluded.terms_version THEN excluded.terms_accepted_at
+        ELSE coalesce(wp_users.terms_accepted_at,excluded.terms_accepted_at) END
+    WHERE (wp_users.age_band IS NULL OR excluded.age_band IS NULL OR wp_users.age_band=excluded.age_band)
+    RETURNING *
+  ), session AS (
+    INSERT INTO wp_sessions(user_id,token_hash,expires_at) SELECT id,${hash(sessionToken)},${new Date(Date.now()+SESSION_TTL_MS).toISOString()}
+    FROM account RETURNING user_id
+  ) SELECT account.*, consumed.return_to FROM account JOIN session ON session.user_id=account.id JOIN consumed ON consumed.email=account.email`;
+  return rows.length ? { user: rowToUser(rows[0]), sessionToken, returnTo: safeReturnTo(rows[0].return_to) } : null;
 }
 
-export async function getCurrentUser(): Promise<User | null> {
-  if (!dbAvailable()) return null;
-  const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
-  try {
-    const rows = await q`SELECT u.* FROM wp_sessions s
-                         JOIN wp_users u ON u.id = s.user_id
-                         WHERE s.token_hash = ${hash(token)} AND s.expires_at > now()
-                         LIMIT 1`;
-    if (rows.length === 0) return null;
-    // Throttled touch: at most one last_seen write per user per 5 minutes.
-    await q`UPDATE wp_users SET last_seen_at = now() WHERE id = ${Number(rows[0].id)} AND last_seen_at < now() - interval '5 minutes'`;
-    return rowToUser(rows[0]);
-  } catch {
-    return null;
+export const getCurrentUser = cache(async function getCurrentUser(): Promise<User | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!validToken(token)) return null;
+  if (!dbAvailable()) throw new Error("Session storage is unavailable");
+  const [row] = await q`SELECT u.*,EXISTS(SELECT 1 FROM wp_pilot_members m WHERE m.user_id=u.id
+        AND m.joined_at>now()-interval '28 days') AS pilot_active
+    FROM wp_sessions s JOIN wp_users u ON u.id=s.user_id
+    WHERE s.token_hash=${hash(token)} AND s.expires_at>now() LIMIT 1`;
+  if (!row) return null;
+  if (Date.now() - new Date(String(row.last_seen_at)).getTime() > 300_000) {
+    // The activity watermark is optional. Its failure must not invalidate a verified session.
+    await q`UPDATE wp_users SET last_seen_at=now() WHERE id=${row.id} AND last_seen_at<now()-interval '5 minutes'`.catch(()=>{});
   }
-}
+  return rowToUser(row);
+});
 
 export async function destroySession(): Promise<void> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
-  if (token && dbAvailable()) {
-    await q`DELETE FROM wp_sessions WHERE token_hash = ${hash(token)}`.catch(() => {});
+  if (validToken(token)) {
+    await q`DELETE FROM wp_sessions WHERE token_hash = ${hash(token)}`;
   }
   store.delete(SESSION_COOKIE);
 }
@@ -124,12 +155,19 @@ export function isBanned(user: User): boolean {
   return Boolean(user.bannedUntil && new Date(user.bannedUntil).getTime() > Date.now());
 }
 
-/** Simple DB-backed rate limit. Returns true when the action is allowed. */
-export async function rateLimit(userId: number, action: string, max: number, windowMinutes: number): Promise<boolean> {
-  const rows = await q`SELECT count(*)::int AS n FROM wp_rate_events
-                       WHERE user_id = ${userId} AND action = ${action}
-                         AND created_at > now() - make_interval(mins => ${windowMinutes})`;
-  if (Number(rows[0]?.n ?? 0) >= max) return false;
-  await q`INSERT INTO wp_rate_events (user_id, action) VALUES (${userId}, ${action})`;
-  return true;
+// ON CONFLICT serializes attempts on the same bucket, including across function instances.
+async function consumeWindow(bucket: string, max: number, minutes: number): Promise<boolean> {
+  const rows = await q`INSERT INTO wp_action_windows(bucket,hits,expires_at) VALUES (${bucket},ARRAY[now()],now()+make_interval(mins=>${minutes}))
+    ON CONFLICT(bucket) DO UPDATE SET hits=ARRAY(SELECT t FROM unnest(wp_action_windows.hits) AS t
+      WHERE t>now()-make_interval(mins=>${minutes}))||ARRAY[now()], expires_at=excluded.expires_at
+    WHERE (SELECT count(*) FROM unnest(wp_action_windows.hits) AS t WHERE t>now()-make_interval(mins=>${minutes}))<${max}
+    RETURNING bucket`;
+  return rows.length > 0;
+}
+export function rateLimit(userId: number, action: string, max: number, windowMinutes: number): Promise<boolean> {
+  return consumeWindow("user:" + userId + ":" + action, max, windowMinutes);
+}
+
+export async function clearExpiredAuthData() {
+  await Promise.all([q`DELETE FROM wp_action_windows WHERE expires_at<now()`,q`DELETE FROM wp_magic_links WHERE expires_at<now()`,q`DELETE FROM wp_sessions WHERE expires_at<now()`,q`DELETE FROM wp_rate_events WHERE created_at<now()-interval '1 day'`]);
 }

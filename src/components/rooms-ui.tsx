@@ -2,48 +2,39 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { splashUrl } from "@/lib/pure";
-import type { Room } from "@/lib/social";
+import type { Room } from "@/lib/rooms";
+import { ChampionPortrait } from "./champion-portrait";
 import { JoinButton } from "./social-ui";
 
-/** Champion room grid with a name filter — every champion has a room now. */
-export function ChampionRooms({ rooms, patch, signedIn }: {
+const pageSize = 18;
+
+export function RoomDirectory({ rooms, patch, signedIn }: {
   rooms: (Room & { joined: boolean })[]; patch: string; signedIn: boolean;
 }) {
   const [query, setQuery] = useState("");
-  const shown = query
-    ? rooms.filter((r) => r.name.toLowerCase().includes(query.toLowerCase()))
-    : rooms;
+  const [limit, setLimit] = useState(0);
+  const normalized = query.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const matches = rooms.filter(room => (room.name + room.slug).toLowerCase().replace(/[^a-z0-9]/g, "").includes(normalized));
+  const visible = matches.slice(0, limit);
   return (
     <div>
-      <input
-        type="text"
-        placeholder="Find your champion's room…"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        style={{ width: "100%", marginBottom: 6 }}
-      />
-      <div className="room-grid">
-        {shown.map((r) => (
-          <div key={r.id} className="card room-card">
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              {r.championId && <img className="room-thumb" src={splashUrl(r.championId)} alt="" />}
-              <Link href={`/rooms/${r.slug}`} style={{ display: "flex", gap: 9, alignItems: "center" }}>
-                {r.championId && (
-                  <img className="champ-icon sm" src={`https://ddragon.leagueoflegends.com/cdn/${patch}/img/champion/${r.championId}.png`} alt="" />
-                )}
-                <h3>{r.name}</h3>
-              </Link>
-            </div>
-            <p className="meta" style={{ margin: "8px 0 10px" }}>{r.description}</p>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="meta">{r.members} member{r.members === 1 ? "" : "s"}</span>
-              {signedIn && <JoinButton roomId={r.id} initial={r.joined} />}
-            </div>
-          </div>
-        ))}
-        {shown.length === 0 && <p className="meta">No champion room matches that name.</p>}
-      </div>
+      <input type="search" aria-label="Find a room" placeholder="Search rooms by champion or topic"
+        value={query} onChange={e => { setQuery(e.target.value); setLimit(e.target.value.trim() ? pageSize : 0); }}
+        style={{ width: "100%" }}/>
+      <p className="meta" role="status">{matches.length === 0 ? "No rooms match this search." : limit > 0
+        ? `Showing ${visible.length} of ${matches.length} rooms` : `${rooms.length} searchable rooms`}</p>
+      {visible.map(room => (
+        <div key={room.id} className="list-row">
+          <Link href={`/rooms/${room.slug}`} prefetch={false} style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
+            {room.championId && <ChampionPortrait id={room.championId} patch={patch} size={28}/>}
+            <strong>{room.name}</strong>
+          </Link>
+          {signedIn && <JoinButton roomId={room.id} initial={room.joined}/>}
+        </div>
+      ))}
+      {matches.length > limit && <button type="button" className="btn secondary" onClick={() => setLimit(limit + pageSize)}>
+        {limit ? "Show more rooms" : "Browse all rooms"}
+      </button>}
     </div>
   );
 }

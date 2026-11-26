@@ -1,46 +1,39 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
-import { listRooms } from "@/lib/social";
+import { featuredRooms, listRooms } from "@/lib/rooms";
 import { currentPatch } from "@/lib/riot";
 import { JoinButton } from "@/components/social-ui";
-import { ChampionRooms } from "@/components/rooms-ui";
+import { RoomDirectory } from "@/components/rooms-ui";
 
 export const dynamic = "force-dynamic";
 
 export default async function RoomsPage() {
-  const user = await getCurrentUser().catch(() => null);
-  const rooms = await listRooms(user?.id).catch(() => []);
-  const patch = await currentPatch();
-  const general = rooms.filter((r) => r.kind === "general");
-  const champs = rooms.filter((r) => r.kind === "champion");
+  const [user, patch] = await Promise.all([getCurrentUser(), currentPatch()]);
+  const rooms = await listRooms(user?.id).catch(() => null);
+  if (rooms === null) return <div className="empty"><h1>Rooms</h1><p>The room directory is temporarily unavailable. Please try again shortly.</p></div>;
   return (
     <div>
       <h1 className="page-title">Rooms</h1>
-      <p className="meta" style={{ maxWidth: 640 }}>
-        Broad rooms for everyone, and a room for every champion — the room pulse keeps quieter rooms alive with
-        live form from their mains. Linking your Riot ID auto-joins you to your top champions&apos; rooms.
-      </p>
-      <p style={{ fontSize: 15 }}>
-        Looking for a game right now? <Link href="/lfg" style={{ fontWeight: 600 }}>Find a Duo →</Link>
-      </p>
-      <h2 className="section">The house</h2>
+      <p className="meta">Discuss a recent game, compare builds or <Link href="/questions">find a matchup question</Link>.</p>
+      <h2 className="section">Featured rooms</h2>
       <div className="room-grid">
-        {general.map((r) => (
-          <div key={r.id} className="card room-card">
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <span className="room-tile">{r.name.charAt(0)}</span>
-              <Link href={`/rooms/${r.slug}`}><h3>{r.name}</h3></Link>
+        {featuredRooms(rooms).map(room => (
+          <article key={room.id} className="card room-card">
+            <div className="list-row">
+              <div>
+                <h3><Link href={`/rooms/${room.slug}`}>{room.name}</Link></h3>
+                <p className="meta">{room.description}</p>
+                {room.host && <span className="meta">Hosted by <Link href={`/u/${room.host.id}`}>{room.host.name}</Link></span>}
+              </div>
+              {user && <JoinButton roomId={room.id} initial={room.joined}/>}
             </div>
-            <p className="meta" style={{ margin: "8px 0 10px" }}>{r.description}</p>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="meta">{r.members} member{r.members === 1 ? "" : "s"}</span>
-              {user && <JoinButton roomId={r.id} initial={r.joined} />}
-            </div>
-          </div>
+          </article>
         ))}
       </div>
-      <h2 className="section">Champion rooms</h2>
-      <ChampionRooms rooms={champs} patch={patch} signedIn={Boolean(user)} />
+      <p><Link href="/pilot?from=community">Volunteer to answer player questions</Link></p>
+      <h2 className="section">Room directory</h2>
+      <RoomDirectory rooms={rooms} patch={patch} signedIn={Boolean(user)}/>
+      <p><Link href="/lfg">Find a duo</Link></p>
     </div>
   );
 }

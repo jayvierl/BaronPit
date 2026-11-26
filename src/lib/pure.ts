@@ -12,15 +12,38 @@ export interface MatchSummary {
   queueId: number;
   role: string;
   playedAt: number;
+  /** Authoritative Riot start time; older summaries only have the end time above. */
+  startedAt?: number;
+  /** Riot major.minor version for this match, where available. */
+  gamePatch?: string;
+  /** Champion at the same position on the opposing team, when unambiguous. */
+  opponentChampion?: string;
   items: number[];
   /** Gold earned by the player this game (newer snapshots only). */
   gold?: number;
   /** Total gold earned by the player's whole team this game. */
   teamGold?: number;
-  /** Same-team players (excluding the player): champion + Riot name where shown. */
-  teammates?: { champion: string; name: string }[];
-  /** True when the player's team secured Baron at least once this game (newer snapshots only). */
+  /** Exact team objective count, when returned by Match-V5. */
+  teamBaronKills?: number;
+  /** Older snapshots recorded only whether the team secured Baron. */
   baron?: boolean;
+  /** Same-team players (excluding the player): champion + Riot name where shown. */
+  teammates?: { champion: string; name: string; tag?: string }[];
+}
+
+type BaronData = { teamBaronKills?: unknown; baron?: unknown };
+
+export function teamBaronFields(match: BaronData): Pick<MatchSummary, "teamBaronKills" | "baron"> {
+  const count = match.teamBaronKills;
+  if (typeof count === "number" && Number.isSafeInteger(count) && count >= 0) return { teamBaronKills: count };
+  // Legacy false covered both zero and unavailable objectives. Never infer a count from it.
+  return typeof match.baron === "boolean" ? { baron: match.baron } : {};
+}
+
+export function teamBaronLabel(match: BaronData): string | null {
+  const { teamBaronKills, baron } = teamBaronFields(match);
+  if (teamBaronKills !== undefined && teamBaronKills > 1) return `Team secured ${teamBaronKills} Barons`;
+  return teamBaronKills === 1 || baron ? "Team secured Baron" : null;
 }
 
 /** Compare two patch strings by major.minor ("16.23.1" vs "16.23"). */
@@ -28,6 +51,8 @@ export function samePatch(a: string, b: string): boolean {
   const seg = (s: string) => s.split(".").slice(0, 2).join(".");
   return seg(a) === seg(b);
 }
+
+export const DUO_ROLES = ["Top", "Jungle", "Mid", "ADC", "Support", "Fill"] as const;
 
 /** Recurring schedule blocks for LFG duo matching. */
 export const SCHEDULE_BLOCKS = [
@@ -43,6 +68,8 @@ export function earnedBadges(snapshot: PlayerSnapshot): string[] {
   const ms = snapshot.matches;
   if (snapshot.games < 5 || ms.length === 0) return [];
   const badges: string[] = [];
+  const baronGames = ms.filter(m => teamBaronLabel(m) !== null).length;
+  if (baronGames >= 5) badges.push(`Team secured Baron in ${baronGames} games`);
   const top = snapshot.champPool[0];
   if (top && top.games / snapshot.games >= 0.6) badges.push(`${top.champion} one-trick`);
   if (ms.slice(0, 3).every((m) => m.win)) badges.push("On a win streak");
@@ -52,8 +79,6 @@ export function earnedBadges(snapshot: PlayerSnapshot): string[] {
   if (mainRole === "UTILITY" && assistsPerGame >= 10) badges.push("Playmaker");
   const deathsPerGame = ms.reduce((a, m) => a + m.deaths, 0) / ms.length;
   if (deathsPerGame <= 2.5) badges.push("Hard to kill");
-  const barons = ms.filter((m) => m.baron).length;
-  if (barons >= 5) badges.push(`Baron caller · ${barons} secured`);
   return badges.slice(0, 3);
 }
 
@@ -114,7 +139,7 @@ export function formReads(snapshot: PlayerSnapshot): FormRead[] {
     reads.push({
       label: "Playmaking",
       value: `${apg.toFixed(1)} assists/game`,
-      note: apg >= 10 ? "setting up plays all game" : apg >= 7 ? "solid setup for the team" : "fewer setups than most supports",
+      note: `across ${ms.length} recent games, mostly support`,
       tone: apg >= 10 ? "good" : apg >= 7 ? "mid" : "low",
     });
   } else if (minutes > 0) {
@@ -122,7 +147,7 @@ export function formReads(snapshot: PlayerSnapshot): FormRead[] {
     reads.push({
       label: "Farming",
       value: `${cspm.toFixed(1)} CS/min`,
-      note: cspm >= 7 ? "excellent for most ranks" : cspm >= 6 ? "strong for most ranks" : cspm >= 5 ? "around the typical range" : "below the typical range — farm is the lever",
+      note: `across ${ms.length} recent games`,
       tone: cspm >= 6 ? "good" : cspm >= 5 ? "mid" : "low",
     });
   }
@@ -134,7 +159,7 @@ export function formReads(snapshot: PlayerSnapshot): FormRead[] {
     reads.push({
       label: "Gold share",
       value: `${pct}% of team gold`,
-      note: pct >= 23 ? "a primary carry share" : pct >= 19 ? "a healthy share" : "a smaller share — often the support/utility tax",
+      note: `average across ${withGold.length} games with gold data`,
       tone: pct >= 19 ? "good" : "mid",
     });
   }
@@ -149,6 +174,10 @@ export interface PlayerSnapshot {
   champPool: { champion: string; games: number; wins: number; kda: number }[];
   roles: Record<string, number>;
   matches: MatchSummary[];
+  /** Earliest instant covered by this complete, visible Match-V5 sample. */
+  coverageFrom?: number;
+  /** Latest completed game end in that window; an in-progress game is not observable. */
+  coverageThrough?: number;
 }
 
 export const EMPTY_SNAPSHOT: PlayerSnapshot = {
@@ -202,3 +231,7 @@ export const ENDORSE_KINDS = [
   { id: "helpful", label: "Helpful builder" },
   { id: "shot_caller", label: "Shot caller" },
 ] as const;
+
+export function gameCount(games: number) {
+  return games + (games === 1 ? " game" : " games");
+}

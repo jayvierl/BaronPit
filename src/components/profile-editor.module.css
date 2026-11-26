@@ -1,0 +1,41 @@
+.editor { width: 100%; max-width: 40rem; margin: 0 auto; color: var(--ink); }
+.toolbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); min-height: 60px; }
+.toolbar h1 { font-size: 1.16rem; line-height: 1.25; margin: 0; }
+.toolbar button, .link, .remove, .confirm button, .iconChoice {
+  appearance: none; background: transparent; border: 0; font: inherit; cursor: pointer;
+}
+.toolbar button { justify-self: start; min-height: 44px; padding: 4px; color: var(--ink-mid); }
+.toolbar button.done { justify-self: end; font-weight: 700; color: var(--accent-ink); }
+.editor button:disabled { color: var(--ink-soft); opacity: .63; cursor: default; }
+.editor :is(button, input, textarea):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.fields { border: 0; padding: 0; min-width: 0; margin: 0; }
+.pictureRow { display: flex; align-items: center; gap: 16px; padding: 22px 2px; }
+.pictureRow h2, .personal h3, .crop h3 { font-size: 1rem; line-height: 1.35; margin: 0 0 3px; }
+.preview, .preview canvas { display: block; width: 80px; height: 80px; border-radius: 50%; flex-shrink: 0; }
+.preview { overflow: hidden; background: var(--field); }
+.link, .remove { color: var(--accent-ink); font-weight: 600; padding: 5px 0; text-align: left; min-height: 38px; }
+.remove { margin-inline-start: 14px; color: var(--ink-soft); font-weight: 400; }
+.choices, .crop { padding: 14px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 16px; }
+.choices input[type=search] { display:block; width: 100%; padding: 9px 12px; font: inherit; color: var(--ink); border: 1px solid var(--border); border-radius: 9px; background: var(--field); margin: 8px 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 4px; }
+.grid button { display: flex; align-items: center; flex-direction: column; gap: 3px; min-width: 0; appearance: none; border: 1px solid transparent; border-radius: 8px; color: var(--ink); background: transparent; font: inherit; font-size: .78rem; font-weight: 600; overflow-wrap: anywhere; padding: 6px 3px; cursor: pointer; }
+.grid button[aria-pressed=true] { border-color: var(--accent); }
+.grid button:hover, .iconChoice:hover { background: var(--hover); }
+.iconChoice { display: flex; align-items: center; gap: 12px; border-radius: 8px; margin-top: 10px; padding: 4px; font-weight: 600; text-align: left; color: var(--ink); }
+.iconChoice small, .personal small, .hint, .counter { display: block; font-size: .81rem; font-weight: 400; color: var(--ink-soft); }
+.personal { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 13px; }
+.personal p { margin: 6px 0; }
+.crop label { display: grid; grid-template-columns: minmax(7rem, 1fr) 2fr; align-items: center; gap: 8px; margin: 8px 0; font-size: .9rem; }
+.crop input { accent-color: var(--accent); width: 100%; min-width: 0; }
+.field { padding: 14px 2px; border-top: 1px solid var(--border); }
+.field label, .label { display: block; font-weight: 650; }
+.field input, .field textarea { display: block; color: var(--ink); background: var(--bg); width: 100%; border: 0; padding: 7px 2px; font: inherit; font-size: 1rem; }
+.field textarea { resize: vertical; min-height: 66px; }
+.counter { text-align: right; }
+.message { min-height: 1.25em; margin: 8px 0; color: var(--ink-mid); font-size: .87rem; }
+.confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; background: var(--field); border-radius: 10px; margin-top: 12px; }
+.confirm button { font-weight: 600; min-height: 40px; color: var(--accent-ink); }
+@media(max-width: 380px) {
+  .remove { display: block; margin-inline-start: 0; }
+  .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

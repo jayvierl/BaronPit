@@ -1,0 +1,16 @@
+.result { display: flex; align-items: center; gap: .75rem; color: var(--ink); min-height: 44px; }
+.result .identity { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.identity small { display: block; color: var(--ink-mid); }
+.result:hover, .result:focus-visible { background: var(--field); text-decoration: none; }
+.result:hover strong, .result:focus-visible strong { text-decoration: underline; }
+.search { min-width: 0; }
+.form { display: flex; align-items: stretch; gap: .5rem; margin: 1rem 0; }
+.form input { flex: 1; min-width: 0; width: 100%; min-height: 44px; border: 1px solid var(--border-strong); border-radius: .8rem; padding: .6rem .8rem; background: var(--field); color: var(--ink); font: inherit; }
+.form button { min-height: 44px; }
+.places { display: grid; }
+.places a { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: .65rem .2rem; border-bottom: 1px solid var(--border); color: var(--ink); font-weight: 600; }
+.places a span { color: var(--ink-soft); }
+.lookup { margin-block: 1rem; }
+.lookup summary { min-height: 44px; padding-block: .7rem; cursor: pointer; color: var(--ink); font-weight: 600; }
+.empty { margin-block: 1rem; padding: 1.2rem 0; overflow-wrap: anywhere; }
+.empty p { margin: .3rem 0 0; color: var(--ink-mid); }

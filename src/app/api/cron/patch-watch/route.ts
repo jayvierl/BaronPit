@@ -1,19 +1,23 @@
+import { maintainPhotos } from "@/lib/profile-photo";
+import { clearExpiredGameChecks } from "@/lib/duo-game-check";
+import { clearExpiredOwnership } from "@/lib/riot-ownership";
+import { clearExpiredPilotData } from "@/lib/pilot";
 import { NextResponse } from "next/server";
 import { runPatchWatch } from "@/lib/social";
+import { clearExpiredRoomTurns } from "@/lib/room-safety";
+import { clearExpiredDuoListings } from "@/lib/duo";
+import { clearExpiredAuthData } from "@/lib/auth";
 
-/**
- * Daily patch watch (Vercel cron). Idempotent: only posts briefings when
- * Data Dragon reports a patch newer than the last one seen.
- */
+export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
+  const secret = process.env.CRON_SECRET?.trim();
+  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
   try {
-    const result = await runPatchWatch();
-    return NextResponse.json({ ok: true, ...result });
-  } catch (e) {
-    return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "patch watch failed" }, { status: 500 });
+    const [result] = await Promise.all([runPatchWatch(), clearExpiredAuthData(), clearExpiredDuoListings(), clearExpiredRoomTurns(), clearExpiredOwnership(), clearExpiredPilotData(), clearExpiredGameChecks(), maintainPhotos()]);
+    return NextResponse.json({ ok: true, ...result }, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return NextResponse.json({ ok: false, error: "Scheduled update could not finish." }, { status: 503 });
   }
 }

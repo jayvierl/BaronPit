@@ -1,0 +1,57 @@
+.panel {
+  margin: 1.1rem 0;
+  padding: clamp(1rem, 3vw, 1.35rem);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--bg);
+  overflow-wrap: anywhere;
+}
+.panel h2 {
+  margin: 0 0 0.45rem;
+  font-size: 1.18rem;
+}
+.panel h3 {
+  margin: 0.75rem 0 0.4rem;
+  font-size: 1.1rem;
+}
+.panel p {
+  margin: 0.45rem 0;
+}
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 1.1rem;
+  margin: 0.7rem 0 0;
+}
+.question {
+  text-wrap: pretty;
+}
+.answer {
+  margin: 0.75rem 0;
+  padding: 0.2rem 0.85rem;
+  border-inline-start: 3px solid var(--accent);
+  white-space: pre-line;
+}
+.credits {
+  display: flex;
+  gap: 0.3rem 0.7rem;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 0.9rem;
+}
+.slots {
+  list-style: none;
+  padding: 0;
+}
+.slots li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  padding: 0.6rem 0;
+}
+.slots li + li {
+  border-top: 1px solid var(--border);
+}

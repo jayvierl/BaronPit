@@ -1,15 +1,23 @@
-import { NextResponse } from "next/server";
-import { getCurrentUser, isBanned } from "@/lib/auth";
-import { reportTarget } from "@/lib/social";
-
+import { requireUser, readObject, authError } from "@/lib/auth-http";
+import { fileReport } from "@/lib/safety-cases";
+import { isKind, isRule, positiveId } from "@/lib/safety-policy";
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
-  if (isBanned(user)) return NextResponse.json({ ok: false, error: "Your account is temporarily restricted." }, { status: 403 });
-  const { kind, targetId, reason } = (await req.json().catch(() => ({}))) as { kind?: string; targetId?: number; reason?: string };
-  if (!kind || !targetId || !["post", "comment", "user", "lfg"].includes(kind)) {
-    return NextResponse.json({ ok: false, error: "Bad report." }, { status: 400 });
+  const access = await requireUser(req, "protect");
+  if (!access.ok) return access.response;
+  const { kind, targetId, category = "other", reason = "" } = await readObject(req);
+  if (
+    !isKind(kind) ||
+    !positiveId(targetId) ||
+    !isRule(category) ||
+    typeof reason !== "string" ||
+    reason.length > 300
+  )
+    return authError("Choose an item and a report category.", 400);
+  try {
+    const result = await fileReport(access.user, kind, targetId, category, reason);
+    if (result.error) return authError(result.error, result.status);
+    return Response.json({ ok: true }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch {
+    return authError("We couldn’t save your report. Try again or use the safety contact.", 503);
   }
-  const result = await reportTarget(user, kind, targetId, reason ?? "");
-  return NextResponse.json({ ok: result.ok });
 }

@@ -1,27 +1,33 @@
-import { NextResponse } from "next/server";
-import { getCurrentUser, isAdmin } from "@/lib/auth";
-import { adminResolve } from "@/lib/social";
-import { q } from "@/lib/db";
-
+import { requireUser, readObject, authError } from "@/lib/auth-http";
+import { escalateCase, resolveCase, reviewAppeal } from "@/lib/safety-cases";
+import { positiveId, isKind, isDecision, isRule } from "@/lib/safety-policy";
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user || !isAdmin(user.email)) return NextResponse.json({ ok: false, error: "Not allowed." }, { status: 403 });
-  const body = (await req.json().catch(() => ({}))) as {
-    targetKind?: string; targetId?: number; action?: string; userId?: number;
-  };
-  if (body.action === "ban7d" && body.userId) {
-    await q`UPDATE wp_users SET banned_until = now() + interval '7 days', strike_count = strike_count + 1 WHERE id = ${body.userId}`;
-    await q`INSERT INTO wp_mod_log (target_kind, author_id, score, action, detail)
-            VALUES ('user', ${body.userId}, 0, 'remove', '7-day suspension by a moderator')`;
-    return NextResponse.json({ ok: true });
+  const access = await requireUser(req, "staff");
+  if (!access.ok) return access.response;
+  const b = await readObject(req);
+  let confirmed: boolean | "second_review";
+  try {
+    if (b.kind === "appeal") {
+      if (
+        !positiveId(b.id) ||
+        (b.action !== "overturn" && b.action !== "uphold") ||
+        typeof b.reason !== "string" ||
+        !b.reason.trim() ||
+        b.reason.length > 400
+      )
+        return authError("Include a short explanation of the appeal decision.", 400);
+      confirmed = await reviewAppeal(access.user, b.id, b.action === "overturn", b.reason.trim());
+    } else if (b.action === "escalate" && isKind(b.kind) && positiveId(b.id) && isRule(b.rule)) {
+      confirmed = await escalateCase(access.user, b.kind, b.id, b.rule);
+    } else {
+      if (!positiveId(b.id) || !isKind(b.kind) || !isRule(b.rule) || !isDecision(b.action))
+        return authError("Choose a valid case, rule and decision.", 400);
+      confirmed = await resolveCase(access.user, b.kind, b.id, b.action, b.rule);
+    }
+  } catch {
+    return authError("The decision could not be saved. Check the queue and try again.", 503);
   }
-  if (!body.targetId || !["post", "comment", "report"].includes(body.targetKind ?? "") || !["approve", "remove", "dismiss"].includes(body.action ?? "")) {
-    return NextResponse.json({ ok: false, error: "Bad resolution." }, { status: 400 });
-  }
-  await adminResolve({
-    targetKind: body.targetKind as "post" | "comment" | "report",
-    targetId: body.targetId,
-    action: body.action as "approve" | "remove" | "dismiss",
-  });
-  return NextResponse.json({ ok: true });
+  return confirmed
+    ? Response.json({ ok: true, pendingIndependentReview: confirmed === "second_review" })
+    : authError("This case is unavailable, already resolved, or requires a different reviewer.", 409);
 }

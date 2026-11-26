@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser, isBanned } from "@/lib/auth";
-import { q } from "@/lib/db";
+import { requireUser, readObject } from "@/lib/auth-http";
+import { rateLimit } from "@/lib/auth";
+import { getSql } from "@/lib/db";
 import { lookupPlayer, isPlatform } from "@/lib/riot";
-import { getRoom, setRoomMembership } from "@/lib/social";
+import { ensureRooms } from "@/lib/social";
 
 /**
  * Claim-style Riot ID linking: the account asserts ownership of a Riot ID.
@@ -11,14 +12,17 @@ import { getRoom, setRoomMembership } from "@/lib/social";
  * keeps the two states separate (wp_links.verified).
  */
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
-  if (isBanned(user)) return NextResponse.json({ ok: false, error: "Your account is temporarily restricted." }, { status: 403 });
-  const { platform, gameName, tagLine } = (await req.json().catch(() => ({}))) as {
+  const access = await requireUser(req);
+  if (!access.ok) return access.response;
+  const { user } = access;
+  const { platform, gameName, tagLine } = (await readObject(req)) as {
     platform?: string; gameName?: string; tagLine?: string;
   };
-  if (!platform || !isPlatform(platform) || !gameName || !tagLine) {
+  if (!platform || !isPlatform(platform) || typeof gameName !== "string" || !gameName.trim() || gameName.length > 32 || typeof tagLine !== "string" || !tagLine.trim() || tagLine.length > 8) {
     return NextResponse.json({ ok: false, error: "Give a platform and a full Riot ID (Name#TAG)." }, { status: 400 });
+  }
+  if (!await rateLimit(user.id, "riot-link", 6, 15)) {
+    return NextResponse.json({ok:false,error:"Too many lookup attempts. Try linking again in 15 minutes."},{status:429});
   }
   const result = await lookupPlayer(platform, gameName.trim(), tagLine.trim());
   if (!result.ok) {
@@ -28,17 +32,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
   const player = result.player;
-  const existing = await q`SELECT count(*)::int AS n FROM wp_links WHERE user_id = ${user.id}`;
-  const isPrimary = Number(existing[0]?.n ?? 0) === 0;
-  await q`INSERT INTO wp_links (user_id, puuid, is_primary) VALUES (${user.id}, ${player.puuid}, ${isPrimary})
-          ON CONFLICT (user_id, puuid) DO NOTHING`;
-
-  // Auto-join the General room + the player's top-3 champion rooms (brief §4.3).
-  const general = await getRoom("general");
-  if (general) await setRoomMembership(user.id, general.id, true);
-  for (const c of player.snapshot.champPool.slice(0, 3)) {
-    const room = await getRoom(`champ-${c.champion.toLowerCase()}`);
-    if (room) await setRoomMembership(user.id, room.id, true);
-  }
+  await ensureRooms();
+  const sql = await getSql();
+  const suggested = ["general", ...player.snapshot.champPool.slice(0,3).map(c=>"champ-"+c.champion.toLowerCase())];
+  // The per-account lock serializes concurrent linking and primary reassignment.
+  await sql.transaction([
+    sql`SELECT id FROM wp_users WHERE id=${user.id} FOR UPDATE`,
+    sql`INSERT INTO wp_links (user_id,puuid,is_primary,verified)
+      VALUES (${user.id},${player.puuid},NOT EXISTS(SELECT 1 FROM wp_links WHERE user_id=${user.id} AND is_primary),false)
+      ON CONFLICT(user_id,puuid) DO NOTHING`,
+    sql`INSERT INTO wp_room_members(room_id,user_id) SELECT id,${user.id} FROM wp_rooms
+      WHERE slug=ANY(${suggested}::text[]) ON CONFLICT DO NOTHING`,
+  ]);
   return NextResponse.json({ ok: true, riotId: `${player.gameName}#${player.tagLine}` });
 }

@@ -1,0 +1,35 @@
+.duo-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  margin-block: .65rem;
+}
+.duo-page { max-width: 51rem; margin: 0 auto; }
+.duo-intro { display: flex; align-items: center; justify-content: space-between; gap: .9rem; padding: .75rem 0 1.15rem; }
+.duo-intro h1 { margin: 0; letter-spacing: -.045em; }
+.duo-intro p { margin: .35rem 0 0; max-width: 32ch; }
+.duo-intro img { width: clamp(4.8rem, 19vw, 7rem); height: auto; aspect-ratio: 4 / 3; border-radius: .85rem; object-fit: cover; }
+.duo-page h2 { font-size: 1.2rem; }
+.duo-page > header p { color: var(--ink-soft); }
+.duo-status { padding: .9rem 1.1rem; border-inline-start: 3px solid var(--accent); background: var(--hover); }
+.duo-status h2, .duo-status p { margin: 0; }
+.duo-status p { margin-top: .4rem; }
+.duo-plan { scroll-margin-top: 5rem; }
+.duo-plan fieldset { border: 0; margin: 0; padding: 0; }
+.duo-fields, .duo-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; }
+.duo-fields label { display: grid; gap: .3rem; font-size: .95rem; font-weight: 600; }
+.duo-fields select { padding: .65rem; font-size: 1rem; width: 100%; }
+.duo-times { margin: 1rem 0; }
+.duo-times summary { cursor: pointer; font-weight: 600; }
+.duo-checks { gap: .5rem; }
+.duo-checks label { display: flex; gap: .45rem; align-items: center; }
+.duo-plan form { margin: 1rem 0; }
+.duo-foot { margin-top: 1.2rem; }
+.duo-list-views { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+.duo-list-views [aria-current="page"] { font-weight: 700; text-decoration: underline; text-underline-offset: .23rem; }
+.duo-reasons { font-size: .9rem; }
+@media (max-width: 30rem) {
+  .duo-fields { grid-template-columns: 1fr; }
+  .duo-checks { gap: .65rem .4rem; }
+}

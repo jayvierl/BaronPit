@@ -1,0 +1,9 @@
+.feedback { overflow-wrap: anywhere; }
+.footer { gap: .7rem; }
+.footer > button { flex-shrink: 0; }
+.discard { display: flex; gap: .65rem; flex-wrap: wrap; align-items: center; }
+.discard button, .footer :global(.text-btn) { min-height: 36px; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+@media (max-width: 480px) {
+  .discard button, .footer :global(.text-btn) { min-height: 44px; }
+}

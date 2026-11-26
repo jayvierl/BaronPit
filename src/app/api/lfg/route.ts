@@ -1,30 +1,43 @@
-import { NextResponse } from "next/server";
-import { getCurrentUser, isBanned } from "@/lib/auth";
-import { createLfg } from "@/lib/social";
-import { q } from "@/lib/db";
+import { validId } from "@/lib/ids";
+import { requireUser } from "@/lib/auth-http";
+import { closeDuoListing, createDuoListing, duoAction, duoPeerId, setRequeue, thankDuo } from "@/lib/duo";
+import { setBlock } from "@/lib/social";
+import { endorseDuoRequest } from "@/lib/relationships";
 
-export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
-  if (isBanned(user)) return NextResponse.json({ ok: false, error: "Your account is temporarily restricted." }, { status: 403 });
-  const body = (await req.json().catch(() => ({}))) as {
-    action?: string; listingId?: number;
-    roles?: string[]; champs?: string[]; playTimes?: string; voice?: boolean; vibe?: string; note?: string; blocks?: string[];
-  };
-  if (body.action === "close") {
-    if (!body.listingId) return NextResponse.json({ ok: false, error: "Bad listing." }, { status: 400 });
-    await q`UPDATE wp_lfg SET status = 'closed' WHERE id = ${body.listingId} AND user_id = ${user.id}`;
-    return NextResponse.json({ ok: true });
-  }
-  const result = await createLfg(user, {
-    roles: (body.roles ?? []).slice(0, 3),
-    champs: (body.champs ?? []).slice(0, 5),
-    playTimes: body.playTimes ?? "",
-    voice: Boolean(body.voice),
-    vibe: body.vibe ?? "both",
-    note: body.note ?? "",
-    blocks: (body.blocks ?? []).slice(0, 8),
+function reply(result: { ok: boolean; error?: string }, status?: number) {
+  return Response.json(result, {
+    status: status ?? (result.ok ? 200 : 400),
+    headers: { "Cache-Control": "private, no-store" },
   });
-  if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
-  return NextResponse.json({ ok: true, listingId: result.postId });
+}
+export async function POST(req: Request) {
+  const body: unknown = await req.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body))
+    return reply({ ok: false, error: "Invalid duo request." });
+  const input = body as Record<string, unknown>;
+  const action = input.action;
+  const protectedAction =
+    action === "withdraw-requeue" || action === "close" || action === "decline" || action === "block-listing" || action === "block-request";
+  const auth = await requireUser(req, protectedAction ? "protect" : "participate");
+  if (!auth.ok) return auth.response;
+  const { user } = auth;
+  if (action === "create") return reply(await createDuoListing(user, input));
+  const id = input.id;
+  if (!validId(id)) return reply({ ok: false, error: "Invalid selection." });
+  if (action === "thank" || action === "endorse") {
+    if (Object.keys(input).some(key => key !== "action" && key !== "id"))
+      return reply({ ok: false, error: "This action only accepts a duo request ID." });
+    return reply(action === "thank" ? await thankDuo(user.id, id) : await endorseDuoRequest(user, id));
+  }
+  if (action === "requeue" || action === "withdraw-requeue") return reply(await setRequeue(user.id, id, action === "requeue"));
+  if (action === "close") return reply(await closeDuoListing(user.id, id));
+  if (action === "block-listing" || action === "block-request") {
+    const peer = await duoPeerId(user.id, action === "block-listing" ? "lfg" : "duo_request", id);
+    if (!peer) return reply({ ok: false, error: "This entry is no longer available." }, 404);
+    await setBlock(user.id, peer, true);
+    return reply({ ok: true });
+  }
+  if (action === "request" || action === "accept" || action === "decline")
+    return reply(await duoAction(user, id, action, input));
+  return reply({ ok: false, error: "Unknown duo action." });
 }

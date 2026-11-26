@@ -1,89 +1,126 @@
 "use client";
 
+import { clearBrowserAuthDrafts } from "@/lib/auth-draft";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PLATFORMS } from "@/lib/platforms";
-
-async function postJson(url: string, body: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  return { ok: res.ok && data.ok !== false, data };
-}
-
-export function ProfileForm({ name, bio }: { name: string; bio: string }) {
-  const router = useRouter();
-  const [displayName, setDisplayName] = useState(name);
-  const [bioText, setBioText] = useState(bio);
-  const [msg, setMsg] = useState<{ tone: string; text: string } | null>(null);
-  return (
-    <div>
-      <div className="field">
-        <label>Display name</label>
-        <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={40} />
-      </div>
-      <div className="field">
-        <label>Bio</label>
-        <textarea rows={3} value={bioText} onChange={(e) => setBioText(e.target.value)} maxLength={280} placeholder="Roles, champions, when you play, what you're climbing for…" />
-      </div>
-      {msg && <div className={`notice ${msg.tone}`}>{msg.text}</div>}
-      <button type="button" className="btn" onClick={async () => {
-        const { ok, data } = await postJson("/api/account/profile", { displayName, bio: bioText });
-        if (ok) { setMsg({ tone: "ok", text: "Saved." }); router.refresh(); }
-        else setMsg({ tone: "err", text: String(data.error ?? "Couldn't save.") });
-      }}>Save profile</button>
-    </div>
-  );
-}
+import { PLATFORMS, splitRiotId } from "@/lib/platforms";
+import { usePostAction, ActionFeedback } from "./post-action";
 
 export function LinkForm() {
   const router = useRouter();
+  const action = usePostAction();
   const [riotId, setRiotId] = useState("");
   const [platform, setPlatform] = useState("na1");
-  const [msg, setMsg] = useState<{ tone: string; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const player = splitRiotId(riotId, platform);
   return (
-    <div>
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setNotice("");
+        if (!player.gameName || !player.tagLine) return;
+        const result = await action.send("/api/account/link", { platform, ...player });
+        if (result) {
+          setNotice(`Linked ${result.riotId ?? riotId} to your profile.`);
+          setRiotId("");
+          router.refresh();
+        }
+      }}
+    >
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <input className="inline" style={{ flex: "1 1 200px" }} placeholder="Your Riot ID — Name#TAG" value={riotId} onChange={(e) => setRiotId(e.target.value)} />
-        <select className="inline" value={platform} onChange={(e) => setPlatform(e.target.value)}>
-          {PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+        <input
+          className="inline"
+          style={{ flex: "1 1 200px" }}
+          aria-label="Riot ID to link"
+          required
+          value={riotId}
+          disabled={action.busy}
+          onChange={(e) => setRiotId(e.target.value)}
+          placeholder={platform === "na1" ? "Player name or Name#TAG" : "Name#TAG"}
+        />
+        <select
+          className="inline"
+          aria-label="Server"
+          value={platform}
+          disabled={action.busy}
+          onChange={(e) => setPlatform(e.target.value)}
+        >
+          {PLATFORMS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
         </select>
-        <button type="button" className="btn" disabled={busy || !riotId.includes("#")} onClick={async () => {
-          const hash = riotId.lastIndexOf("#");
-          setBusy(true); setMsg(null);
-          const { ok, data } = await postJson("/api/account/link", {
-            platform, gameName: riotId.slice(0, hash).trim(), tagLine: riotId.slice(hash + 1).trim(),
-          });
-          setBusy(false);
-          if (ok) { setMsg({ tone: "ok", text: `Linked ${String(data.riotId ?? riotId)} — and auto-joined your top champions' rooms.` }); setRiotId(""); router.refresh(); }
-          else setMsg({ tone: "err", text: String(data.error ?? "Couldn't link that Riot ID.") });
-        }}>{busy ? "Linking…" : "Link Riot ID"}</button>
+        <button type="submit" className="btn" disabled={action.busy || !player.gameName || !player.tagLine}>
+          {action.busy ? "Linking…" : "Link Riot ID"}
+        </button>
       </div>
-      {msg && <div className={`notice ${msg.tone}`}>{msg.text}</div>}
+      <ActionFeedback error={action.error} />
+      {notice && (
+        <p className="notice ok" role="status">
+          {notice}
+        </p>
+      )}
       <p className="meta">
-        Linking is claim-based for now: it powers your flair, rooms, and LFG rank. Fully verified ownership arrives
-        with Riot Sign On once Riot approves our production application.
+        This link is a self-declared claim. Ownership verification requires Riot Sign On.{" "}
+        {platform === "na1" && "Names without a tag use #NA1."}
       </p>
-    </div>
+    </form>
   );
+}
+
+export function PrimaryPlayerButton({ puuid }: { puuid: string }) {
+  const router = useRouter();
+  const action = usePostAction();
+  return <span>
+    <button type="button" className="text-btn" disabled={action.busy} onClick={async () => {
+      if (await action.send("/api/account/primary", { puuid })) router.refresh();
+    }}>Use as primary</button>
+    <ActionFeedback error={action.error} />
+  </span>;
 }
 
 export function UnlinkButton({ puuid, label }: { puuid: string; label: string }) {
   const router = useRouter();
+  const action = usePostAction();
   return (
-    <button type="button" className="text-btn" onClick={async () => {
-      if (!window.confirm(`Unlink ${label}?`)) return;
-      await postJson("/api/account/unlink", { puuid });
-      router.refresh();
-    }}>Unlink</button>
+    <span>
+      <button
+        type="button"
+        className="text-btn"
+        disabled={action.busy}
+        onClick={async () => {
+          if (window.confirm(`Unlink ${label}?`) && (await action.send("/api/account/unlink", { puuid })))
+            router.refresh();
+        }}
+      >
+        Unlink
+      </button>
+      <ActionFeedback error={action.error} />
+    </span>
   );
 }
 
 export function SignOutButton() {
+  const router = useRouter();
+  const action = usePostAction();
   return (
-    <button type="button" className="btn secondary" onClick={async () => {
-      await fetch("/api/auth/signout", { method: "POST" });
-      window.location.href = "/";
-    }}>Sign out</button>
+    <span>
+      <button
+        type="button"
+        className="btn secondary"
+        disabled={action.busy}
+        onClick={async () => {
+          if (await action.send("/api/auth/signout", {})) {
+            clearBrowserAuthDrafts();
+            router.replace("/");
+            router.refresh();
+          }
+        }}
+      >
+        {action.busy ? "Signing out…" : "Sign out"}
+      </button>
+      <ActionFeedback error={action.error} />
+    </span>
   );
 }

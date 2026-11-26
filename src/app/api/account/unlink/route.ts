@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser, isBanned } from "@/lib/auth";
-import { q } from "@/lib/db";
+import { requireUser, readObject } from "@/lib/auth-http";
+import { getSql } from "@/lib/db";
 
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Sign in first." }, { status: 401 });
-  if (isBanned(user)) return NextResponse.json({ ok: false, error: "Your account is temporarily restricted." }, { status: 403 });
-  const { puuid } = (await req.json().catch(() => ({}))) as { puuid?: string };
-  if (!puuid) return NextResponse.json({ ok: false, error: "Bad unlink." }, { status: 400 });
-  await q`DELETE FROM wp_links WHERE user_id = ${user.id} AND puuid = ${puuid}`;
+  const access = await requireUser(req);
+  if (!access.ok) return access.response;
+  const { user } = access;
+  const { puuid } = (await readObject(req)) as { puuid?: string };
+  if (typeof puuid !== "string" || !puuid || puuid.length>128) return NextResponse.json({ ok: false, error: "Bad unlink." }, { status: 400 });
+  const sql=await getSql();
+  await sql.transaction([
+    sql`SELECT id FROM wp_users WHERE id=${user.id} FOR UPDATE`,
+    sql`DELETE FROM wp_links WHERE user_id=${user.id} AND puuid=${puuid}`,
+    sql`UPDATE wp_links SET is_primary=true WHERE user_id=${user.id} AND puuid=(
+      SELECT puuid FROM wp_links WHERE user_id=${user.id} ORDER BY created_at,puuid LIMIT 1)
+      AND NOT EXISTS(SELECT 1 FROM wp_links WHERE user_id=${user.id} AND is_primary)`,
+  ]);
   return NextResponse.json({ ok: true });
 }

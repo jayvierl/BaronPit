@@ -17,6 +17,11 @@ const PROFANITY = [
   "fuck", "shit", "bitch", "asshole", "bastard", "whore", "slut", "dick", "pussy", "cunt",
 ];
 const CONTACT_PATTERNS = [
+  /(?:^|[^\w])@[a-z0-9_.]{2,}/i, /\b[\w.+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/i,
+  /\b(?:discord|snapchat|telegram|whatsapp|instagram|tiktok)\s+(?:me|at|handle|user(?:name)?)\b/i,
+  /\b(?:t\.me|discord(?:app)?\.com|bit\.ly|tinyurl\.com|wa\.me|linktr\.ee|www\.)[\/.]/i,
+  /(?:^|[^\w])(?:[\w.]+#[\w]{2,})(?=\s|$|[.,!])/i, /(?:\+?\d[(). -]*){8,15}\b/,
+  /\b(?:[a-z0-9-]+\.)+(?:com|net|org|gg|tv|io|me|co|app|xyz|link|ly)\b/i,
   /discord\.gg\//i,
   /discord\s*[:#]\s*[\w.]{2,}/i,
   /add me on discord/i,
@@ -83,7 +88,7 @@ export function scoreContent(raw: string, opts: { lowTrust?: boolean } = {}): Mo
   }
   if (opts.lowTrust) { score += 15; hits.push("probation"); }
 
-  const hasContactHandle = CONTACT_PATTERNS.some((re) => re.test(text));
+  const hasContactHandle = CONTACT_PATTERNS.some((re) => re.test(text.normalize("NFKC").replace(/[\u200B-\u200D\uFEFF]/g, "")));
   if (hasContactHandle) { score += 20; hits.push("contact-handle"); }
 
   const action = score >= 60 ? "block" : score >= 30 ? "hold" : "publish";
