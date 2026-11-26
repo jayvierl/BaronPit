@@ -2,6 +2,7 @@
 
 **Date:** 2026-11-26 (~2:25 PM CT) · **Auditor:** Lyris (live-site walk + read-only code audit)
 **Companion docs:** `README.md`, `CODEX-DEEP-AUDIT.md` (round 1), `BARON-PIT-AUDIT-FOR-CODEX.md` (round 2), and Jay's product brief to Codex (Threads teardown → gap analysis → autonomous build, cosmetics/flow first). This document is the *evidence pack* for that brief: what is verifiably true today, what is broken or missing, and the order to work in. It does not replace the brief's product mandate — it grounds it.
+**Design constitution:** `THREADS-PARITY-STANDARD.md` (added 2026-11-26 after an audit of these instructions found the Threads mandate was described everywhere and enforced nowhere). Read it before touching UI. It outranks this document on all design questions.
 
 ---
 
@@ -75,10 +76,11 @@ Severity roll-up: **P0 none in code · P1 ×2 · P2 ×9.** All locations are in 
 
 1. **§0 reconciliation** — production source into the repo, binaries included, repo-first workflow from now on.
 2. **C1 + C2** — the two P1s (one security fix, one repo-safety fix). Small, do them in the reconciliation pass.
-3. **L1 + L2** — social-card meta and the www canonical redirect. Cheap, and L1 is growth infrastructure for a social app.
-4. **The brief's core work** — Threads teardown, gap analysis doc in-repo, then autonomous build in Jay's priority order: cosmetics/feel → flow (L4 first-session funnel is the named suspect) → performance with measured before/after (L3 is your starting evidence).
-5. **Consolidation backlog** — C3/C4 together (one flair+formatter refactor), then C5–C8 as one perf pass on `social.ts`/`db.ts`.
-6. **Tests + observability** — C9/C10 alongside whatever you touch; don't let coverage shrink.
+3. **Threads parity pass** — per `THREADS-PARITY-STANDARD.md`: fold the drift listed in its §8 back into the Threads grammar (top bar → icon rail, footer → one legal line, home modules quieted, player page profile-first), then run its §7 checklist on every main surface and report the result. Jay's priority order puts cosmetics/feel first — this *is* that work, with the yardstick attached.
+4. **L1 + L2** — social-card meta and the www canonical redirect. Cheap, and L1 is growth infrastructure for a social app.
+5. **The brief's core work** — Threads teardown, gap analysis doc in-repo, then autonomous build in Jay's priority order: cosmetics/feel → flow (L4 first-session funnel is the named suspect) → performance with measured before/after (L3 is your starting evidence). Every build decision is subject to the parity standard's no-new-surface rule (§5 there): new capability ships as a post kind, composer mode, profile section, or room content — a new top-level destination needs Jay's explicit approval first.
+6. **Consolidation backlog** — C3/C4 together (one flair+formatter refactor), then C5–C8 as one perf pass on `social.ts`/`db.ts`.
+7. **Tests + observability** — C9/C10 alongside whatever you touch; don't let coverage shrink.
 
 **Guardrails (unchanged, hard):** minimal retention (recent form only, no archive — do not "improve" this away); no hidden-MMR, smurf/bot labels, dodge/shame features, champ-select scouting, or real-time coaching; advice gives reasons, never verdicts; tilt features self-facing only; reactions stay positive-only; moderation stack stays intact; checkout/monetization stays disabled until Riot App 911877 is approved; never commit secrets (env lives in Vercel); the Riot key rotation is a scheduled job — leave it alone.
 
