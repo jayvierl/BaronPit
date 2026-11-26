@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 
 export async function checkNavigation(journey) {
+  const signIn = await journey("/signin?next=%2Fprofile%2Fedit", {html:true});
+  assert.match(signIn, /<p\b[^>]*>Your link will take you back to the profile editor\.<\/p>/);
+  assert.match(signIn, /<input\b[^>]*type="email"/);
+  await journey("/signin?mode=signup", {includes:["<h1>Create your account</h1>", 'for="age-band">Age group</label>']});
+  await journey("/signin?error=expired", {includes:['role="alert"', "That link expired. Request a fresh one."]});
   const search = await journey("/search", {html:true});
   const primary = search.match(/<nav\b[^>]*aria-label="Primary"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
   assert.equal((primary.match(/<a\b/g) ?? []).length, 5);
