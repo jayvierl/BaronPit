@@ -37,6 +37,7 @@ export function PlayerOverview({ player, statsPath, historyPath }: { player: Pla
   const summary = publicPlayerSummary(player);
   const champion = summary.champions[0];
   const hasSample = summary.sampleGames > 0 && (summary.topRole || champion);
+  const formLength = Math.min(player.snapshot.matches.length, FORM_LENGTH);
   return (
     <section className={styles.overview} aria-label="League overview">
       <div className={styles.heading}>
@@ -61,7 +62,7 @@ export function PlayerOverview({ player, statsPath, historyPath }: { player: Pla
       <RecentResults matches={player.snapshot.matches} historyPath={historyPath} />
       {hasSample && (
         <div className={styles.sample}>
-          <p className={styles.meta}>Last {gameCount(summary.sampleGames)} · all queues</p>
+          {summary.sampleGames !== formLength && <p className={styles.meta}>Last {gameCount(summary.sampleGames)} · all queues</p>}
           <dl>
             {summary.topRole && <div><dt>Top role</dt><dd>{summary.topRole.name} · {gameCount(summary.topRole.games)}{summary.topRole.name.includes(" / ") ? " each" : ""}</dd></div>}
             {champion && <div><dt>Top champion</dt><dd>{champion.name} · {gameCount(champion.games)}</dd></div>}

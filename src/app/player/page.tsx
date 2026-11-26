@@ -4,6 +4,7 @@ import { buildCatalog, cardItems } from "@/lib/build-catalog";
 import { ItemIcons } from "@/components/item-icons";
 import { TeamBaronTag } from "@/components/team-baron-tag";
 import { MatchQuestionLinks } from "@/components/match-question-links";
+import { MatchFragmentFocus } from "./match-fragment-focus";
 import { ChampionPortrait } from "@/components/champion-portrait";
 import { Avatar } from "@/components/ui";
 import Link from "next/link";
@@ -206,7 +207,7 @@ async function LatestGames({ matches, patch, platform, puuid, signedIn }: {
   signedIn: boolean;
 }) {
   const catalog = await buildCatalog(patch);
-  return matches.map((m, index) => {
+  const rows = matches.map((m, index) => {
     const details = cardItems(catalog, m.items);
     return (
       <div key={m.matchId} id={matchSectionId(m.matchId)} tabIndex={-1} className={`game-row ${m.win ? "win" : "loss"} ${styles.matchTarget}`}>
@@ -247,4 +248,5 @@ async function LatestGames({ matches, patch, platform, puuid, signedIn }: {
       </div>
     );
   });
+  return <>{rows}<MatchFragmentFocus /></>;
 }

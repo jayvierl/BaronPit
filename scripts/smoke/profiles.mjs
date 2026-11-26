@@ -81,6 +81,7 @@ export async function checkPlayerProfiles(journey) {
     assert.match(verified, /Verified Riot link/);
     const overview = sectionFrom(verified, "League overview");
     checkMarkers(overview, ["Ranked Solo/Duo", "Platinum III · 64 LP", "80% win rate", "Ranked Flex", "Silver IV · 11 LP", "10% win rate", "Last 3 games · all queues", "Top role Support · 2 games", "Top champion Nami · 2 games"], "League overview");
+    assert.equal(visibleText(overview).match(/Last 3 games · all queues/g)?.length, 1);
     const form = sectionFrom(overview, "Recent form");
     assert.match(form, /aria-label="W · Victory on Nami, game 1"/);
     assert.match(form, /aria-label="L · Defeat on Nami, game 2"/);
