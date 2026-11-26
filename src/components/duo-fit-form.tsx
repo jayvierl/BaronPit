@@ -157,7 +157,7 @@ export function DuoFitForm({ saved, signedIn, returnTo }: { saved: DuoFit | null
         <a href={signInHref(returnTo)}>Sign in to continue</a>. Enter your preferences again after signing in.
       </p>}</noscript>
       <nav className="duo-list-views" aria-label="Community discussions">
-        <Link href={discussion}>Explore {discussionRole && discussionRole !== "Fill" ? discussionRole.toLowerCase() + " " : ""}matchup questions</Link>
+        <Link href={discussion} prefetch={false}>Explore {discussionRole && discussionRole !== "Fill" ? discussionRole.toLowerCase() + " " : ""}matchup questions</Link>
         <Link href="/review-hour">Bot-lane review hour</Link>
       </nav>
     </section>
