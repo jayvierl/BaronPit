@@ -1,0 +1,120 @@
+.header,
+.controls,
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+.header {
+  justify-content: space-between;
+}
+.header h1 {
+  margin: 0.7rem 0;
+}
+.form {
+  display: grid;
+  gap: 0.85rem;
+  margin: 1rem 0;
+}
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
+  gap: 0.65rem;
+}
+.form label,
+.filters label,
+.trial label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.form input,
+.form textarea,
+.form select,
+.filters input,
+.filters select,
+.trial select {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.6rem;
+  background: var(--field);
+  width: 100%;
+  min-width: 0;
+}
+.tabs {
+  margin: 1rem 0;
+}
+.tabs a {
+  padding: 0.4rem 0.75rem;
+  border-radius: 1rem;
+}
+.tabs a[aria-current="page"] {
+  background: var(--field);
+  font-weight: 700;
+}
+.entry {
+  display: block;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.entry h2 {
+  font-size: 1.1rem;
+  margin: 0.45rem 0;
+  overflow-wrap: anywhere;
+}
+.answer {
+  border-inline-start: 3px solid var(--accent);
+  padding: 0.2rem 0.8rem;
+  margin: 0.65rem 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.trial {
+  padding: 0.5rem 0;
+  display: grid;
+  gap: 0.65rem;
+}
+.starters {
+  display: grid;
+  gap: .4rem;
+  margin-block: .85rem .4rem;
+}
+.starters > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+.starters a, .replyGuide summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: .4rem .65rem;
+  border: 1px solid var(--border-strong);
+  border-radius: .6rem;
+  font-size: .9375rem;
+  cursor: pointer;
+}
+.starters a:hover, .replyGuide summary:hover {
+  background: var(--field);
+}
+.replyGuide {
+  margin-top: .8rem;
+}
+.replyGuide p {
+  margin: .45rem 0;
+  line-height: 1.5;
+}
+.replyInput {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: .6rem .8rem;
+  border: 1px solid var(--border-strong);
+  border-radius: .6rem;
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+}

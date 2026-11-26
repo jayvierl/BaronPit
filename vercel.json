@@ -1,0 +1,1 @@
+{"crons":[{"path":"/api/cron/patch-watch","schedule":"17 13 * * *"}],"framework":"nextjs"}
