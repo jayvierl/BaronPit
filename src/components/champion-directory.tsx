@@ -21,13 +21,16 @@ function setFilter(value: string) {
   window.dispatchEvent(new Event("champion-filter"));
 }
 
-export function ChampionDirectory({ champions, patch }: { champions: ChampionInfo[]; patch: string }) {
+export function ChampionDirectory({ champions, patch, roomSlugs }: {
+  champions: ChampionInfo[]; patch: string; roomSlugs: string[];
+}) {
   const query = useSyncExternalStore(
     subscribe,
     () => new URLSearchParams(window.location.search).get("q") || "",
     () => "",
   );
   const filter = query.trim().toLowerCase();
+  const publicRooms = new Set(roomSlugs);
   const shown = filter
     ? champions.filter(
         (champion) =>
@@ -60,27 +63,32 @@ export function ChampionDirectory({ champions, patch }: { champions: ChampionInf
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
-        {shown.map((c) => (
-          <div key={c.id} className="card" style={{ padding: 13 }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <ChampionPortrait id={c.id} patch={patch}/>
-              <div>
-                <strong style={{ fontSize: 15 }}>{c.name}</strong>
-                <div className="meta" style={{ fontSize: 12 }}>
-                  {c.tags.join(" · ")}
+        {shown.map((c) => {
+          const roomSlug = `champ-${c.id.toLowerCase()}`;
+          return (
+            <div key={c.id} className="card" style={{ padding: 13 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <ChampionPortrait id={c.id} patch={patch}/>
+                <div>
+                  <strong style={{ fontSize: 15 }}>{c.name}</strong>
+                  <div className="meta" style={{ fontSize: 12 }}>
+                    {c.tags.join(" · ")}
+                  </div>
                 </div>
               </div>
+              <div style={{ display: "flex", gap: 10, marginTop: 9, fontSize: 13, fontWeight: 700 }}>
+                {publicRooms.has(roomSlug) && (
+                  <Link aria-label={c.name + " room"} href={`/rooms/${roomSlug}`} prefetch={false}>
+                    Room
+                  </Link>
+                )}
+                <Link aria-label={c.name + " builds"} href={`/builds?champ=${encodeURIComponent(c.id)}`}>
+                  Builds
+                </Link>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 9, fontSize: 13, fontWeight: 700 }}>
-              <Link aria-label={c.name + " room"} href={`/rooms/champ-${c.id.toLowerCase()}`}>
-                Room
-              </Link>
-              <Link aria-label={c.name + " builds"} href={`/builds?champ=${encodeURIComponent(c.id)}`}>
-                Builds
-              </Link>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </>
   );

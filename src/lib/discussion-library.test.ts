@@ -39,6 +39,9 @@ describe("private discussion library", () => {
     const page = await savedPlaybook(1, null);
     expect(page.entries.map(x => [x.kind, x.id, x.postId, x.authorId])).toEqual([["comment", 23, 10, 3], ["post", 10, 10, 2]]);
     expect((await savedPlaybook(1, page.entries[0].cursor)).entries.map(x => x.id)).toEqual([10]);
+    expect((await savedPlaybook(1, null, "post")).entries.map(x => x.id)).toEqual([10]);
+    expect((await savedPlaybook(1, null, "comment")).entries.map(x => x.id)).toEqual([23]);
+    expect((await savedPlaybook(1, page.entries[0].cursor, "comment")).entries).toEqual([]);
     await changeLibrary(3, "comment", 23, "save", false);
     expect((await libraryState(1, "comment", 23))?.saved).toBe(true);
     expect((await savedPlaybook(3, null)).entries).toEqual([]);

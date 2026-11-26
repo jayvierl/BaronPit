@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ENDORSE_KINDS } from "@/lib/pure";
 import { playerStatsHref, splitRiotId } from "@/lib/platforms";
+import { withSearchReturn } from "@/lib/search-scopes";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SafetyReport } from "./safety-report";
 
@@ -115,18 +116,25 @@ export function LookupForm({
   platforms,
   defaultPlatform = "na1",
   initialRiotId = "",
+  searchReturn,
+  playerReturn,
 }: {
   platforms: { id: string; label: string }[];
   defaultPlatform?: string;
   initialRiotId?: string;
+  searchReturn?: string;
+  playerReturn?: string;
 }) {
   const [riotId, setRiotId] = useState(initialRiotId);
   const [platform, setPlatform] = useState(defaultPlatform);
   const [error, setError] = useState("");
+  const [lookingUp, startLookup] = useTransition();
   const router = useRouter();
   return (
     <form
       className="lookup-form"
+      action="/player"
+      method="get"
       onSubmit={(e) => {
         e.preventDefault();
         const { gameName, tagLine } = splitRiotId(riotId, platform);
@@ -135,9 +143,12 @@ export function LookupForm({
           return;
         }
         setError("");
-        router.push(playerStatsHref(platform, gameName + "#" + tagLine));
+        const lookupPath = withSearchReturn(playerStatsHref(platform, gameName + "#" + tagLine), searchReturn);
+        startLookup(() => router.push(playerReturn ? `${lookupPath}&fromPlayer=${encodeURIComponent(playerReturn)}` : lookupPath));
       }}
     >
+      {searchReturn && <input type="hidden" name="from" value={searchReturn} />}
+      {playerReturn && <input type="hidden" name="fromPlayer" value={playerReturn} />}
       <input
         value={riotId}
         onChange={(e) => {
@@ -157,8 +168,8 @@ export function LookupForm({
           </option>
         ))}
       </select>
-      <button type="submit" className="btn gold">
-        Look up
+      <button type="submit" className="btn gold" disabled={lookingUp}>
+        {lookingUp ? "Looking up…" : "Look up"}
       </button>
       {platform === "na1" && (
         <small className="meta">Names use #NA1 by default. Include a custom tag if needed.</small>

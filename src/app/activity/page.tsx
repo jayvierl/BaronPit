@@ -67,7 +67,7 @@ function InvitationList({ invites }: { invites: DuoActivityItem[] | null }) {
   if (!duoEnabled())
     return (
       <p>
-        Verified matching is paused. <Link href="/lfg">Manage your private duo plan</Link>.
+        Verified matching is paused. <Link href="/lfg#duo-plan">Manage your private duo plan</Link>.
       </p>
     );
   if (!invites) return <p role="alert">Your invitations couldn’t load. Try again shortly.</p>;

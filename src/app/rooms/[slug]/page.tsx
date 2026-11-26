@@ -101,7 +101,7 @@ export default async function RoomPage({ params, searchParams }: {
       </header>
 
       <details className={styles.compose}>
-        <summary>Start a thread<span aria-hidden="true">＋</span></summary>
+        <summary>Post in {room.name}<span aria-hidden="true">＋</span></summary>
         {user
           ? <Composer key={user.id + ":" + room.id} viewerId={user.id} roomId={room.id} patch={patch} champions={champions.map(c => c.id)} viewerIdentity={viewerIdentity} />
           : <GuestPostDraft roomId={room.id} destination={destination + "#compose"} label={`Post in ${room.name}`}/>}

@@ -53,7 +53,7 @@
 .replyGroup > summary { width:fit-content; min-height:44px; align-content:center; margin-inline-start:1rem; padding-inline:.25rem; cursor:pointer; color:var(--ink-mid); font-size:.82rem; font-weight:600; }
 .replyGroup > summary:hover { color:var(--ink); }
 .replyGroup > summary:focus-visible { outline:2px solid var(--accent-ink); outline-offset:2px; }
-.replyBranch:target { border-radius:.5rem; }
+.replyRow, .replyPanel > :global(.comments) { scroll-margin-block-start: calc(76px + env(safe-area-inset-top)); }
 .children { margin-inline-start: .95rem; padding-inline-start:1.15rem; border-inline-start:2px solid var(--border); }
 .replyActions { display:flex; align-items:center; flex-wrap:wrap; gap:2px .65rem; }
 .replyActions > *, .replyActions :is(summary, button) { font-size:.82rem; }
@@ -91,6 +91,8 @@
 .topic a:hover, .discussionLinks a:hover { text-decoration:underline; }
 .context { color:var(--ink-soft); font-size:.8rem; display:flex; align-items:baseline; flex-wrap:wrap; gap:.18rem .65rem; margin:.05rem 0 .38rem; }
 .post > :global(.thread-main) > :global(.post-body) { margin: .18rem 0 .36rem; font-size: clamp(.955rem, .9rem + .25vw, 1.055rem); line-height: 1.56; overflow-wrap: anywhere; }
+.bodyLink { color: inherit; }
+.bodyLink:hover { text-decoration: underline; text-underline-offset: .18em; }
 .buildAttachment, .post > :global(.thread-main) > :global(.match-card) {
   margin-block: .65rem .4rem; padding: .65rem .72rem; border: 1px solid var(--border); border-radius: .72rem; background: none;
 }
@@ -110,7 +112,7 @@
 .replyPanel > :global(.comments) { margin:.6rem 0 0; border-top:1px solid var(--border); padding-top:.4rem; }
 .replyByline { display:flex; align-items:center; gap:.45rem; }
 .replyActions :is(button,summary) { min-height:36px; display:inline-flex; align-items:center; }
-.replyBranch:target { background:var(--win-tint); outline:1px solid var(--win-edge); }
+.replyRow:target { border-radius:.5rem; background:var(--win-tint); outline:1px solid var(--win-edge); }
 .loadingPost { display:grid; grid-template-columns:44px minmax(0,1fr); gap:.75rem; border-bottom:1px solid var(--border); padding:1rem var(--post-row-inline, clamp(.75rem, 2.35vw, 1.2rem)) .7rem; }
 .loadingPost span { background:var(--field); display:block; border-radius:8px; }
 .loadingPost .loadingAvatar { height:44px; width:44px; border-radius:50%; }

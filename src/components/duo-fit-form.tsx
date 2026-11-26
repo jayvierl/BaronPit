@@ -14,7 +14,7 @@ import { ActionFeedback, usePostAction } from "./post-action";
 const empty = { role: "", partnerRole: "Any", blocks: [] as string[], vibe: "both", communication: "any" };
 const draftScope = "private-duo-plan";
 
-export function DuoFitForm({ saved, signedIn }: { saved: DuoFit | null; signedIn: boolean }) {
+export function DuoFitForm({ saved, signedIn, returnTo }: { saved: DuoFit | null; signedIn: boolean; returnTo: string }) {
   const browserZone = useBrowserTimeZone();
   const [draft, setDraft] = useState<{ role:string; partnerRole:string; blocks:string[]; vibe:string; communication:string; timeZone?:string }>(saved ?? empty);
   const timeZone = draft.timeZone ?? browserZone;
@@ -33,9 +33,9 @@ export function DuoFitForm({ saved, signedIn }: { saved: DuoFit | null; signedIn
   }, [signedIn]);
 
   function signIn(mode?: "enrol") {
-    let href = signInHref("/lfg#duo-plan", mode);
+    let href = signInHref(returnTo, mode);
     try {
-      href = beginDraftSignIn(window.localStorage, draftScope, "/lfg#duo-plan", {...draft,timeZone}, mode);
+      href = beginDraftSignIn(window.localStorage, draftScope, returnTo, {...draft,timeZone}, mode);
     } catch { /* Sign-in remains available when browser storage is disabled. */ }
     router.push(href);
   }

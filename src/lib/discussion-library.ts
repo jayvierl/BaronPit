@@ -104,11 +104,12 @@ export function pageCursor(value: unknown) {
   return typeof value === "string" && /^[1-9]\d{0,17}$/.test(value) ? value : null;
 }
 
-export async function savedPlaybook(userId: number, before: string | null) {
+export async function savedPlaybook(userId: number, before: string | null, kind?: LibraryKind) {
   const rows = await queryRows(`WITH RECURSIVE ${HIDDEN_AUTHORS},
     saves AS (SELECT s.id AS cursor, s.comment_id,coalesce(s.post_id,c.post_id) AS post_id
       FROM wp_discussion_saves s LEFT JOIN wp_comments c ON c.id=s.comment_id
-      WHERE s.user_id=$1 AND ($2::bigint IS NULL OR s.id < $2)),
+      WHERE s.user_id=$1 AND ($2::bigint IS NULL OR s.id < $2)
+        AND ($4::text IS NULL OR ($4='comment' AND s.comment_id IS NOT NULL) OR ($4='post' AND s.post_id IS NOT NULL))),
     candidates AS (SELECT DISTINCT post_id FROM saves WHERE comment_id IS NOT NULL),
     ${visibleCommentsFor("posts", "candidates")}
     SELECT s.cursor,coalesce(c.id,p.id) AS id,p.id AS post_id,u.id AS author_id,u.display_name AS author,
@@ -116,7 +117,7 @@ export async function savedPlaybook(userId: number, before: string | null) {
     FROM saves s JOIN wp_posts p ON p.id=s.post_id LEFT JOIN wp_comments c ON c.id=s.comment_id
     JOIN wp_users u ON u.id=coalesce(c.author_id,p.author_id)
     WHERE ${visiblePostForInteraction} AND (c.id IS NULL OR EXISTS(SELECT 1 FROM thread t WHERE t.id=c.id))
-    ORDER BY s.cursor DESC LIMIT $3`, [userId, before, LIBRARY_PAGE_SIZE + 1]);
+    ORDER BY s.cursor DESC LIMIT $3`, [userId, before, LIBRARY_PAGE_SIZE + 1, kind ?? null]);
   return entries(rows);
 }
 

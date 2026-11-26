@@ -209,8 +209,10 @@ describe("bounded player and community data queries", () => {
       VALUES (1,'text','Earlier match question',now()-interval '14 days') RETURNING id`;
     const [self] = await q`INSERT INTO wp_comments(author_id,post_id,body) VALUES(1,${question.id},'Me again') RETURNING id`;
     expect((await readPosts(null,{activeReplies:true},1))[0].id).not.toBe(question.id);
-    await q`INSERT INTO wp_comments(author_id,post_id,body,parent_id) VALUES(2,${question.id},'A useful reply',${self.id})`;
-    expect((await readPosts(null,{activeReplies:true},1))[0]).toMatchObject({id:question.id,lastReplyAt:expect.any(String)});
+    const replies = await q`INSERT INTO wp_comments(author_id,post_id,body,parent_id,created_at) VALUES
+      (2,${question.id},'A useful reply',${self.id},now()),(2,${question.id},'A second reply',${self.id},now()) RETURNING id`;
+    const latest = Math.max(...replies.map(reply => Number(reply.id)));
+    expect((await readPosts(null,{activeReplies:true},1))[0]).toMatchObject({id:question.id,lastReplyAt:expect.any(String),lastReplyId:latest});
     // Users 1 and 2 have a bidirectional block in the fixture.
     expect((await readPosts(1,{activeReplies:true},1))[0].id).not.toBe(question.id);
     await q`UPDATE wp_comments SET status='held' WHERE id=${self.id}`;

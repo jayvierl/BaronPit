@@ -7,6 +7,7 @@
 .riotId span, .socialProof, .endorsements { color: var(--ink-mid); }
 .bio { margin: .65rem 0 .3rem; max-width: 54ch; white-space: pre-line; overflow-wrap: anywhere; line-height: 1.5; }
 .link { color: var(--accent-ink); font-weight: 600; text-underline-offset: .2em; }
+.returnLink { display: inline-flex; align-items: center; min-height: 36px; font-size: .86rem; }
 .socialProof, .badges, .endorsements, .actions { flex-wrap: wrap; align-items: center; gap: .4rem .65rem; }
 .socialProof { margin: .7rem 0 .75rem; font-size: .84rem; }
 .socialProof span + span::before { content: "·"; margin-right: .65rem; }

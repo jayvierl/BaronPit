@@ -171,7 +171,7 @@ try {
   await journey("/?tab=following", {session:true, includes:["Make this feed yours","The Baron Pit","Join room"], excludes:["Fixture blocked discussion"]});
   await journey("/api/social/follow", {session:true, method:"POST", body:{userId:502,follow:true}, includes:['"active":true']});
   await journey("/activity?tab=duos", {session:true, includes:["Duo"], excludes:["Fixture Blocked"]});
-  for (const signedOutPage of ["/activity?tab=duos", "/activity?tab=watching&before=42", "/playbook?before=42"]) {
+  for (const signedOutPage of ["/activity?tab=duos", "/activity?tab=watching&before=42", "/playbook?before=42", "/playbook?tab=replies&before=42"]) {
     await journey(signedOutPage, {status:307, signInReturn:signedOutPage});
   }
   await checkPlayerProfiles(journey);
@@ -261,6 +261,9 @@ try {
   await journey("/api/questions", {session:true,method:"POST",body:{action:"trial",postId,answerId:reply.commentId,outcome:"helped"},includes:['"ok":true']});
   await journey("/api/library", {session:true,method:"POST",body:{action:"save",kind:"comment",id:reply.commentId,active:true},includes:['"ok":true']});
   await journey("/playbook", {session:true,includes:["Spend the gold before dragon"]});
+  await journey("/playbook?tab=replies", {session:true, includes:["Spend the gold before dragon", `/post/${postId}#reply-${reply.commentId}`, 'aria-label="Saved discussions"']});
+  await journey("/playbook?tab=posts", {session:true, excludes:["Spend the gold before dragon"]});
+  await journey("/playbook?tab=replies&before=1", {session:true, includes:["Back to latest saves", 'href="/playbook?tab=replies"']});
   await journey("/playbook", {session:"helper",excludes:["Spend the gold before dragon"]});
   await journey("/questions?mode=answered&champion=Ashe&topic=Objective", {includes:["Should Ashe rotate before the next dragon?"]});
   await journey("/post/"+postId, {includes:["Spend the gold before dragon","It helped"]});

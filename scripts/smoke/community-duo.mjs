@@ -2,6 +2,7 @@
 export async function checkCommunityDuo(journey) {
   await journey("/", {includes: ["Find your duo", "Set duo preferences", "Bot lane review hour"]});
   await journey("/rooms/lfg-lobby", {includes: ["Open Duo Finder"]});
+  await journey("/lfg?view=all", {includes: ['href="#duo-plan"', 'id="duo-plan"', "Set duo preferences"]});
   await journey("/review-hour", {includes: ["role=Support", "role=Bot", "Add this hour to calendar"]});
   await journey("/review-hour/calendar?day=2000-01-01", {status: 410});
   await journey("/lfg/thanks", {includes: ["public 90-day total", "Tip preview only", "Free thanks", "$4.50", "$0.50"]});

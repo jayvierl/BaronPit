@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DuoTipPreview } from "@/components/duo-tip-preview";
+import { SAFETY_CENTER } from "@/lib/brand";
 import { examplePlatformBps } from "@/lib/duo-gratuity";
 import styles from "./preview.module.css";
 
@@ -16,6 +17,6 @@ export default function DuoThanksPage() {
     <p className="notice"><strong>Tip preview only.</strong> This calculator shows how an optional future tip could be shared. Payments and payouts are unavailable.</p>
     <DuoTipPreview platformBps={examplePlatformBps(process.env.DUO_TIP_PREVIEW_BPS)} />
     <p>Keep money out of listings and requests. Report anyone asking for payment to queue, carry or boost.</p>
-    <Link href="/safety">Visit the safety centre</Link>
+    <Link href="/safety">Visit the {SAFETY_CENTER}</Link>
   </div>;
 }

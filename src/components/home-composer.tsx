@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { AvatarIdentity } from "@/lib/author-identity";
+import { POST_TO_THE_PIT } from "@/lib/brand";
 import { Composer } from "./composer";
 import { GuestPostDraft } from "./guest-draft";
 import { Avatar } from "./ui";
@@ -56,9 +57,13 @@ export function HomeComposer({ viewerId, patch, champions, viewerIdentity }: {
         <span className={`${styles.avatar} ${styles.closed}`} aria-hidden="true">
           {viewerIdentity ? <Avatar {...viewerIdentity} size={40}/> : <span className={styles.guestAvatar}/>}
         </span>
-        <span className={`${styles.prompt} ${styles.closed}`}>{draftOwner === viewerId ? "Continue draft" : "Start a thread"}</span>
-        <span className={`${styles.post} ${styles.closed}`}>Post</span>
-        <span className={styles.open}>New thread</span>
+        <span className={`${styles.prompt} ${styles.closed}`}>{draftOwner === viewerId ? "Continue draft" : POST_TO_THE_PIT}</span>
+        <span className={`${styles.expand} ${styles.closed}`} aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" focusable="false">
+            <path d="M8 3v10M3 8h10"/>
+          </svg>
+        </span>
+        <span className={styles.open}>{POST_TO_THE_PIT}</span>
         <span className={`${styles.open} ${styles.close}`}>Close editor</span>
       </summary>
       {viewerId === null

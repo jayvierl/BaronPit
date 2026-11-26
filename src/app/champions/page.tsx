@@ -1,11 +1,11 @@
 import { ChampionDirectory } from "@/components/champion-directory";
 import { championCatalog } from "@/lib/riot";
+import { visibleChampionRoomSlugs } from "@/lib/rooms";
 
-export const dynamic = "force-static";
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export default async function ChampionsPage() {
-  const catalog = await championCatalog();
+  const [catalog, roomSlugs] = await Promise.all([championCatalog(), visibleChampionRoomSlugs().catch(() => [])]);
   return (
     <div>
       <h1 className="page-title">Champions</h1>
@@ -13,7 +13,7 @@ export default async function ChampionsPage() {
         {catalog.current ? "Current patch" : "Last available Data Dragon catalog"} {catalog.patch} ·{" "}
         {catalog.list.length} champions.
       </p>
-      <ChampionDirectory champions={catalog.list} patch={catalog.patch} />
+      <ChampionDirectory champions={catalog.list} patch={catalog.patch} roomSlugs={roomSlugs} />
     </div>
   );
 }

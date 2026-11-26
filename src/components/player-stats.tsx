@@ -12,7 +12,7 @@ const timestamp = new Intl.DateTimeFormat("en-US", {
 
 export function PlayerStats({ player, source = "cache", lookupHref }: {
   player: Player;
-  source?: "cache" | "live" | "stale";
+  source?: "cache" | "live" | "stale" | "partial";
   lookupHref?: string;
 }) {
   const stats = publicPlayerSummary(player);
@@ -24,6 +24,7 @@ export function PlayerStats({ player, source = "cache", lookupHref }: {
       </header>
       <p className={styles.note}>
         {source === "stale" ? "Riot couldn’t refresh this record. " : ""}
+        {source === "partial" ? "Riot returned part of this profile. Some recent matches or queue records may be missing. " : ""}
         {stats.asOf ? <>
           {source === "stale" || !stats.snapshotFresh ? "Last known Riot records" : "Riot snapshot"}
           {" · "}<time dateTime={stats.asOf}>{timestamp.format(new Date(stats.asOf))} UTC</time>
@@ -61,7 +62,7 @@ export function PlayerStats({ player, source = "cache", lookupHref }: {
       )}
       {stats.sampleGames > 0 ? (
         <div className={styles.recent}>
-          <h3>Last {gameCount(stats.sampleGames)} · all queues</h3>
+          <h3>{source === "partial" ? `${gameCount(stats.sampleGames)} available` : `Last ${gameCount(stats.sampleGames)}`} · all queues</h3>
           <dl>
             <div>
               <dt>Most played role</dt>

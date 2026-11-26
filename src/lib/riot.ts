@@ -144,8 +144,8 @@ export async function getCachedPlayer(puuid: string): Promise<Player | null> {
 }
 
 export type LookupResult =
-  | { ok: true; player: Player; fresh: boolean; source: "live" | "cache" | "stale" }
-  | { ok: false; code: "not_found" | "invalid_key" | "key_unavailable" | "upstream" | "unavailable" };
+  | { ok: true; player: Player; fresh: boolean; source: "live" | "cache" | "stale" | "partial" }
+  | { ok: false; code: "not_found" | "invalid_key" | "key_unavailable" | "rate_limited" | "upstream" | "unavailable" };
 
 const refreshes = new Map<string, Promise<LookupResult>>();
 
@@ -175,7 +175,7 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string): 
   const unavailable = (status: number): LookupResult =>
     fallback
       ? { ok: true, player: fallback, fresh: false, source: "stale" }
-      : { ok: false, code: status === 401 || status === 403 ? "invalid_key" : "upstream" };
+      : { ok: false, code: status === 401 || status === 403 ? "invalid_key" : status === 429 ? "rate_limited" : "upstream" };
   if (!riotConfigured()) return cached ? unavailable(503) : { ok: false, code: "key_unavailable" };
   const region = regionFor(platform);
   const acct = await riotJson(
@@ -203,19 +203,19 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string): 
   ]);
 
   if (summ.status === 404) return { ok: false, code: "not_found" };
-  const failed = [summ, league, ids].find((response) => response.status !== 200);
-  if (failed) return unavailable(failed.status);
-  if (!summ.body || !Array.isArray(ids.body) || !Array.isArray(league.body)) return unavailable(502);
+  if (summ.status !== 200 || !summ.body) return unavailable(summ.status === 200 ? 502 : summ.status);
 
   const level = summ.body ? Number((summ.body as { summonerLevel: number }).summonerLevel ?? 0) : 0;
   const icon = summ.body ? Number((summ.body as { profileIconId: number }).profileIconId ?? 0) : 0;
 
-  const rankedEntries = readRankedEntries(league.body);
-  if (!rankedEntries) return unavailable(502);
+  const rankedEntries = league.status === 200 ? readRankedEntries(league.body) : undefined;
+  const matchList = ids.status === 200 && Array.isArray(ids.body) ? ids.body : undefined;
+  if (!rankedEntries && !matchList) return unavailable([league, ids].find(r => r.status !== 200)?.status ?? 502);
+  let complete = rankedEntries !== undefined && matchList !== undefined && matchList.every(id => typeof id === "string" && id.length > 0);
   // Existing rank columns continue to mean Solo/Duo to all matching and eligibility checks.
-  const solo = rankedEntries.find(entry => entry.queueType === "RANKED_SOLO_5x5");
+  const solo = rankedEntries?.find(entry => entry.queueType === "RANKED_SOLO_5x5");
 
-  const matchIds = Array.from(new Set(ids.body.filter((id): id is string => typeof id === "string"))).slice(
+  const matchIds = Array.from(new Set((matchList ?? []).filter((id): id is string => typeof id === "string" && id.length > 0))).slice(
     0,
     20,
   );
@@ -230,9 +230,13 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string): 
         riotJson(`https://${region}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(id)}`),
       ),
     );
+    let delayed = false;
     for (const r of results) {
-      if (r.status === 404) continue;
-      if (r.status !== 200 || !r.body) return unavailable(r.status);
+      if (r.status !== 200 || !r.body) {
+        complete = false;
+        if (r.status !== 404) delayed = true;
+        continue;
+      }
       const m = r.body as {
         info: {
           gameDuration: number;
@@ -266,9 +270,15 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string): 
         };
         metadata: { matchId: string };
       };
-      if (!Array.isArray(m.info?.participants) || !batch.includes(m.metadata?.matchId)) return unavailable(502);
+      if (!Array.isArray(m.info?.participants) || !batch.includes(m.metadata?.matchId)) {
+        complete = false;
+        continue;
+      }
       const me = m.info.participants.find((p) => p.puuid === puuid);
-      if (!me) continue;
+      if (!me || typeof me.win !== "boolean" || typeof me.championName !== "string") {
+        complete = false;
+        continue;
+      }
       const team = m.info.participants.filter((p) => p.teamId === me.teamId);
       const teamObjectives = Number.isInteger(me.teamId) && Array.isArray(m.info.teams)
         ? m.info.teams.find(t => t?.teamId === me.teamId)?.objectives
@@ -307,14 +317,22 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string): 
           })),
       });
     }
+    if (delayed) break;
   }
 
   const matches = matchIds.flatMap((id) => known.get(id) ?? []);
-  if (!matches.length && (matchIds.length > 0 || (fallback?.snapshot.games ?? 0) > 0)) return unavailable(502);
-
   const snapshot = summarize(matches);
+  if (!complete || matches.length !== matchIds.length || (!matches.length && (fallback?.snapshot.games ?? 0) > 0)) {
+    // Screens may show Riot's observed subset. Keep it out of the shared cache and eligibility evidence.
+    if (fallback) return unavailable(502);
+    return { ok: true, source: "partial", fresh: false, player: {
+      puuid, platform, gameName: realName, tagLine: realTag, summonerLevel: level, profileIcon: icon,
+      rankTier: solo?.tier ?? null, rankDiv: solo?.rank ?? null, rankLp: solo?.leaguePoints ?? null,
+      rankWins: solo?.wins ?? null, rankLosses: solo?.losses ?? null, rankedEntries, snapshot, fetchedAt: observedAt,
+    } };
+  }
   // Missing details or hidden teammates can prove a positive match but cannot rule one out.
-  if (matches.length && matches.length === ids.body.length && matches.every(m =>
+  if (matches.length && matches.length === matchList?.length && matches.every(m =>
     m.startedAt && m.teammates?.length && m.teammates.every(t => t.name && t.tag))) {
     snapshot.coverageThrough = Math.max(...matches.map(m => m.playedAt));
     snapshot.coverageFrom = matches.length < 20 ? 0 : Math.min(...matches.map(m => m.startedAt!));

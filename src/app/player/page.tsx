@@ -16,7 +16,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { lookupPlayer, isPlatform, PLATFORMS, currentPatch, profileIconUrl } from "@/lib/riot";
 import { q } from "@/lib/db";
 import { publicRiotOwner } from "@/lib/player-insights";
+import { visibleChampionRoomSlugs } from "@/lib/rooms";
 import { playerStatsHref, splitRiotId } from "@/lib/platforms";
+import { readSearchReturn, searchHref, withSearchReturn } from "@/lib/search-scopes";
+import { safeReturnTo } from "@/lib/signin-return";
 import { LinkPlayerButton, LookupForm, ShareCardButton } from "@/components/social-ui";
 import { PlayerStats } from "@/components/player-stats";
 import { RecentResults } from "@/components/player-overview";
@@ -25,21 +28,29 @@ import { gameCount, earnedBadges, formReads, type MatchSummary } from "@/lib/pur
 export const dynamic = "force-dynamic";
 
 export default async function PlayerPage({ searchParams }: {
-  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; queue?: string; champion?: string }>;
+  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; queue?: string; champion?: string; from?: string; fromPlayer?: string }>;
 }) {
   const sp = await searchParams;
   const platform = sp.platform && isPlatform(sp.platform) ? sp.platform : "na1";
+  const searchReturn = readSearchReturn(sp.from);
+  const playerPath = safeReturnTo(sp.fromPlayer);
+  const playerReturn = playerPath.startsWith("/player?") ? playerPath : undefined;
   const gameName = typeof sp.name === "string" ? sp.name : "";
   const input = typeof sp.riotId === "string" ? sp.riotId : typeof sp.tag === "string" ? `${gameName}#${sp.tag}` : gameName;
   const {gameName:name, tagLine:tag} = splitRiotId(input,platform);
+  const previous = playerReturn ?? searchReturn;
+  const searchLink = previous && <Link href={previous} className={styles.searchLink}>← {playerReturn ? "Back to previous player" : "Back to search"}</Link>;
+  const lookupForm = <LookupForm key={JSON.stringify([input, platform])} platforms={PLATFORMS.map(({id,label}) => ({ id, label }))}
+    defaultPlatform={platform} initialRiotId={input} searchReturn={searchReturn} playerReturn={playerReturn} />;
 
   if (!name || !tag) {
     return (
       <div style={{ maxWidth: 640, margin: "20px auto" }}>
+        {searchLink}
         <div className="card">
           <h1 className="page-title">Player lookup</h1>
           <p className="meta">{input ? "Enter the game name and tag from the Riot ID. For example, Jay Lewis#NA1." : "Look up a player’s recent games, current rank and champion pool."}</p>
-          <LookupForm platforms={PLATFORMS.map((p) => ({ id: p.id, label: p.label }))} defaultPlatform={platform} initialRiotId={input} />
+          {lookupForm}
         </div>
       </div>
     );
@@ -53,30 +64,36 @@ export default async function PlayerPage({ searchParams }: {
     const text =
       result.code === "not_found" ? `No player named ${name}#${tag} on ${platform.toUpperCase()}. Check the spelling and the #tag.`
       : result.code === "key_unavailable" || result.code === "invalid_key" ? "Live player lookup is temporarily unavailable. Please try again later."
+      : result.code === "rate_limited" ? "Riot is limiting lookups. Wait a moment before trying again."
       : "The Riot API didn't answer just now. Try again in a moment.";
     return (
       <div style={{ maxWidth: 640, margin: "20px auto" }}>
+        {searchLink}
         <div className="card">
           <h1 className="page-title">Lookup</h1>
           <div className="notice warn">{text}</div>
-          <LookupForm platforms={PLATFORMS.map((p) => ({ id: p.id, label: p.label }))} defaultPlatform={platform} initialRiotId={input} />
+          {lookupForm}
+          <Link className={styles.searchLink} href={searchHref("players", input, platform, true)}>Search saved player records</Link>
         </div>
       </div>
     );
   }
 
   const player = result.player;
+  const partial = result.source === "partial";
   const snap = player.snapshot;
-  const [linked,owner] = await Promise.all([
+  const [linked,owner,roomSlugs] = await Promise.all([
     user ? q`SELECT 1 FROM wp_links WHERE user_id=${user.id} AND puuid=${player.puuid}` : [],
     publicRiotOwner(player.puuid, user?.id ?? null),
+    visibleChampionRoomSlugs(snap.champPool.map(entry => entry.champion)).catch(() => []),
   ]);
+  const publicRooms = new Set(roomSlugs);
   const linkedByMe = linked.length > 0;
   const badges = earnedBadges(snap);
   const history = recentMatchHistory(snap.matches, sp.queue, sp.champion);
   const latest = history.matches.slice(0, MATCH_DETAIL_LIMIT);
   const filtered = Boolean(history.queue || history.champion);
-  const lookupHref = playerStatsHref(player.platform, player.gameName + "#" + player.tagLine);
+  const lookupHref = withSearchReturn(playerStatsHref(player.platform, player.gameName + "#" + player.tagLine), searchReturn);
   const historyHref = `${lookupHref}#match-history`;
   const reads = formReads(snap);
 
@@ -90,6 +107,7 @@ export default async function PlayerPage({ searchParams }: {
   return (
     <div>
       {user?.pilotActive && <PilotVisit kind="stats"/>}
+      {searchLink ?? <Link className={styles.searchLink} href={searchHref("players", "", platform)}>Search for another player</Link>}
       <div style={{ padding: "6px 2px 14px", borderBottom: "1px solid var(--border)" }}>
         <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
           <div style={{ flex: "1 1 120px", minWidth: 0 }}>
@@ -102,7 +120,7 @@ export default async function PlayerPage({ searchParams }: {
             </div>
             {owner && (
               <div className="meta" style={{ marginTop: 3 }}>
-                Verified community profile · <Link href={`/u/${owner.id}`} style={{ fontWeight: 600 }}>{owner.name}</Link>
+                Verified community profile · <Link href={withSearchReturn(`/u/${owner.id}`, searchReturn)} style={{ fontWeight: 600 }}>{owner.name}</Link>
               </div>
             )}
             {badges.length > 0 && (
@@ -113,11 +131,11 @@ export default async function PlayerPage({ searchParams }: {
           </div>
           <Avatar name={player.gameName} hue={265} size={84} imageUrl={profileIconUrl(patch, player.profileIcon)} />
         </div>
-        <RecentResults matches={snap.matches} historyPath={filtered ? lookupHref : ""} />
+        <RecentResults matches={snap.matches} historyPath={filtered ? lookupHref : ""} partial={partial} />
         <PlayerStats player={player} source={result.source} lookupHref={history.sampleSize ? "#match-history" : undefined} />
         <div className="profile-actions">
           <RefreshPlayer />
-          {user && !linkedByMe && <LinkPlayerButton platform={platform} gameName={player.gameName} tagLine={player.tagLine} />}
+          {user && !linkedByMe && !partial && <LinkPlayerButton platform={platform} gameName={player.gameName} tagLine={player.tagLine} />}
         </div>
       </div>
 
@@ -126,6 +144,7 @@ export default async function PlayerPage({ searchParams }: {
         <Form action="/player#match-history" className={styles.filters} key={JSON.stringify([player.puuid, history.queue, history.champion])}>
           <input type="hidden" name="platform" value={platform}/>
           <input type="hidden" name="riotId" value={player.gameName + "#" + player.tagLine}/>
+          {searchReturn && <input type="hidden" name="from" value={searchReturn}/>}
           <label>Queue<select name="queue" defaultValue={history.queue}>
             <option value="">All queues</option>
             {history.queue && !history.queues.includes(history.queue) && <option value={history.queue}>Outside this sample</option>}
@@ -139,18 +158,16 @@ export default async function PlayerPage({ searchParams }: {
           <button className="btn secondary small">Apply</button>
         </Form>
         <p className={styles.result} aria-live="polite">
-          {history.winRate === null ? `No matching games in the last ${gameCount(history.sampleSize)}` : <>
-            {filtered ? `${history.matches.length} of ${gameCount(history.sampleSize)}` : `Last ${gameCount(history.sampleSize)}`}
+          {history.winRate === null ? `No matching games in ${partial ? "the available" : "the last"} ${gameCount(history.sampleSize)}` : <>
+            {filtered ? `${history.matches.length} of ${gameCount(history.sampleSize)}` : partial ? `${gameCount(history.sampleSize)} available` : `Last ${gameCount(history.sampleSize)}`}
             {" · "}{history.wins}W–{history.losses}L · {history.winRate}% win rate
           </>}
           {filtered && <Link href={historyHref} className={styles.reset}>Clear filters</Link>}
         </p>
       </>}
-      {history.sampleSize === 0 && <p className="meta">No recent matches found for this player.</p>}
+      {history.sampleSize === 0 && <p className="meta">{partial ? "Riot couldn’t provide recent matches for this lookup." : "No recent matches found for this player."}</p>}
       {latest.length > 0 && (
-        <Suspense fallback={<p className="meta" role="status">Loading recent games…</p>}>
-          <LatestGames matches={latest} patch={patch} platform={platform} puuid={player.puuid} signedIn={Boolean(user)} />
-        </Suspense>
+        <LatestGames matches={latest} patch={patch} platform={platform} puuid={player.puuid} persisted={!partial} signedIn={Boolean(user)} lookupHref={lookupHref} />
       )}
       {!filtered && frequent.length > 0 && (
         <p className="meta">Also on the same team recently · {frequent.map(([name,games]) => `${name} (${games} games)`).join(", ")}</p>
@@ -184,31 +201,42 @@ export default async function PlayerPage({ searchParams }: {
       {snap.champPool.length > 0 && (
         <details className="card">
           <summary>Champion pool · wins, losses and KDA</summary>
-          {snap.champPool.map((c) => (
-            <div key={c.champion} className="match-row">
+          {snap.champPool.map((c) => {
+            const slug = `champ-${c.champion.toLowerCase()}`;
+            const hasRoom = publicRooms.has(slug);
+            return <div key={c.champion} className="match-row">
               <ChampionPortrait id={c.champion} patch={patch} size={32} />
               <strong style={{ flex: 1 }}>{c.champion}</strong>
               <span className="meta">{gameCount(c.games)} · {c.wins}W–{c.games - c.wins}L{c.games > 0 && ` · ${Math.round(100 * c.wins / c.games)}% WR`}</span>
               <span className="kda">{c.kda.toFixed(2)} KDA</span>
-              <Link className="text-btn" href={`/rooms/champ-${c.champion.toLowerCase()}`}>Room →</Link>
-            </div>
-          ))}
+              <Link className="text-btn" prefetch={false} href={hasRoom ? `/rooms/${slug}` : `/builds?champ=${encodeURIComponent(c.champion)}`}>
+                {hasRoom ? "Room" : "Builds"} <span aria-hidden="true">→</span>
+              </Link>
+            </div>;
+          })}
         </details>
       )}
     </div>
   );
 }
 
-async function LatestGames({ matches, patch, platform, puuid, signedIn }: {
+function LatestGames({ matches, patch, platform, puuid, persisted, signedIn, lookupHref }: {
   matches: MatchSummary[];
   patch: string;
   platform: string;
   puuid: string;
+  persisted: boolean;
   signedIn: boolean;
+  lookupHref: string;
 }) {
-  const catalog = await buildCatalog(patch);
+  const catalog = matches.some(match => match.items.length > 0) ? buildCatalog(patch) : null;
   const rows = matches.map((m, index) => {
-    const details = cardItems(catalog, m.items);
+    const details = catalog && m.items.length ? catalog.then(source => ({ patch: source.patch, items: cardItems(source, m.items) })) : null;
+    const question = { showStarters: index === 0, puuid, matchId: m.matchId };
+    const matchId = matchSectionId(m.matchId);
+    const matchPlatform = m.matchId.split("_", 1)[0].toLowerCase();
+    const teammatePlatform = isPlatform(matchPlatform) ? matchPlatform : platform;
+    const fromMatch = encodeURIComponent(matchId ? `${lookupHref}#${matchId}` : lookupHref);
     return (
       <div key={m.matchId} id={matchSectionId(m.matchId)} tabIndex={-1} className={`game-row ${m.win ? "win" : "loss"} ${styles.matchTarget}`}>
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap:"wrap" }}>
@@ -226,21 +254,25 @@ async function LatestGames({ matches, patch, platform, puuid, signedIn }: {
               </span>
             </div>
           </div>
-          <ItemIcons ids={m.items} details={details} patch={catalog.patch}/>
+          {details && <Suspense fallback={<noscript className="meta">Item details require JavaScript.</noscript>}>
+            <MatchItems ids={m.items} details={details}/>
+          </Suspense>}
         </div>
-        <MatchQuestionLinks showStarters={index === 0} puuid={puuid} matchId={m.matchId} items={details}/>
+        {persisted && (details ? <Suspense fallback={<MatchQuestionLinks {...question}/>}>
+          <MatchQuestions question={question} details={details}/>
+        </Suspense> : <MatchQuestionLinks {...question}/>)}
         {(m.teammates ?? []).length > 0 && (
           <div className="teammates">
             <span className="meta" style={{ marginRight: 2 }}>Played with:</span>
             {(m.teammates ?? []).map((t, i) => (
               <span key={i} className="teammate">
                 <ChampionPortrait id={t.champion} patch={patch} size={18} />
-                {t.name && t.tag ? <Link prefetch={false} href={playerStatsHref(platform, t.name + "#" + t.tag)}>{t.name}#{t.tag}</Link> : t.champion}
+                {t.name && t.tag ? <Link prefetch={false} href={`${playerStatsHref(teammatePlatform, t.name + "#" + t.tag)}&fromPlayer=${fromMatch}`}>{t.name}#{t.tag}</Link> : t.champion}
               </span>
             ))}
           </div>
         )}
-        {signedIn && (
+        {signedIn && persisted && (
           <div style={{ marginTop: 9 }}>
             <ShareCardButton puuid={puuid} match={m} />
           </div>
@@ -249,4 +281,19 @@ async function LatestGames({ matches, patch, platform, puuid, signedIn }: {
     );
   });
   return <>{rows}<MatchFragmentFocus /></>;
+}
+
+type MatchItemDetails = Promise<{ patch: string; items: ReturnType<typeof cardItems> }>;
+
+async function MatchItems({ ids, details }: { ids: number[]; details: MatchItemDetails }) {
+  const { patch, items } = await details;
+  return <ItemIcons ids={ids} details={items} patch={patch}/>;
+}
+
+async function MatchQuestions({ question, details }: {
+  question: { showStarters: boolean; puuid: string; matchId: string };
+  details: MatchItemDetails;
+}) {
+  const { items } = await details;
+  return <MatchQuestionLinks {...question} items={items}/>;
 }

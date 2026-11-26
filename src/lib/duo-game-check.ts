@@ -89,6 +89,7 @@ export async function checkDuoGame(userId: number, id: number): Promise<CheckRes
     lookupPlayer(String(pair.platform), String(pair.o_name), String(pair.o_tag)),
   ]);
   if (!sender.ok || !owner.ok || sender.source === "stale" || owner.source === "stale" ||
+      sender.source === "partial" || owner.source === "partial" ||
       sender.player.puuid !== pair.s_id || owner.player.puuid !== pair.o_id) {
     return { ok: false, status: 503, error: "Riot could not confirm both recent profiles. Try again after ten minutes." };
   }

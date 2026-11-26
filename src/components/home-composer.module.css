@@ -36,13 +36,14 @@
 .guestAvatar::before { inset-block-start: 10px; width: 8px; height: 8px; border: 1.5px solid currentColor; border-radius: 50%; }
 .guestAvatar::after { inset-block-start: 21px; width: 16px; height: 8px; border: 1.5px solid currentColor; border-radius: 9px 9px 5px 5px; }
 
-.post {
-  padding: 6px 17px;
+.expand {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
   border-radius: 999px;
   background: var(--ink);
   color: var(--bg);
-  font-size: .86rem;
-  font-weight: 700;
 }
 
 .open { display: none; }

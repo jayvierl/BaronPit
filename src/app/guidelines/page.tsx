@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { APP_NAME, SUPPORT_EMAIL } from "@/lib/brand";
+import { APP_NAME, SAFETY_CENTER, SUPPORT_EMAIL } from "@/lib/brand";
 
 export default function GuidelinesPage() {
   return (
@@ -30,7 +30,7 @@ export default function GuidelinesPage() {
 
       <h2 className="section">The spirit of the house</h2>
       <p>Share the off-meta build that worked. Answer the new player&apos;s question like someone once answered yours. That&apos;s the whole product.</p>
-      <p><Link href="/safety">Visit the safety centre</Link></p>
+      <p><Link href="/safety">Visit the {SAFETY_CENTER}</Link></p>
     </div>
   );
 }

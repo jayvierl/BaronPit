@@ -106,3 +106,39 @@ Every community profile has a Player stats tab. An owner without a linked accoun
 The stats view combines rank, LP and Riot's ranked-year record with the recent role/champion pool. Queue and champion filters apply only to the last 20 available matches. The results show the real sample size, wins, losses and win rate. A stable snapshot timestamp and unavailable/stale labels let a reader judge freshness. The site stores no additional match history for this feature. This covers the quick scouting job; it makes no claim of matching OP.GG or Mobalytics in historical depth. [OP.GG on its stats](https://help.op.gg/hc/en-us/articles/31088795082393-My-stats-aren-t-updating) · [Mobalytics on match filtering](https://mobalytics.gg/lol/guides/how-to-track-lp-by-game)
 
 All ten League tiers use localized badge colors in light and dark mode. A written label accompanies each tint. Unranked and missing rank use neutral styling. Site chrome keeps its existing violet accent. [WCAG use of color](https://www.w3.org/WAI/WCAG22/Understanding/use-of-color)
+
+## Public pathway audit and X feature shortlist
+
+On November 26, 2026, the signed-out Threads walkthrough started from one public conversation and its author profile. After deduplicating the visible first-party links in those two samples, we opened 60 distinct destinations, including two login URLs. The sample covered the author, reply authors, specific replies, media, search, tags, and the profile’s Threads, Replies, Media and Reposts tabs. Public reading and login prompts sometimes appeared on the same screen. Private inbox, notification and account screens require a signed-in session and were outside this sample. [Threads conversation](https://www.threads.com/@hereticcoffeepdx/post/DgLkb_7COmI) · [Author profile](https://www.threads.com/@hereticcoffeepdx)
+
+A read-only crawl of Baron Pit before the changes followed links from Home up to three steps deep. It covered 120 destinations across 25 route families and found no failed destination in that sample. Checking what each destination displayed uncovered four teammate links that landed on a generic lookup error. Browser and code checks also showed valid URLs could open the wrong reply or lose the player’s search and sign-in context. The read-only crawler can be rerun with `node scripts/check-pathways.mjs https://baronpit.com`.
+
+| Journey | Change |
+| --- | --- |
+| Room → post → reply → Back | Post text opens the conversation. Latest reply links to a particular visible reply. Back skips fragment changes within the same discussion. A direct post link offers its room as a fallback. |
+| Search → Riot ID or social profile → results | The selected region, search term and category survive the round trip. A full Riot ID opens its player page. Back to search opens the results without redirecting immediately again. |
+| Match history → teammate | Resolve the match’s platform, show the verified portion of a lookup when a later Riot request fails, and preserve a better cached snapshot. Only full snapshots can establish matching evidence. |
+| Profile Replies → sign in to follow | Sign-in keeps the originating tab and results context. An unverified Riot claim still opens a separate lookup. |
+| Duo Finder → sign in → preferences | The selected list view and plan anchor survive the sign-in flow. Private matching and visibility rules still apply. |
+| Champion directory → room | Build pages remain available for every champion. The directory offers a room link only when that room is visible. |
+| Save → find again | Saved has separate Posts and Replies views. The bookmark menu links directly to the relevant view, and saved replies reopen at their specific reply. |
+| Start a post or recover from a bad link | Post to the Pit opens the current room’s composer where available. If the room is unavailable, the control opens the home composer. The footer and safety pages use US-English Safety Center. |
+
+### Ten X ideas for Baron Pit
+
+X returned HTTP 403 to a direct signed-out request from the research environment. The feature descriptions below use X’s official documentation. These are product proposals. Existing Baron Pit features are named in the second column.
+
+| X feature | How it would work here | Source |
+| --- | --- | --- |
+| 1. Pinned Lists | Let a player pin a feed of duo candidates or champion specialists. Start with private lists and reuse the existing follow and moderation rules. | [X Lists](https://help.x.com/en/using-x/x-lists) |
+| 2. Configurable notifications | Extend Activity’s current replies, watches and duo invites. Let a player opt into a reminder shortly before a mutually accepted duo session. | [X notifications](https://help.x.com/en/managing-your-account/understanding-the-notifications-timeline) |
+| 3. Advanced search | Bring the Matchup Notebook’s role, opponent and patch filters into global search results. This release already connects a search term to the notebook. | [X advanced search](https://help.x.com/en/using-x/x-advanced-search) |
+| 4. Quote posts | Extend plain reposts with a comment and one referenced play. Attribute the original and recheck visibility on every read. | [X reposts and quotes](https://help.x.com/en/using-x/how-to-repost) |
+| 5. Private bookmark folders | Extend Saved’s Posts and Replies filters with personal collections such as Lane matchups, Duo practice or Next session. | [X bookmarks](https://help.x.com/en/using-x/bookmarks) · [Bookmark folders](https://help.x.com/en/using-x/x-premium-how-to) |
+| 6. Timed polls | Give Make the Call a deadline. Let a player choose an objective before revealing totals, then let the author show what happened. | [X Polls](https://help.x.com/en/using-x/x-polls) |
+| 7. Connected posts | Group a player’s match question, the advice they tried, and the next game’s result into one readable series. | [X threads](https://help.x.com/en/using-x/create-a-thread) |
+| 8. Scheduled events | Add RSVPs, a reminder and a host’s recap to the existing Review Hour. The first version can run entirely in text. | [X Spaces](https://help.x.com/en/using-x/spaces) |
+| 9. Topic trends | Show which matchups are gaining discussion this patch. Publish the time window and number of distinct contributors. | [X Trends](https://help.x.com/en/using-x/x-trending-faqs) |
+| 10. Personalized For You | Let players opt into more posts about chosen roles and champions, show the reason for a recommendation, and preserve chronological Following. | [X timelines](https://help.x.com/en/using-x/x-timeline) |
+
+Pinned lists and duo reminders are the first two candidates for a pilot because both help two players get from a promising conversation to a second game together.

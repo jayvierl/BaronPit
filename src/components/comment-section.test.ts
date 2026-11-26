@@ -30,6 +30,15 @@ it("does not offer a branch toggle for a conversation containing only roots", ()
   expect(html).toContain('aria-label="Reply to Player 10"');
 });
 
+it("uses native fragment links in a thread and focuses the reply row independently of its descendants", () => {
+  const html = renderToStaticMarkup(createElement(CommentSection, {
+    postId: 40, initialComments: [comment(10, [comment(11)])], signedIn: false, threadPage: true,
+  }));
+  expect(html).toMatch(/<div id="reply-10" class="comment-row [^"]+" tabindex="-1">/);
+  expect(html).toContain('href="#reply-11"');
+  expect(html).not.toContain('href="/post/40#reply-11"');
+});
+
 it("names the reply author's avatar link using the monogram that remains behind the artwork", () => {
   const reply = { ...comment(10), authorName: "top lane", authorAvatar: { kind: "champion", id: "Nami" } as const };
   const html = renderToStaticMarkup(createElement(CommentSection, { postId: 40, initialComments: [reply], signedIn: false }));

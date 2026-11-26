@@ -12,7 +12,7 @@ const emptyText: Record<View,string> = {
 const rowAction = { playbook: "remove", watching: "unwatch", muted: "unmute", replies: "read" } as const;
 const replyLabels = { post: " replied to your post", comment: " replied to your comment", watch: " replied in a thread you watch" };
 
-export function DiscussionList({ page, view }: { page: LibraryPage; view: View }) {
+export function DiscussionList({ page, view, olderHref }: { page: LibraryPage; view: View; olderHref?: string }) {
   const base = view === "playbook" ? "/playbook?" : view === "replies" ? "/activity?" : "/activity?tab=" + view + "&";
   return <>
     {page.entries.length === 0 && <p className="meta">{emptyText[view]}</p>}
@@ -29,6 +29,6 @@ export function DiscussionList({ page, view }: { page: LibraryPage; view: View }
         {view === "replies" && <LibraryRowAction kind="post" id={item.postId} action="mute" />}
       </li>)}
     </ul>
-    {page.next && <Link href={base + "before=" + page.next}>Older {view === "replies" ? "replies" : "items"}</Link>}
+    {page.next && <Link href={olderHref ?? (base + "before=" + page.next)}>Older {view === "replies" ? "replies" : "items"}</Link>}
   </>;
 }

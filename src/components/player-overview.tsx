@@ -9,14 +9,14 @@ import styles from "./player-overview.module.css";
 const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 const FORM_LENGTH = 6;
 
-export function RecentResults({ matches, historyPath }: { matches: MatchSummary[]; historyPath: string }) {
+export function RecentResults({ matches, historyPath, partial = false }: { matches: MatchSummary[]; historyPath: string; partial?: boolean }) {
   const recent = matches.slice(0, FORM_LENGTH);
   if (!recent.length) return null;
   return (
     <section className={styles.form} aria-label="Recent form">
       <div>
         <p className={styles.label}>Recent form</p>
-        <p className={styles.meta}>Last {gameCount(recent.length)} · all queues</p>
+        <p className={styles.meta}>{partial ? `${gameCount(recent.length)} available` : `Last ${gameCount(recent.length)}`} · all queues</p>
       </div>
       <ol className={styles.results} aria-label="Newest games first">
         {recent.map((match, index) => {
@@ -42,7 +42,7 @@ export function PlayerOverview({ player, statsPath, historyPath }: { player: Pla
     <section className={styles.overview} aria-label="League overview">
       <div className={styles.heading}>
         <h2>League overview</h2>
-        <Link prefetch={false} href={statsPath} className={styles.link}>View all player stats <span aria-hidden="true">→</span></Link>
+        <Link prefetch={false} scroll={false} href={statsPath} className={styles.link}>View all player stats <span aria-hidden="true">→</span></Link>
       </div>
       <div className={styles.ranks}>
         {summary.rankedRecords.length > 0 ? summary.rankedRecords.map(record => (

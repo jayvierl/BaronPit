@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import Link, { useLinkStatus } from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, type MouseEvent, type ReactNode } from "react";
+import { POST_TO_THE_PIT } from "@/lib/brand";
 import { composeDestination } from "@/lib/navigation-context";
 import styles from "./navigation.module.css";
 
@@ -66,18 +67,24 @@ function focusComposer() {
 }
 
 function ComposeLink({ pathname, mobile }: { pathname: string; mobile?: boolean }) {
+  const router = useRouter();
   const target = composeDestination(pathname);
-  const className = mobile ? `primary-nav-link ${styles.link}` : `${styles.railLink} ${styles.newThread}`;
-  const label = mobile ? "Post" : "New thread";
-  const item = <><Icon path={composeIcon}/><span className={mobile ? undefined : styles.railText}>{label}</span></>;
+  const className = mobile ? `primary-nav-link ${styles.link} ${styles.mobileCompose}` : `${styles.railLink} ${styles.newThread}`;
+  const item = <><Icon path={composeIcon}/><span className={mobile ? styles.mobileComposeText : styles.railText}>{POST_TO_THE_PIT}</span></>;
   function openComposer(event: MouseEvent<HTMLAnchorElement>) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    focusComposer();
-    requestAnimationFrame(focusComposer);
+    if (!focusComposer() && pathname !== "/" && document.querySelector("main [data-page-unavailable]")) {
+      event.preventDefault();
+      router.push("/#compose");
+      return;
+    }
+    requestAnimationFrame(() => {
+      if (window.location.hash === "#compose") focusComposer();
+    });
   }
-  if (target === "#compose") return <a href={target} className={className} title="New thread" aria-label={label}
+  if (target === "#compose") return <a href={target} className={className} title={POST_TO_THE_PIT} aria-label={POST_TO_THE_PIT}
     onClick={openComposer}>{item}</a>;
-  return <Link href={target} prefetch={false} className={className} title="New thread" aria-label={label}>{item}<PendingMark/></Link>;
+  return <Link href={target} prefetch={false} className={className} title={POST_TO_THE_PIT} aria-label={POST_TO_THE_PIT}>{item}<PendingMark/></Link>;
 }
 
 function RailLink({ destination, current, compactHidden }: {

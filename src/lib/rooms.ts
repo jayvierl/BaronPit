@@ -139,6 +139,15 @@ export async function listFeaturedRooms(userId?: number) {
   return featuredRooms(await readRooms(userId, featuredSlugs.length, null, true));
 }
 
+export async function visibleChampionRoomSlugs(championIds?: readonly string[]): Promise<string[]> {
+  if (!dbAvailable() || championIds?.length === 0) return [];
+  const slugs = championIds?.map(id => `champ-${id.toLowerCase()}`) ?? null;
+  await ensureRooms();
+  const rows = await q`SELECT slug FROM wp_rooms WHERE kind='champion' AND safety_status='visible'
+    AND slug='champ-' || lower(champion_id) AND (${slugs}::text[] IS NULL OR slug=ANY(${slugs}::text[]))`;
+  return rows.map(row => String(row.slug));
+}
+
 export const getRoom = cache(async function getRoom(slug: string, userId?: number) {
   const rows = await readRooms(userId, 1, slug);
   return rows[0] ?? null;

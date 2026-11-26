@@ -8,7 +8,7 @@ import "./globals.css";
 import { ExploreMenu } from "@/components/explore-menu";
 import { PrimaryNavigation } from "@/components/primary-navigation";
 import navStyles from "@/components/navigation.module.css";
-import { APP_NAME, APP_DESCRIPTION, SUPPORT_EMAIL } from "@/lib/brand";
+import { APP_NAME, APP_DESCRIPTION, SAFETY_CENTER, SUPPORT_EMAIL } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: `${APP_NAME} — League of Legends, together`,
@@ -28,7 +28,7 @@ function ExploreLinks({ desktop = false }: { desktop?: boolean }) {
     {!desktop && <Link href="/rooms">Rooms</Link>}
     <Link href="/questions">Match questions</Link>
     <Link href="/review-hour">Bot lane review hour</Link>
-    {!desktop && <Link href="/playbook">My playbook</Link>}
+    {!desktop && <Link href="/playbook">Saved</Link>}
     <Link href="/builds">Builds</Link>
     <Link href="/champions">Champions</Link>
     <Link href="/pilot">Community pilot</Link>
@@ -58,7 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <footer className="site">
             <div className="inner">
               <nav className="footer-links" aria-label="Safety and legal">
-                <Link href="/safety">Safety centre</Link>
+                <Link href="/safety">{SAFETY_CENTER}</Link>
                 <Link href="/guidelines">Guidelines</Link>
                 <Link href="/terms">Terms</Link>
                 <Link href="/privacy">Privacy</Link>

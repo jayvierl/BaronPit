@@ -45,11 +45,12 @@ export default async function PostPage({ params, searchParams }: { params: Promi
   // same visibility-scoped endpoint loads the conversation after the main post.
   const initialComments = post.commentCount === 0 ? [] : post.commentCount <= 25
     ? await listComments(postId, user).catch(() => null) : null;
+  const backHref = post.roomSlug ? `/rooms/${post.roomSlug}` : "/";
   return (
     <div className={styles.threadPage}>
       {user?.pilotActive && <PilotVisit kind="social" />}
       <header className={styles.detailHeading}>
-        <ContextBackLink fallback="/" fallbackLabel="Back to feed" />
+        <ContextBackLink fallback={backHref} fallbackLabel={post.roomName ? `Back to ${post.roomName}` : "Back to feed"} />
         <h1>Thread</h1>
       </header>
       <PostCard
