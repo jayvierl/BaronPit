@@ -64,6 +64,13 @@ describe("thread controls", () => {
     expect(render("text", {})).not.toContain('href="/player?');
   });
 
+  it("includes the visible monogram in the author avatar link's accessible name", () => {
+    const post = { ...base, kind: "text", data: {}, authorName: "deep river" };
+    const html = renderToStaticMarkup(createElement(PostCard, { post, patch: "16.23.1", signedIn: false }));
+    const avatar = html.match(/<a\b[^>]*aria-label="DR, deep river’s profile"[^>]*><span\b[^>]*>DR<\/span><\/a>/)?.[0];
+    expect(avatar).toContain('href="/u/1"');
+  });
+
   it("renders initial thread replies in the first HTML and keeps unopened feed replies lazy", () => {
     const post: PostView = { ...base, kind: "text", data: {}, pollResults: null, myVote: null, commentCount: 1 };
     const comment = {

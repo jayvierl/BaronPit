@@ -10,7 +10,7 @@ import type { AvatarIdentity } from "@/lib/author-identity";
 import { REACTION_EMOJIS, samePatch } from "@/lib/pure";
 import { clipLink } from "@/lib/clip-link";
 import { PATCH_NOTES_INDEX, publicPatch } from "@/lib/patch-notes";
-import { Avatar, PermalinkTime, RichBody, timeAgo } from "./ui";
+import { AvatarProfileLink, PermalinkTime, RichBody, timeAgo } from "./ui";
 import { ChampionPortrait } from "./champion-portrait";
 import { MatchCard } from "./match-card";
 import { PostLibraryActions } from "./discussion-library-actions";
@@ -96,9 +96,8 @@ export function PostCard({
   return (
     <article className={`thread-post ${styles.post}`} aria-label={`Post by ${post.authorName}`}>
       <div className="thread-rail">
-        <Link href={`/u/${post.authorId}`} className={styles.avatarLink} aria-label={`${post.authorName}’s profile`}>
-          <Avatar name={post.authorName} hue={post.authorHue} avatar={post.authorAvatar} size={40} />
-        </Link>
+        <AvatarProfileLink userId={post.authorId} className={styles.avatarLink}
+          name={post.authorName} hue={post.authorHue} avatar={post.authorAvatar} size={40} />
         {showComments && <span className="line" />}
       </div>
       <div className="thread-main">

@@ -29,3 +29,11 @@ it("does not offer a branch toggle for a conversation containing only roots", ()
   expect(html).not.toMatch(/aria-label="\d+ repl(?:y|ies) under/);
   expect(html).toContain('aria-label="Reply to Player 10"');
 });
+
+it("names the reply author's avatar link using the monogram that remains behind the artwork", () => {
+  const reply = { ...comment(10), authorName: "top lane", authorAvatar: { kind: "champion", id: "Nami" } as const };
+  const html = renderToStaticMarkup(createElement(CommentSection, { postId: 40, initialComments: [reply], signedIn: false }));
+  const avatar = html.match(/<a\b[^>]*aria-label="TL, top lane’s profile"[^>]*><span\b[^>]*>TL[\s\S]*?<\/a>/)?.[0];
+  expect(avatar).toContain('href="/u/10"');
+  expect(avatar).toContain("/Nami.webp");
+});
