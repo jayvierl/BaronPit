@@ -4,6 +4,7 @@ import { TERMS_VERSION } from "./account-policy";
 import { q } from "./db";
 import { duoEligible, readDuoBoard } from "./duo";
 import { hasIncomingDuoRequest, privateDuoActivity } from "./duo-activity";
+import { duoCalendar, upcomingDuoSession } from "./duo-reminder";
 import { privateDuoReadiness } from "./duo-readiness";
 
 vi.mock("@neondatabase/serverless", async () => ({
@@ -82,6 +83,20 @@ it("shows only participants' current invitations and expiry, and immediately hon
   await q`UPDATE wp_duo_requests SET status='accepted',accepted_at=now() WHERE id=${invite.id}`;
   expect(await privateDuoActivity(3)).toMatchObject([{ incoming: false, state: "accepted" }]);
   expect(await hasIncomingDuoRequest(2)).toBe(false);
+  const booking = Number(invite.id);
+  expect(await upcomingDuoSession(3, booking)).toBeNull();
+  await q`UPDATE wp_lfg SET session_start=now()+interval '30 minutes',session_queue='normal-draft' WHERE id=${listing.id}`;
+  const start = await upcomingDuoSession(3, booking);
+  expect(start).toBeInstanceOf(Date);
+  expect(await upcomingDuoSession(2, booking)).toEqual(start);
+  expect(await upcomingDuoSession(4, booking)).toBeNull();
+  expect(await privateDuoActivity(3)).toMatchObject([{reminderStart:start!.toISOString()}]);
+  await q`INSERT INTO wp_blocks(blocker_id,blocked_id) VALUES(3,2)`;
+  expect(await upcomingDuoSession(2, booking)).toBeNull();
+  await q`DELETE FROM wp_blocks WHERE blocker_id=3`;
+  await q`UPDATE wp_duo_requests SET status='declined',cancelled_at=now() WHERE id=${booking}`;
+  expect(await upcomingDuoSession(3, booking)).toBeNull();
+  await q`UPDATE wp_duo_requests SET status='accepted',cancelled_at=NULL WHERE id=${booking}`;
   await q`UPDATE wp_lfg SET expires_at=now()-interval '1 minute' WHERE id=${listing.id}`;
   expect(await privateDuoActivity(2)).toEqual([
     { id: invite.id, incoming: true, state: "accepted", listingEnded: true, expiresAt: expect.any(String) },
@@ -103,4 +118,17 @@ it("shows only participants' current invitations and expiry, and immediately hon
   expect(await privateDuoActivity(2)).toEqual([]);
   expect(await hasIncomingDuoRequest(2)).toBe(false);
   expect(testQueries).toHaveLength(reads);
+});
+
+it("exports a private one-hour event with an advance or start-time alarm", () => {
+  const start = new Date("2026-11-26T23:45:00Z");
+  const earlier = duoCalendar(9, start, new Date("2026-11-26T23:20:00Z"), "https://baronpit.com");
+  expect(earlier).toContain("BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT10M");
+  expect(earlier).toContain("DTEND:20261127T004500Z");
+  expect(earlier).toContain("CLASS:PRIVATE");
+  expect(earlier).toContain("URL:https://baronpit.com/activity?tab=duos");
+  const later = duoCalendar(9, start, new Date("2026-11-26T23:44:00Z"), null);
+  expect(later).toContain("TRIGGER:PT0M");
+  expect(later).not.toContain("URL:");
+  expect(earlier.match(/^UID:.+$/m)?.[0]).toBe(later.match(/^UID:.+$/m)?.[0]);
 });

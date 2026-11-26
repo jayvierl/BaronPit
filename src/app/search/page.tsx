@@ -10,6 +10,7 @@ import { isExactRiotId, searchHref, searchScope, searchScopes, withSearchReturn 
 import { RankBadge } from "@/components/rank-badge";
 import { Avatar } from "@/components/ui";
 import { LookupForm, PostCard } from "@/components/social-ui";
+import { WardEmptyState } from "@/components/ward-mascot";
 import styles from "./search.module.css";
 
 export const dynamic = "force-dynamic";
@@ -74,11 +75,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
     )}
     {term && !searched && <p role="status" className={styles.hint}>Enter at least two characters.</p>}
     {searched && !results && <p className="notice warn" role="status">Search is temporarily unavailable. <Link href={withSearchReturn("/player", searchReturn)}>Look up a Riot ID</Link>.</p>}
-    {empty && <div className={styles.empty} role="status"><strong>No matches for “{term}”</strong>
-      {scope === "all" ? <p>Try another name or <Link href="/rooms">browse rooms</Link>.</p> :
-        playersOnly ? <p>For a new player, enter GameName#TAG and select their region.</p> :
-        <p><Link href={searchHref("all", term, region)}>Search all categories</Link></p>}
-    </div>}
+    {empty && <WardEmptyState text={`No matches for “${term}”`} status action={scope === "all"
+      ? <Link href="/rooms">Browse rooms</Link>
+      : playersOnly ? <Link href={withSearchReturn("/player", searchReturn)}>Look up a Riot ID</Link>
+      : <Link href={searchHref("all", term, region)}>Search all categories</Link>}/>}
     {results && <>
       {results.users.length > 0 && <section>
         <h2 className="section">Community profiles</h2>

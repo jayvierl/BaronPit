@@ -3,7 +3,7 @@ import { postgres } from "../../test/postgres";
 import { APP_NAME } from "./brand";
 import { getSql, q, schemaStatements } from "./db";
 import { PATCH_PUBLISHER } from "./patch-notes";
-import { ensureRooms } from "./rooms";
+import { ensureRooms, getRoom, listFeaturedRooms, listRooms } from "./rooms";
 
 vi.mock("@neondatabase/serverless", async () => ({ neon: (await import("../../test/postgres")).neonForTests }));
 vi.mock("./riot", () => ({ championCatalog: async () => ({ list: [], current: true }) }));
@@ -53,4 +53,30 @@ it("updates the reserved publisher before the first read while preserving namesa
   await q`UPDATE wp_users SET safety_status='held',display_name='Profile under review' WHERE id=${publisher.id}`;
   await sql.transaction(schemaStatements(sql));
   expect(await q`SELECT display_name FROM wp_users WHERE id=${publisher.id}`).toEqual([{display_name: "Profile under review"}]);
+});
+
+it("only reports member and latest-post activity a viewer may see", async () => {
+  await ensureRooms();
+  const [lab] = await q`SELECT id FROM wp_rooms WHERE slug='off-meta-lab'`;
+  const roomId = Number(lab.id);
+  await q`INSERT INTO wp_users(id,email,display_name,banned_until) VALUES
+    (101,'visible@fixture.invalid','Visible',NULL),(102,'blocked@fixture.invalid','Blocked',NULL),
+    (103,'muted@fixture.invalid','Muted',NULL),(104,'banned@fixture.invalid','Banned',now()+interval '1 hour')`;
+  await q`INSERT INTO wp_blocks(blocker_id,blocked_id) VALUES (102,101)`;
+  await q`INSERT INTO wp_mutes(muter_id,muted_id) VALUES (101,103)`;
+  await q`INSERT INTO wp_room_members(room_id,user_id) SELECT ${roomId},id FROM wp_users WHERE id BETWEEN 101 AND 104`;
+  await q`INSERT INTO wp_posts(id,author_id,room_id,body,status,created_at,withdrawn_at) VALUES
+    (201,101,${roomId},'Visible','visible','2025-01-01',NULL),
+    (202,102,${roomId},'Blocked','visible','2025-01-02',NULL),
+    (203,103,${roomId},'Muted','visible','2025-01-03',NULL),
+    (204,104,${roomId},'Banned','visible','2025-01-04',NULL),
+    (205,101,${roomId},'Held','held','2025-01-05',NULL),
+    (206,101,${roomId},'Withdrawn','visible','2025-01-06','2025-01-07')`;
+  const labRow = (rooms: Awaited<ReturnType<typeof listFeaturedRooms>>) => rooms.find(room => room.slug === "off-meta-lab");
+  expect(labRow(await listFeaturedRooms(101))).toMatchObject({ members: 1, joined: true, latestPost: { id: 201 } });
+  expect(labRow(await listFeaturedRooms())).toMatchObject({ members: 3, latestPost: { id: 203 } });
+  expect(labRow(await listRooms(101, 10, "Off-Meta"))).not.toHaveProperty("latestPost");
+  await q`UPDATE wp_rooms SET safety_status='held' WHERE id=${roomId}`;
+  expect(labRow(await listFeaturedRooms(101))).toBeUndefined();
+  expect(await getRoom("off-meta-lab", 101)).toBeNull();
 });

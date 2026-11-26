@@ -4,7 +4,7 @@ import { q } from "./db";
 import { setRoomMembership } from "./rooms";
 import type { User } from "./auth";
 import { addComment, buildFeed, feed, feedByAuthor, getPost, listComments, reconfirmBuild, toggleReaction, votePoll } from "./social";
-import { publicProfile, publicRiotOwner } from "./player-insights";
+import { linkedPlayers, publicProfile, publicRiotOwner } from "./player-insights";
 import { publicAvatarIdentity } from "./author-identity";
 import { BARON_CALL_OPTIONS } from "./poll";
 
@@ -121,6 +121,25 @@ describe("feed and conversation read contracts", () => {
       await q`UPDATE wp_links SET verified=true WHERE user_id=2`;
     }
   });
+  it("uses the same verified positive streak in posts and profiles", async () => {
+    const playedAt = Date.now() - 60_000;
+    const matches = Array.from({length:3}, (_,i) => ({matchId:`NA1_${i}`, playedAt:playedAt-i*2000, win:true}));
+    await q`UPDATE wp_players SET snapshot=${JSON.stringify({matches})}::jsonb, fetched_at=now() WHERE puuid='ref'`;
+    try {
+      expect((await feedByAuthor(2, viewer)).map(post => post.authorWinStreak)).toEqual([3,3,3]);
+      expect((await linkedPlayers(2))[0].winStreak).toBe(3);
+      await q`UPDATE wp_links SET verified=false WHERE user_id=2 AND puuid='ref'`;
+      expect((await getPost(12,viewer))?.authorWinStreak).toBeUndefined();
+      expect((await linkedPlayers(2))[0].winStreak).toBeNull();
+      await q`UPDATE wp_links SET verified=true WHERE user_id=2 AND puuid='ref'`;
+      await q`UPDATE wp_players SET fetched_at=now()-interval '11 minutes' WHERE puuid='ref'`;
+      expect((await getPost(12,viewer))?.authorWinStreak).toBeUndefined();
+      expect((await linkedPlayers(2))[0].winStreak).toBeNull();
+    } finally {
+      await q`UPDATE wp_links SET verified=true WHERE user_id=2 AND puuid='ref'`;
+      await q`UPDATE wp_players SET snapshot='{"champPool":[{"champion":"Ashe"}]}'::jsonb,fetched_at=now() WHERE puuid='ref'`;
+    }
+  });
   it("confirms retries and declines joining an absent or held room", async () => {
     await q`INSERT INTO wp_rooms(id,slug,name,kind,safety_status) VALUES(876,'hidden-lobby','Hidden lobby','general','held')`;
     expect(await setRoomMembership(1,876,true)).toBe(false);
@@ -190,16 +209,16 @@ describe("feed and conversation read contracts", () => {
       {"matchId":"NA1_100","champion":"Ashe","win":true,"kills":3,"deaths":2,"assists":9,"cs":20,"items":[2003],"baron":true}
     ]}'::jsonb WHERE puuid='ref';
     INSERT INTO wp_posts(id,author_id,kind,body,data) VALUES
-      (80,2,'card','Discuss this match','{"puuid":"ref","matchId":"NA1_100","riotId":"Untrusted","match":{"kills":999,"teamBaronKills":99},"url":"https://unrelated.invalid"}');
+      (80,2,'card','Discuss this match','{"puuid":"ref","matchId":"NA1_100","riotId":"Untrusted","motion":"defeat","match":{"kills":999,"teamBaronKills":99},"url":"https://unrelated.invalid"}');
     INSERT INTO wp_posts(id,author_id,kind,body,data,card_validated) VALUES
-      (81,2,'card','Recent verified share','{"puuid":"ref","matchId":"NA1_99","riotId":"Player#NA1","match":{"champion":"Ashe","win":false,"kills":1,"deaths":2,"assists":3,"cs":4,"items":[],"teamBaronKills":2}}',true)`);
+      (81,2,'card','Recent verified share','{"puuid":"ref","matchId":"NA1_99","riotId":"Player#NA1","motion":"victory","match":{"champion":"Ashe","win":false,"kills":1,"deaths":2,"assists":3,"cs":4,"items":[],"teamBaronKills":2}}',true)`);
     const card = await getPost(80,null);
-    expect(card?.data).toMatchObject({riotId:"Player#NA1",match:{champion:"Ashe",kills:3,assists:9,baron:true}});
+    expect(card?.data).toMatchObject({riotId:"Player#NA1",motion:"victory",match:{champion:"Ashe",kills:3,assists:9,baron:true}});
     expect(card?.data.match).not.toHaveProperty("teamBaronKills");
     expect(card?.data).not.toHaveProperty("url");
     await postgres.exec(`UPDATE wp_players SET snapshot = snapshot - 'matches' WHERE puuid='ref'`);
     expect(await getPost(80,null)).toMatchObject({body:"Discuss this match",data:{}});
-    expect((await getPost(81,null))?.data).toMatchObject({match:{kills:1,teamBaronKills:2}});
+    expect((await getPost(81,null))?.data).toMatchObject({motion:"defeat",match:{kills:1,teamBaronKills:2}});
   });
   it("keeps malformed legacy poll data from breaking a feed or accepting new votes", async () => {
     await postgres.exec(`INSERT INTO wp_posts(id,author_id,kind,body,data) VALUES

@@ -1,0 +1,4 @@
+.call { display:flex; gap:.55rem; align-items:center; padding:.35rem 0; font-size:.86rem; }
+.call > div { min-width:0; overflow-wrap:anywhere; }
+.call a { color:var(--ink-mid); }
+.call .results { margin-inline-start:.65rem; color:var(--accent-ink); white-space:nowrap; }

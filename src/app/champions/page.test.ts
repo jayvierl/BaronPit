@@ -49,6 +49,7 @@ it("keeps the fallback catalog and build paths usable without room storage", asy
   try {
     const html = renderToStaticMarkup(await ChampionsPage());
     expect(html).toContain("Last available Data Dragon catalog");
+    expect(html).toContain("26.23");
     expect(html).toContain('href="/builds?champ=Ashe"');
     expect(html).not.toContain('/rooms/champ-');
     expect(html).toContain('aria-label="Filter champions"');

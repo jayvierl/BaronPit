@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { replyActivity, watchedDiscussions, pageCursor } from "@/lib/discussion-library";
 import { signInHref } from "@/lib/signin-return";
 import { DiscussionList } from "@/components/discussion-library-list";
+import { DuoReminder } from "@/components/duo-reminder";
 import { DuoCancelButton } from "@/components/duo-cancel-button";
 import { duoEnabled } from "@/lib/duo";
 import { hasIncomingDuoRequest, privateDuoActivity, type DuoActivityItem } from "@/lib/duo-activity";
@@ -105,6 +106,7 @@ function InvitationList({ invites }: { invites: DuoActivityItem[] | null }) {
                   {item.state === "pending" && item.incoming ? "Review invitation" : "View request"}
                 </Link>
               )}
+              {item.reminderStart && <><p className="meta">Session starts <time dateTime={item.reminderStart}>{new Date(item.reminderStart).toUTCString()}</time></p><DuoReminder id={item.id}/></>}
               {item.canCancel && <DuoCancelButton id={item.id} />}
             </div>
           </li>

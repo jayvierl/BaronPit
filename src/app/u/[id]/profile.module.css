@@ -3,6 +3,7 @@
 .byline { justify-content: space-between; align-items: center; gap: 1rem; }
 .byline > div:first-child { min-width: 0; overflow-wrap: anywhere; }
 .byline h1 { margin: 0; font-size: clamp(1.55rem, 4vw, 2rem); line-height: 1.1; letter-spacing: -.045em; }
+.nameLine { display: flex; align-items: baseline; gap: 3px 10px; flex-wrap: wrap; }
 .riotId { margin: .4rem 0 0; font-size: .88rem; }
 .riotId span, .socialProof, .endorsements { color: var(--ink-mid); }
 .bio { margin: .65rem 0 .3rem; max-width: 54ch; white-space: pre-line; overflow-wrap: anywhere; line-height: 1.5; }

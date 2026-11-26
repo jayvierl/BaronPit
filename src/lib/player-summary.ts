@@ -4,7 +4,7 @@ import type { Player } from "./riot";
 const solo = "RANKED_SOLO_5x5";
 const flex = "RANKED_FLEX_SR";
 const queueNames = { [solo]: "Ranked Solo/Duo", [flex]: "Ranked Flex" } as const;
-const PLAYER_CACHE_TTL_MS = 10 * 60 * 1000;
+export const PLAYER_CACHE_TTL_MS = 10 * 60 * 1000;
 const snapshotDate = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 
 export interface RankedEntry {

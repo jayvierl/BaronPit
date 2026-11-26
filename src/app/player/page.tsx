@@ -2,6 +2,9 @@ import { Suspense } from "react";
 import { PilotVisit } from "@/components/pilot-visit";
 import { buildCatalog, cardItems } from "@/lib/build-catalog";
 import { ItemIcons } from "@/components/item-icons";
+import { GameCardArt } from "@/components/game-card-art";
+import { WinStreak } from "@/components/win-streak";
+import { currentWinStreak } from "@/lib/current-win-streak";
 import { TeamBaronTag } from "@/components/team-baron-tag";
 import { MatchQuestionLinks } from "@/components/match-question-links";
 import { MatchFragmentFocus } from "./match-fragment-focus";
@@ -10,6 +13,7 @@ import { Avatar } from "@/components/ui";
 import Link from "next/link";
 import Form from "next/form";
 import { MATCH_DETAIL_LIMIT, matchQueueName, matchSectionId, recentMatchHistory } from "@/lib/match-history";
+import { gameCardMotion } from "@/lib/game-card-motion";
 import styles from "./history.module.css";
 import { RefreshPlayer } from "@/components/refresh-player";
 import { getCurrentUser } from "@/lib/auth";
@@ -90,6 +94,7 @@ export default async function PlayerPage({ searchParams }: {
   const publicRooms = new Set(roomSlugs);
   const linkedByMe = linked.length > 0;
   const badges = earnedBadges(snap);
+  const streak = partial ? null : currentWinStreak(snap, player.fetchedAt);
   const history = recentMatchHistory(snap.matches, sp.queue, sp.champion);
   const latest = history.matches.slice(0, MATCH_DETAIL_LIMIT);
   const filtered = Boolean(history.queue || history.champion);
@@ -117,6 +122,7 @@ export default async function PlayerPage({ searchParams }: {
             </h1>
             <div className="meta" style={{ marginTop: 3 }}>
               {platform.toUpperCase()}{player.summonerLevel > 0 && ` · Level ${player.summonerLevel}`}
+              {streak && <> · <WinStreak wins={streak}/></>}
             </div>
             {owner && (
               <div className="meta" style={{ marginTop: 3 }}>
@@ -239,6 +245,7 @@ function LatestGames({ matches, patch, platform, puuid, persisted, signedIn, loo
     const fromMatch = encodeURIComponent(matchId ? `${lookupHref}#${matchId}` : lookupHref);
     return (
       <div key={m.matchId} id={matchSectionId(m.matchId)} tabIndex={-1} className={`game-row ${m.win ? "win" : "loss"} ${styles.matchTarget}`}>
+        {typeof m.win === "boolean" && <GameCardArt motion={gameCardMotion(m.win)} />}
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap:"wrap" }}>
           <ChampionPortrait id={m.champion} patch={patch} size={48} />
           <div style={{ flex: "1 1 120px", minWidth: 0 }}>

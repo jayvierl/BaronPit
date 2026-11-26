@@ -2,6 +2,7 @@ import Link from "next/link";
 import { activeStarterRoom, followingStarter } from "@/lib/following-starter";
 import { FollowButton, JoinButton } from "./social-ui";
 import { SafetyReport } from "./safety-report";
+import { WardEmptyState } from "./ward-mascot";
 import styles from "./following-starter.module.css";
 
 type StarterRoom = { id: number; name: string; slug: string; joined: boolean; members: number };
@@ -10,6 +11,8 @@ export async function FollowingStarter({userId, rooms}: {userId: number; rooms: 
   const question = await followingStarter(userId).catch(() => null);
   const active = question ? null : await activeStarterRoom(userId).catch(() => null);
   const room = active ?? rooms.filter(r => !r.joined).sort((a,b) => b.members - a.members)[0];
+  if (!question && !room) return <WardEmptyState text="Follow players or join a room to see their posts here."
+    action={<Link href="/rooms">Browse rooms</Link>}/>;
   return <section aria-labelledby="following-start" className={styles.starter}>
     <h2 id="following-start">Make this feed yours</h2>
     <p>Follow players or join a room to see their posts here.</p>

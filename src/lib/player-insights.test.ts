@@ -162,11 +162,11 @@ describe("bounded player and community data queries", () => {
     expect(await getRoom("champ-ashe", 1)).toMatchObject({ members: 1, joined: true });
     expect(await listRooms(undefined, 2)).toHaveLength(2);
   });
-  it("features four broad rooms, shows only consenting public host assignments, and hides held rooms", async () => {
+  it("features the five broad rooms, shows only consenting public host assignments, and hides held rooms", async () => {
     vi.stubEnv("PUBLIC_ROOM_HOSTS", '{"general":2,"new-players":"bogus"}');
     await q`UPDATE wp_users SET age_band='adult' WHERE id=2`;
     const rooms = await listFeaturedRooms();
-    expect(rooms.map(room => room.slug)).toEqual(["new-players","off-meta-lab","patch-meta","general"]);
+    expect(rooms.map(room => room.slug)).toEqual(["new-players","off-meta-lab","patch-meta","general","lfg-lobby"]);
     expect(rooms.find(room => room.slug === "general")?.host).toEqual({id:2,name:"Author"});
     expect((await listFeaturedRooms(1)).find(room => room.slug === "general")?.host).toBeNull();
     await q`UPDATE wp_users SET safety_status='held' WHERE id=2`;

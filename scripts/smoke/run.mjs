@@ -12,6 +12,7 @@ import { checkPlayerProfiles } from "./profiles.mjs";
 import { checkNavigation } from "./navigation.mjs";
 import { checkProfileEditor } from "./profile-editor.mjs";
 import { checkPersonalSafety } from "./personal-safety.mjs";
+import { checkDuoShortlist } from "./duo-shortlist.mjs";
 import { fixturePhotoEnv } from "./photo-scanner.mjs";
 import { checkImage, publicArtwork } from "../public-art.mjs";
 
@@ -176,12 +177,13 @@ try {
   }
   await checkPlayerProfiles(journey);
   await checkNavigation(journey);
+  const pitBanner = new Date().getUTCMonth() === 11 ? "/rooms/baron-pit-winter" : "/baron-room";
   await journey("/rooms/general", {
     session: true,
     includes: [
       "Fixture win condition", "Fixture offrole question", "Meet the community, swap stories",
-      'media="(max-width: 480px)"', "/baron-room-480.webp 1x, /baron-room-960.webp 2x",
-      'src="/baron-room-960.webp"',
+      'media="(max-width: 480px)"', `${pitBanner}-480.webp 1x, ${pitBanner}-960.webp 2x`,
+      `src="${pitBanner}-960.webp"`, 'fetchPriority="high"',
     ],
     excludes: ["Fixture blocked discussion", "/baron-hero.png"],
   });
@@ -261,7 +263,7 @@ try {
   await journey("/api/questions", {session:true,method:"POST",body:{action:"trial",postId,answerId:reply.commentId,outcome:"helped"},includes:['"ok":true']});
   await journey("/api/library", {session:true,method:"POST",body:{action:"save",kind:"comment",id:reply.commentId,active:true},includes:['"ok":true']});
   await journey("/playbook", {session:true,includes:["Spend the gold before dragon"]});
-  await journey("/playbook?tab=replies", {session:true, includes:["Spend the gold before dragon", `/post/${postId}#reply-${reply.commentId}`, 'aria-label="Saved discussions"']});
+  await journey("/playbook?tab=replies", {session:true, includes:["Spend the gold before dragon", `/post/${postId}#reply-${reply.commentId}`, 'aria-label="Saved views"']});
   await journey("/playbook?tab=posts", {session:true, excludes:["Spend the gold before dragon"]});
   await journey("/playbook?tab=replies&before=1", {session:true, includes:["Back to latest saves", 'href="/playbook?tab=replies"']});
   await journey("/playbook", {session:"helper",excludes:["Spend the gold before dragon"]});
@@ -273,6 +275,7 @@ try {
   await checkCommunityDuo(journey);
   await checkProfileEditor(journey);
   await checkPersonalSafety(journey);
+  await checkDuoShortlist(journey);
   console.log(completed + " production HTTP journeys passed against the local PostgreSQL fixture.");
 } catch (error) {
   console.error(output);

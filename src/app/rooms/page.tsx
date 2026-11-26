@@ -4,11 +4,14 @@ import { featuredRooms, listRooms } from "@/lib/rooms";
 import { currentPatch } from "@/lib/riot";
 import { JoinButton } from "@/components/social-ui";
 import { RoomDirectory } from "@/components/rooms-ui";
+import { RoomActivity, RoomThumbnail } from "@/components/room-artwork";
+import styles from "./rooms.module.css";
 
 export const dynamic = "force-dynamic";
 
 export default async function RoomsPage() {
   const [user, patch] = await Promise.all([getCurrentUser(), currentPatch()]);
+  const asOf = new Date();
   const rooms = await listRooms(user?.id).catch(() => null);
   if (rooms === null) return <div className="empty"><h1>Rooms</h1><p>The room directory is temporarily unavailable. Please try again shortly.</p></div>;
   return (
@@ -19,11 +22,13 @@ export default async function RoomsPage() {
       <div className="room-grid">
         {featuredRooms(rooms).map(room => (
           <article key={room.id} className="card room-card">
-            <div className="list-row">
-              <div>
+            <div className={styles.featuredRoom}>
+              <RoomThumbnail slug={room.slug} asOf={asOf}/>
+              <div className={styles.details}>
                 <h3><Link href={`/rooms/${room.slug}`}>{room.name}</Link></h3>
                 <p className="meta">{room.description}</p>
-                {room.host && <span className="meta">Hosted by <Link href={`/u/${room.host.id}`}>{room.host.name}</Link></span>}
+                <RoomActivity name={room.name} members={room.members} latestPost={room.latestPost}/>
+                {room.host && <small className="meta">Hosted by <Link href={`/u/${room.host.id}`}>{room.host.name}</Link></small>}
               </div>
               {user && <JoinButton roomId={room.id} initial={room.joined}/>}
             </div>

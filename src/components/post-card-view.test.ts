@@ -71,6 +71,15 @@ describe("thread controls", () => {
     expect(avatar).toContain('href="/u/1"');
   });
 
+  it("uses the mascot avatar only for a trusted Daily Call payoff", () => {
+    const post: PostView = { ...base, authorName: "Baron Pit", kind: "text", data: { dailyCallPayoffFor: 9 } };
+    const props = { post, patch: "16.23.1", signedIn: false };
+    expect(renderToStaticMarkup(createElement(PostCard, props))).not.toContain("/mascot-avatar.png");
+    const payoff = renderToStaticMarkup(createElement(PostCard, { ...props, post: { ...post, dailyCallPayoffFor: 9 } }));
+    expect(payoff).toContain("/mascot-avatar.png");
+    expect(payoff).toContain('href="/u/1"');
+  });
+
   it("renders initial thread replies in the first HTML and keeps unopened feed replies lazy", () => {
     const post: PostView = { ...base, kind: "text", data: {}, pollResults: null, myVote: null, commentCount: 1 };
     const comment = {
@@ -165,6 +174,24 @@ describe("thread controls", () => {
   });
 });
 describe("Baron call ballots", () => {
+  it("only offers voting while a scheduled Daily Call is open, and keeps closed tallies readable", () => {
+    const post: PostView = { ...base, kind: "poll", data: { options: ["Reset", "Push", "Dragon", "Baron"] },
+      pollResults: [2,1,0,0], dailyCall: { closesAt: "2026-11-27T13:00:00.000Z", closed: false, finalized: false } };
+    const props = { post, patch: "16.23.1", signedIn: true, viewerId: 2 };
+    const open = renderToStaticMarkup(createElement(PostCard, props));
+    expect(open).toContain("Vote until");
+    expect(open).toMatch(/<button[^>]*class="poll-option"/);
+    const stopped = renderToStaticMarkup(createElement(PostCard, { ...props, post: { ...post,
+      dailyCall: { ...post.dailyCall!, closed: true, finalized: false } } }));
+    expect(stopped).toContain("Voting closed. Tally pending.");
+    expect(stopped).not.toMatch(/<button[^>]*class="poll-option"/);
+    const settled = renderToStaticMarkup(createElement(PostCard, { ...props, post: { ...post,
+      dailyCall: { ...post.dailyCall!, closed: true, finalized: true } } }));
+    expect(settled).toContain("Final tally");
+    expect(settled).toContain("Reset — 2 votes (67%)");
+    expect(settled).not.toMatch(/<button[^>]*class="poll-option"/);
+  });
+
   it("shows the call badge and its four answers only on a call poll", () => {
     const call = {call: true, options: BARON_CALL_OPTIONS};
     const ballot = render("poll", call);

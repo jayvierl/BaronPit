@@ -20,6 +20,7 @@ export default function PrivacyPage() {
       <h2 className="section">Private community tools</h2>
       <p>Either person in an accepted duo can check both recent Riot profiles. For up to 30 days from acceptance we keep the check time, coverage and timestamps of the first shared game and a later-day repeat within seven days. This record contains no match IDs or replay data.</p>
       <p>Your optional duo plan stores only your role, preferred partner role, play times, playstyle and chat preference. Only you can view or clear it in Duo Finder. Saving it never publishes a listing.</p>
+      <p>Your Saved Duos list is private. Pinning someone sends no notification. Blocking someone removes the pin in both directions. Each partner in an accepted, scheduled session can download a calendar reminder. The event omits both players’ names and Riot IDs. Changes to a booking do not update a copy already imported into a calendar.</p>
       <p>Your playbook and thread notification settings are private. Activity shows replies to your posts and comments. You can watch all replies in a thread or mute it. Manage muted threads in Activity. Other players see the reply you mark helpful and any follow-up you choose to post publicly.</p>
       <p>Duo Finder participants can join a separate 28-day study on the pilot page. The research store keeps
         your account reference, consent version and consent date. The admin dashboard counts your listing, request and acceptance activity

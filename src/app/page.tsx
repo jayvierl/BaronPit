@@ -3,7 +3,10 @@ import { FollowingStarter } from "@/components/following-starter";
 import { hasIncomingDuoRequest } from "@/lib/duo-activity";
 import { Suspense } from "react";
 import { CommunityObjective } from "@/components/community-objective";
+import { DailyCallHome } from "@/components/daily-call-home";
+import { TonightInThePit } from "@/components/tonight-in-the-pit";
 import { CommunityWelcome } from "@/components/community-welcome";
+import { WardEmptyState } from "@/components/ward-mascot";
 import { LobbyRally } from "@/components/lobby-rally";
 import { CommunityReview } from "@/components/community-review";
 import { hasUnreadReplies } from "@/lib/discussion-library";
@@ -86,7 +89,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           {activeTab === "everyone" && <>
             <Suspense fallback={null}><CommunityReview viewerId={user?.id ?? null}/></Suspense>
             {available && <Suspense fallback={null}><CommunityObjective viewerId={user?.id ?? null}/></Suspense>}
+            {available && <Suspense fallback={null}><DailyCallHome viewerId={user?.id ?? null}/></Suspense>}
           </>}
+          {available && activeTab === "everyone" && <Suspense fallback={null}><TonightInThePit viewerId={user?.id ?? null} now={now.getTime()}/></Suspense>}
           {available && <Suspense fallback={null}><HomeSpotlight today={today} viewerId={user?.id ?? null} patch={patch}/></Suspense>}
           <details className="community-lookup">
             <summary>Look up a player</summary>
@@ -118,7 +123,7 @@ async function HomeTimeline({ user, activeTab, patch, rooms, posts }: {
       <div className="empty" role="status">The feed is temporarily unavailable. Refresh to try again.</div>
     ) : posts.length === 0 ? (
       activeTab === "following" && user ? <FollowingStarter userId={user.id} rooms={await rooms}/> :
-        <div className="empty"><p>Start the first conversation.</p><Link href="/questions/new">Ask a match question</Link></div>
+        <WardEmptyState text="Start the first conversation." action={<Link href="/questions/new">Ask a match question</Link>}/>
     ) : posts.map(renderPost)}
   </>;
 }

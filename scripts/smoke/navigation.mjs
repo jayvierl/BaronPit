@@ -56,7 +56,7 @@ export async function checkNavigation(journey) {
   await journey("/search?q=Fixture&scope=people", {includes:["Community profiles"], excludes:[">Riot players</h2>"]});
   await journey("/rooms/general", {includes:['property="og:type" content="website"',"Share room"]});
   await journey("/u/501", {includes:['property="og:type" content="profile"', "Share profile"]});
-  await journey("/search?q=NothingMatchesThisName", {includes:["No matches for","browse rooms","Look up a Riot ID"]});
+  await journey("/search?q=NothingMatchesThisName", {includes:["No matches for","Browse rooms","Look up a Riot ID","/mascot.png"]});
   await journey("/activity?tab=muted&before=77",{status:307,signInReturn:"/activity?tab=muted&before=77"});
   const muted = await journey("/activity?tab=muted&before=77", {session:true, html:true});
   assert.ok(muted.includes("Back to latest threads") && muted.includes("You’ve reached the end."));

@@ -72,7 +72,6 @@ export function earnedBadges(snapshot: PlayerSnapshot): string[] {
   if (baronGames >= 5) badges.push(`Team secured Baron in ${baronGames} games`);
   const top = snapshot.champPool[0];
   if (top && top.games / snapshot.games >= 0.6) badges.push(`${top.champion} one-trick`);
-  if (ms.slice(0, 3).every((m) => m.win)) badges.push("On a win streak");
   if (snapshot.kda >= 5) badges.push(`Sharpshooter · ${snapshot.kda.toFixed(1)} KDA`);
   const mainRole = Object.entries(snapshot.roles).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
   const assistsPerGame = ms.reduce((a, m) => a + m.assists, 0) / ms.length;

@@ -11,6 +11,7 @@ import { loadDuoFit } from "@/lib/duo-fit-store";
 import { LfgBoard, LfgForm } from "@/components/lfg-ui";
 import { DuoGameChecks } from "@/components/duo-game-checks";
 import { DuoFitForm } from "@/components/duo-fit-form";
+import { pinnedDuoIds } from "@/lib/duo-shortlist";
 
 export const dynamic = "force-dynamic";
 type BoardState =
@@ -47,6 +48,8 @@ export default async function LfgPage({ searchParams }: { searchParams: Promise<
   ]);
   const fit = stored ?? null;
   const readiness = state.status === "paused" || state.status === "ineligible" ? state.readiness : undefined;
+  const requests = state.status === "ready" ? state.requests : state.status === "ineligible" ? state.earlierRequests ?? [] : [];
+  const pins = viewer ? await pinnedDuoIds(viewer.id, requests.flatMap(request => request.socialProfileId ?? [])).catch(() => null) : null;
   return (
     <div className="duo-page">
       {measuring && fit && state.status === "ready" && <PilotVisit kind="duo-board"/>}
@@ -54,6 +57,7 @@ export default async function LfgPage({ searchParams }: { searchParams: Promise<
         <div>
           <h1 className="page-title">Find a duo</h1>
           <p>Find a lane partner for the hours you actually play.</p>
+          {viewer && <Link className="meta" href="/playbook?tab=duos" prefetch={false}>Your Duo shortlist</Link>}
         </div>
         <Image unoptimized src="/baron-duo.webp" width={112} height={84} alt="" />
       </header>
@@ -76,13 +80,13 @@ export default async function LfgPage({ searchParams }: { searchParams: Promise<
         </aside>
       )}
       {state.status === "ineligible" && !!state.earlierRequests?.length && (
-        <LfgBoard requestsOnly listings={[]} requests={state.earlierRequests} fit={fit} onlyFit={false} asOf={state.asOf} />
+        <LfgBoard requestsOnly listings={[]} requests={state.earlierRequests} fit={fit} onlyFit={false} asOf={state.asOf} pinnedIds={pins}/>
       )}
       {state.status === "ready" && (
         <>
           <p>Matching as <strong>{state.riotId}</strong> · NA · <Link href="/me">Manage Riot accounts</Link></p>
           <p className="meta">Choose an hour of Ranked Solo/Duo or Normal Draft on NA. Ranked listings match compatible Solo/Duo placements from Iron through Emerald. League confirms final queue eligibility.</p>
-          <LfgBoard listings={state.listings} requests={state.requests} fit={fit} onlyFit={onlyFit} asOf={state.asOf} />
+          <LfgBoard listings={state.listings} requests={state.requests} fit={fit} onlyFit={onlyFit} asOf={state.asOf} pinnedIds={pins}/>
           {!state.listings.some(l => l.own) && <LfgForm key={JSON.stringify([fit,state.riotId,state.rankedPilot])} fit={fit} asOf={state.asOf} rankedPilot={state.rankedPilot} />}
           <p className="meta"><Link href="/pilot#duo-study">Volunteer for the Duo Finder study</Link></p>
         </>

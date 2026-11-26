@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { ProfileReplies } from "./profile-replies";
 import { ShareLink } from "@/components/share-link";
 import { RankBadge } from "@/components/rank-badge";
+import { WinStreak } from "@/components/win-streak";
 import { placedRank, socialRankLabel } from "@/lib/player-summary";
 import { notFound } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
@@ -21,6 +22,8 @@ import { Avatar } from "@/components/ui";
 import { PlayerStats } from "@/components/player-stats";
 import { PlayerOverview } from "@/components/player-overview";
 import { EndorseRow, FollowButton, UserSafetyMenu } from "@/components/social-ui";
+import { DuoPinButton } from "@/components/duo-shortlist";
+import { pinnedDuoIds } from "@/lib/duo-shortlist";
 import { publicAvatarIdentity } from "@/lib/author-identity";
 import { PostCard } from "@/components/post-card";
 import { SafetyReport } from "@/components/safety-report";
@@ -47,11 +50,12 @@ export default async function ProfilePage({ params, searchParams }: {
     return withSearchReturn(before ? `${path}&before=${before}` : path, searchReturn);
   }
   const statsHref = tabHref("stats");
-  const [patch,counts,endorsements,linkedPlayers,following,posts,featuredLink] = await Promise.all([
+  const [patch,counts,endorsements,linkedPlayers,following,posts,featuredLink,pins] = await Promise.all([
     activeTab === "posts" ? currentPatch() : "", followCounts(userId), endorsementCounts(userId), readLinkedPlayers(userId),
     viewer && viewer.id !== userId ? isFollowing(viewer.id,userId) : false,
     activeTab === "posts" ? feedByAuthor(userId,viewer,20).catch(() => null) : [],
     profile.link ? readProfileLink(profile.link, viewer?.id ?? null) : null,
+    viewer && viewer.id !== userId ? pinnedDuoIds(viewer.id, [userId]).catch(() => null) : null,
   ]);
   const player = linkedPlayers[0] ?? null;
   const badges = player?.verified ? earnedBadges(player.snapshot) : [];
@@ -67,7 +71,10 @@ export default async function ProfilePage({ params, searchParams }: {
       <header className={styles.identity}>
         <div className={styles.byline}>
           <div>
-            <h1 className="profile-name">{profile.name}</h1>
+            <div className={styles.nameLine}>
+              <h1 className="profile-name">{profile.name}</h1>
+              <WinStreak wins={player?.winStreak}/>
+            </div>
             {player && <p className={styles.riotId}>{player.gameName}#{player.tagLine}
               <span> · {player.verified ? "Verified Riot link" : "Unverified Riot link"}</span></p>}
             {player?.verified && activeTab === "replies" && <Link href={statsHref} className={styles.identityRank} scroll={false}>
@@ -90,6 +97,7 @@ export default async function ProfilePage({ params, searchParams }: {
             <Link href="/lfg#duo-plan" className="btn secondary">My duo preferences</Link>
           </> : viewer ? <FollowButton userId={userId} initial={following} />
             : <Link className="btn small" href={signInHref(tabHref(activeTab, cursor))}>Sign in to follow</Link>}
+          {pins && <DuoPinButton key={userId} playerId={userId} initial={pins.includes(userId)}/>}
           <ShareLink path={profilePath} kind="profile"/>
           {!isSelf && (viewer ? <UserSafetyMenu userId={userId}/> : <SafetyReport kind="user" targetId={userId}/>)}
         </div>

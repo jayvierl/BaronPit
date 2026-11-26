@@ -8,8 +8,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DUO_ROLES } from "@/lib/pure";
 import type { DuoListing, DuoRequest } from "@/lib/duo";
+import { DuoPinButton } from "./duo-shortlist";
 import { playerStatsHref } from "@/lib/platforms";
 import { postJson } from "@/lib/client";
+import { DuoReminder } from "./duo-reminder";
 import { DuoCancelButton } from "./duo-cancel-button";
 import { RankBadge } from "./rank-badge";
 import { SafetyReport } from "./safety-report";
@@ -157,14 +159,21 @@ export function LfgForm({ fit, asOf, rankedPilot }: { fit: DuoFit | null; asOf: 
     </form>
   );
 }
-export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly = false }: {
-  listings: DuoListing[]; requests: DuoRequest[]; fit: DuoFit | null; onlyFit: boolean; asOf:number; requestsOnly?: boolean;
+export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly = false, pinnedIds = null }: {
+  listings: DuoListing[]; requests: DuoRequest[]; fit: DuoFit | null; onlyFit: boolean; asOf:number; requestsOnly?: boolean; pinnedIds?: number[] | null;
 }) {
   const now = useSessionClock(asOf);
   const browserZone = useBrowserTimeZone();
   const viewZone = timeZoneName(fit?.timeZone) ?? browserZone;
   const preferred = useMemo(() => scheduleWindows(fit?.blocks ?? [], fit?.timeZone, asOf, 1), [fit, asOf]);
   const displayed = listings.filter(l => l.own || (l.start !== null && l.start > now));
+  const pinRequests = new Map<number, number>();
+  if (pinnedIds) for (const request of requests) {
+    const peer = request.socialProfileId;
+    if (peer !== null && request.riotId && (request.contactEndsAt === null || request.contactEndsAt > now) && !pinRequests.has(peer)) {
+      pinRequests.set(peer, request.id);
+    }
+  }
   return (
     <>
       {!!requests.length && (
@@ -233,12 +242,15 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly 
                   {r.socialProfileId !== null && <> · <Link prefetch={false} href={"/u/"+r.socialProfileId}>Visit duo profile</Link></>}
                 </p>
               )}
+              {r.socialProfileId !== null && pinnedIds && pinRequests.get(r.socialProfileId) === r.id &&
+                <DuoPinButton key={r.socialProfileId} playerId={r.socialProfileId} initial={pinnedIds.includes(r.socialProfileId)}/>}
               {r.status === "pending" && !r.session && <p>Earlier invitation. Ask for a new session to choose a time together.</p>}
               {r.status === "pending" && r.session && r.session.start <= now && <p>This session has started. You can choose another listing.</p>}
               {r.status === "pending" && r.incoming && r.session?.compatible && r.session.start > now && (
                 <p className="meta">Accepting shares both Riot IDs{r.session.queue === RANKED_QUEUE ? " and social profile links" : ""} until the end of the session. Either player can check recent matches for a game together.</p>
               )}
               {r.status === "pending" && r.session && !r.session.compatible && <p>Your current Solo/Duo placements no longer match this session.</p>}
+              {r.status === "accepted" && r.session && r.session.start > now && r.cancellationEndsAt !== null && <DuoReminder id={r.id} />}
               {r.cancellationEndsAt !== null && r.cancellationEndsAt > now && <DuoCancelButton id={r.id} />}
               <div className="duo-controls">
                 {r.status === "pending" && r.incoming && r.session?.compatible && r.session.start > now && (

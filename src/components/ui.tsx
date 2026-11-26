@@ -1,16 +1,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { publicAvatar, championAvatarArt, avatarImageUrl, isOfficialRiotIcon, type AvatarRef } from "@/lib/avatar";
+import { WardMascot } from "./ward-mascot";
 
 type AvatarProps = {
-  name: string; hue: number; size?: number; imageUrl?: string; avatar?: AvatarRef;
+  name: string; hue: number; size?: number; imageUrl?: string; avatar?: AvatarRef; mascot?: boolean;
 };
 
 function avatarInitials(name: string) {
   return name.trim().split(/\s+/, 2).map(word => Array.from(word)[0]).join("").toUpperCase() || "?";
 }
 
-export function Avatar({ name, hue, size = 40, imageUrl, avatar }: AvatarProps) {
+export function Avatar({ name, hue, size = 40, imageUrl, avatar, mascot = false }: AvatarProps) {
   const ref = publicAvatar(avatar);
   const url = avatarImageUrl(ref) ?? (imageUrl && isOfficialRiotIcon(imageUrl) ? imageUrl : undefined);
   const officialIcon = url && isOfficialRiotIcon(url) ? url : undefined;
@@ -23,9 +24,11 @@ export function Avatar({ name, hue, size = 40, imageUrl, avatar }: AvatarProps) 
       aria-hidden
     >
       {avatarInitials(name)}
-      {officialIcon && <Image src={officialIcon} alt="" width={size} height={size}
-        loading={imageUrl ? "eager" : "lazy"} fetchPriority={imageUrl ? "high" : undefined} />}
-      {art && <span className="avatar-art" style={art} />}
+      {mascot ? <WardMascot compact size={size}/> : <>
+        {officialIcon && <Image src={officialIcon} alt="" width={size} height={size}
+          loading={imageUrl ? "eager" : "lazy"} fetchPriority={imageUrl ? "high" : undefined} />}
+        {art && <span className="avatar-art" style={art} />}
+      </>}
     </span>
   );
 }

@@ -13,6 +13,8 @@ export async function checkCommunityDuo(journey) {
   await journey("/api/pilot/evening", {method:"POST",body:{action:"save"},status:401});
   await journey("/api/pilot/evening", {method:"POST",session:true,body:{action:"save",role:"Support",start:"2000-01-01T02:00:00.000Z",consent:true},status:400});
   await journey("/api/pilot/evening", {method:"POST",session:true,body:{action:"sample",consent:true},status:409});
+  await journey("/api/lfg/reminder?id=1", {status:401});
+  await journey("/api/lfg/reminder?id=1", {session:true, status:404});
   const preferences = "/api/lfg/preferences";
   const settings = {action:"save", role:"Support", partnerRole:"ADC", timeZone:"America/Chicago", blocks:["Weekend mornings"], vibe:"chill", communication:"text"};
   await journey(preferences, {method:"POST", body:settings, status:401});
