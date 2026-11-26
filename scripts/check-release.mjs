@@ -1,9 +1,9 @@
 // Read-only check for the two feature sets that previously shipped from divergent checkouts.
 import assert from "node:assert/strict";
 
-const origin = new URL(process.argv[2] || "https://ward-party.vercel.app").origin;
+const origin = new URL(process.argv[2] || "https://baronpit.com").origin;
 const routes = [
-  ["/", ["Find your duo", "Match questions", "Lobby rally clock", "community objective"]],
+  ["/", ["Feed selection", "Start a conversation", "Find your duo", "Match questions", "Lobby rally clock", "community objective"]],
   ["/rooms/general", ["The Baron Pit", "baron-room-960.webp"]],
   ["/questions", ["Matchup notebook"]],
   ["/lfg", ["Find a duo", "Thanking a teammate after a game"]],

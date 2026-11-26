@@ -89,7 +89,8 @@ async function seedRooms() {
       INSERT INTO wp_rooms (slug,name,kind,champion_id,description)
       SELECT slug,name,kind,champion_id,description FROM seed WHERE slug='general'
       ON CONFLICT (slug) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description
-      WHERE (wp_rooms.name,wp_rooms.description) IS DISTINCT FROM (EXCLUDED.name,EXCLUDED.description)
+      WHERE wp_rooms.safety_status='visible'
+        AND (wp_rooms.name,wp_rooms.description) IS DISTINCT FROM (EXCLUDED.name,EXCLUDED.description)
     )
     INSERT INTO wp_rooms (slug,name,kind,champion_id,description)
     SELECT slug,name,kind,champion_id,description FROM seed WHERE slug<>'general'

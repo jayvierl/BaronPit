@@ -1,3 +1,4 @@
+import { enrollDuoPilot, withdrawDuoPilot } from "@/lib/duo-pilot";
 import { validId } from "@/lib/ids";
 import { authError, requireUser, readObject } from "@/lib/auth-http";
 import {
@@ -13,12 +14,17 @@ export async function POST(req: Request) {
   const data = await readObject(req);
   const access = await requireUser(
     req,
-    data.action === "leave" || data.action === "visit" ? "protect" : "participate",
+    data.action === "leave" || data.action === "leave-duo" || data.action === "visit" ? "protect" : "participate",
   );
   if (!access.ok) return access.response;
   try {
     if (data.action === "leave") {
       await leavePilot(access.user.id);
+    } else if (data.action === "leave-duo") {
+      await withdrawDuoPilot(access.user.id);
+    } else if (data.action === "join-duo" && data.consent === true) {
+      if (!(await enrollDuoPilot(access.user.id)))
+        return authError("The duo study requires an eligible verified player and open matching.", 409);
     } else if (data.action === "join" && data.consent === true && pilotChannel(data.channel)) {
       if (!(await joinPilot(access.user, data.channel, data.role)))
         return authError(

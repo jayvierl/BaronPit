@@ -39,6 +39,20 @@ describe("passwordless account lifecycle",()=>{
     expect(emailOrigin(wrong)).toBeNull();
     expect(isSameOriginWrite(new Request("https://app.test/api/auth/request-link"))).toBe(false);
   });
+  it("preserves the original sign-in host for a configured public alias", () => {
+    const previous = process.env.AUTH_PUBLIC_ALIASES;
+    try {
+      process.env.AUTH_PUBLIC_ALIASES = "https://original.test, https://www.community.test";
+      for (const origin of ["https://original.test", "https://www.community.test"]) {
+        expect(emailOrigin(new Request(origin + "/signin", { headers: { origin } }))).toBe(origin);
+      }
+      const unknown = "https://elsewhere.test";
+      expect(emailOrigin(new Request(unknown + "/signin", { headers: { origin: unknown } }))).toBeNull();
+    } finally {
+      if (previous === undefined) delete process.env.AUTH_PUBLIC_ALIASES;
+      else process.env.AUTH_PUBLIC_ALIASES = previous;
+    }
+  });
   it("accepts the exact browser authority when Next normalizes its loopback listener, and only trusts a configured TLS origin across a proxy",()=>{
     const via=(host:string,origin:string)=>new Request("http://localhost:3174/api/auth/request-link",{headers:{host,origin}});
     expect(isSameOriginWrite(via("127.0.0.1:3174","http://127.0.0.1:3174"))).toBe(true);

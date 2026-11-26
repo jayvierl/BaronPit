@@ -8,6 +8,7 @@ import { clipLink } from "@/lib/clip-link";
 import { BARON_CALL_OPTIONS } from "@/lib/poll";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { Avatar } from "./ui";
+import styles from "./thread.module.css";
 
 type Kind = "text" | "build" | "poll" | "clip";
 
@@ -144,10 +145,9 @@ export function Composer({
   return (
     <fieldset
       disabled={action.busy}
-      className="composer"
+      className={`composer ${styles.editor}`}
       id="compose"
-      style={{ minWidth: 0 }}
-      aria-label="Create a post"
+      aria-label="Start a thread"
     >
       <div className="composer-head">
         {userName != null && <Avatar name={userName} hue={userHue ?? 0} size={40} />}
@@ -158,19 +158,19 @@ export function Composer({
           rows={2}
           placeholder={
             kind === "build"
-              ? "Why does this build work? (the rationale is the good part)"
+              ? "When would you play this build?"
               : kind === "poll"
-                ? "Ask the community a question…"
+                ? "What should the room vote on?"
                 : kind === "clip"
-                  ? "Say something about this clip…"
-                  : "Share a take, a build, a clip…"
+                  ? "What happened in the clip?"
+                  : "What’s on your mind?"
           }
           value={body}
           onChange={(e) => setBody(e.target.value)}
           maxLength={2000}
         />
       </div>
-      <div className="kind-tabs">
+      <div className={`kind-tabs ${styles.formats}`} role="group" aria-label="Post format">
         {(["text", "build", "poll", "clip"] as Kind[]).map((k) => (
           <button
             key={k}
@@ -180,7 +180,7 @@ export function Composer({
             className={`kind-tab${kind === k ? " active" : ""}`}
             onClick={() => setKind(k)}
           >
-            {k === "text" ? "Post" : k === "build" ? "Build" : k === "poll" ? "Poll" : "Clip"}
+            {k === "text" ? "Text" : k === "build" ? "Build" : k === "poll" ? "Poll" : "Clip"}
           </button>
         ))}
       </div>
@@ -349,7 +349,7 @@ export function Composer({
       )}
       <div className="composer-foot">
         <span className="meta">
-          Be kind — moderation is on. <a href="/guidelines">Guidelines</a>
+          <a href="/guidelines">Community guidelines</a>{body.length >= 1800 && ` · ${2000 - body.length} characters left`}
         </span>
         <button
           type="button"

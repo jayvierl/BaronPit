@@ -29,6 +29,16 @@ it("renames the existing general room in place and preserves other room settings
     .toEqual([{ id: general.id, name: `The ${APP_NAME}`, user_id: member.id }]);
   expect(await q`SELECT name,description FROM wp_rooms WHERE slug='patch-meta'`)
     .toEqual([{ name: "Patch Room", description: "Editorial description" }]);
+  await q`UPDATE wp_rooms SET name='Under review', description='',safety_status='held' WHERE slug='general'`;
+  // Seeding refreshes the catalog after six hours.
+  const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 7*60*60_000);
+  try {
+    await ensureRooms();
+    expect(await q`SELECT name,description,safety_status FROM wp_rooms WHERE slug='general'`)
+      .toEqual([{ name: "Under review", description: "", safety_status: "held" }]);
+  } finally {
+    clock.mockRestore();
+  }
 });
 
 it("updates the reserved publisher before the first read while preserving namesakes and moderation holds", async () => {

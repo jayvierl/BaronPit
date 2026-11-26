@@ -1,5 +1,7 @@
+import { sharedGame } from "./verified-duo-game";
 import { getSql, q, queryRows } from "./db";
-import { filterByDuoFit } from "./duo-fit-store";
+import { decodeWindows, encodeWindows, scheduleWindows, type PlayWindow } from "./duo-schedule";
+import { filterByDuoFit, loadDuoFit } from "./duo-fit-store";
 import { TERMS_VERSION } from "./account-policy";
 import { rankLabel } from "./rank";
 import { rateLimit, type User } from "./auth";
@@ -14,6 +16,8 @@ export interface DuoListing {
   roles: string[];
   champs: string[];
   blocks: string[];
+  playWindows: PlayWindow[];
+  partnerRole: string | null;
   voice: boolean;
   vibe: string;
   note: string;
@@ -59,21 +63,10 @@ const board = `${eligible}, board AS (
     AND NOT EXISTS(SELECT 1 FROM wp_blocks b WHERE (b.blocker_id,b.blocked_id) IN ((me.id,peer.id),(peer.id,me.id)))
     AND NOT EXISTS(SELECT 1 FROM wp_mutes m WHERE (m.muter_id,m.muted_id) IN ((me.id,peer.id),(peer.id,me.id)))
 )`;
-// Both Riot snapshots must identify the same recent game, on the same team, after acceptance.
-// A confirmed choice remembers only that this check passed as the recent snapshots rotate.
-const sharedGame = `EXISTS (
-  SELECT 1 FROM jsonb_array_elements(sender.snapshot->'matches') sm
-  JOIN jsonb_array_elements(owner.snapshot->'matches') om ON om->>'matchId'=sm->>'matchId'
-  WHERE sm->>'matchId' IS NOT NULL AND sm->>'matchId' <> ''
-    AND CASE WHEN sm->>'playedAt' ~ '^[0-9]{1,14}$' THEN (sm->>'playedAt')::bigint END
-        >= extract(epoch FROM r.accepted_at)*1000
-    AND EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(sm->'teammates')='array'
-      THEN sm->'teammates' ELSE '[]'::jsonb END) teammate
-      WHERE teammate->>'name'=owner.game_name AND teammate->>'tag'=owner.tag_line)
-)`;
 const ownRequeue = `CASE WHEN r.sender_id=$1 THEN r.sender_requeue ELSE r.owner_requeue END`;
-const pairs = `${eligible}, pairs AS (
-  SELECT r.id,r.status,r.sender_id,l.user_id AS owner_id,r.listing_id,r.accepted_at,
+function pairScope(recentlyExpired = false) {
+  return `${eligible}, pairs AS (
+  SELECT r.id,r.status,r.sender_id,l.user_id AS owner_id,r.listing_id,r.created_at,r.accepted_at,l.expires_at,
     ${ownRequeue} AS my_choice,
     game.played AND NOT EXISTS (SELECT 1 FROM wp_reports f WHERE f.status='open'
       AND ((f.target_kind='duo_request' AND f.target_id=r.id) OR (f.target_kind='lfg' AND f.target_id=l.id))) AS can_thank,
@@ -93,14 +86,20 @@ const pairs = `${eligible}, pairs AS (
   CROSS JOIN LATERAL (SELECT CASE WHEN r.status='accepted' AND r.accepted_at IS NOT NULL THEN ${sharedGame}
     ELSE false END AS played) game
   WHERE $1 IN (l.user_id,r.sender_id) AND l.safe_listing
-    AND ((l.status='open' AND l.expires_at>now()) OR
+    AND ((l.status='open' AND l.expires_at>now())
+      ${recentlyExpired ? "OR (l.status='open' AND l.expires_at<=now() AND l.expires_at>now()-interval '24 hours')" : ""} OR
       (l.status IN ('open','closed') AND r.status='accepted' AND r.accepted_at>now()-interval '30 days'
        AND (game.played OR ${ownRequeue} OR r.sender_thanked OR r.owner_thanked)))
     AND owner.age_band=sender.age_band AND owner.platform=sender.platform AND r.status IN ('pending','accepted')
     AND NOT EXISTS(SELECT 1 FROM wp_blocks b WHERE (b.blocker_id,b.blocked_id) IN ((l.user_id,r.sender_id),(r.sender_id,l.user_id)))
     AND NOT EXISTS(SELECT 1 FROM wp_mutes m WHERE (m.muter_id,m.muted_id) IN ((l.user_id,r.sender_id),(r.sender_id,l.user_id)))
 )`;
+}
+const pairs = pairScope();
 const params = (id: number) => [id, TERMS_VERSION];
+export { eligible as duoEligibilityCte, pairs as duoPairsCte };
+// Only the private Activity reader may broaden the listing time window; no actions use this scope.
+export const duoActivityPairsCte = pairScope(true);
 export async function duoEligible(userId: number) {
   if (!duoEnabled()) return false;
   return (await queryRows(eligible + " SELECT 1 FROM me", params(userId))).length > 0;
@@ -113,6 +112,8 @@ function listing(row: Row, userId: number): DuoListing {
     roles: row.roles as string[],
     champs: row.champs as string[],
     blocks: row.blocks as string[],
+    playWindows: decodeWindows(row.play_windows),
+    partnerRole: typeof row.partner_role === "string" ? row.partner_role : null,
     voice: row.voice === true,
     vibe: String(row.vibe),
     note: String(row.note),
@@ -125,16 +126,20 @@ function listing(row: Row, userId: number): DuoListing {
     held: row.status === "held",
   };
 }
-export async function readDuoBoard(userId: number, onlyFit = false) {
+export async function readDuoBoard(userId: number, onlyFit = false, asOf = Date.now()) {
   if (!duoEnabled()) return { listings: [], requests: [] };
   const [rows, requests] = await Promise.all([
-    queryRows(
-      board +
-        ` SELECT b.id,b.user_id,b.roles,b.champs,b.blocks,b.voice,b.vibe,b.note,b.rank_tier,b.rank_div,b.wins,b.games,b.platform,b.expires_at,b.status,
-      EXISTS(SELECT 1 FROM wp_duo_requests r WHERE r.listing_id=b.id AND r.sender_id=$1) AS requested
-      FROM board b ${filterByDuoFit} ORDER BY (b.user_id=$1) DESC,b.created_at DESC,b.id DESC LIMIT 40`,
-      [...params(userId), onlyFit],
-    ),
+    (async () => {
+      const fit = onlyFit ? await loadDuoFit(userId) : null;
+      const windows = fit?.blocks.length ? encodeWindows(scheduleWindows(fit.blocks, fit.timeZone, asOf)) : null;
+      return queryRows(
+        board +
+          ` SELECT b.id,b.user_id,b.roles,b.champs,b.blocks,b.play_windows::text AS play_windows,b.partner_role,b.voice,b.vibe,b.note,b.rank_tier,b.rank_div,b.wins,b.games,b.platform,b.expires_at,b.status,
+        EXISTS(SELECT 1 FROM wp_duo_requests r WHERE r.listing_id=b.id AND r.sender_id=$1) AS requested
+        FROM board b ${filterByDuoFit} ORDER BY (b.user_id=$1) DESC,b.created_at DESC,b.id DESC LIMIT 40`,
+        [...params(userId), fit ? JSON.stringify(fit) : null, windows],
+      );
+    })(),
     queryRows(
       pairs +
         " SELECT id,status,sender_id,contact,rank_tier,rank_div,platform,accepted_at,can_requeue,my_choice,mutual,can_thank,sent_thanks,received_thanks,adult_pair FROM pairs ORDER BY id DESC LIMIT 40",
@@ -168,7 +173,7 @@ export async function createDuoListing(user: User, data: unknown) {
     return { ok: false, error: "Verified duo matching is waiting for Riot Sign On and safety coverage." };
   const parsed = duoPreferences(data);
   if (!parsed.ok) return parsed;
-  const { roles, blocks, voice, vibe, note } = parsed.value;
+  const { roles, partnerRole, blocks, timeZone, voice, vibe, note } = parsed.value;
   if (!(await duoEligible(user.id)))
     return { ok: false, error: "Duo listings require verified ownership and current ranked game data." };
   if (!(await rateLimit(user.id, "duo-list", 3, 24 * 60)))
@@ -177,18 +182,20 @@ export async function createDuoListing(user: User, data: unknown) {
   if (screened.action === "block")
     return { ok: false, error: "This note cannot be published. Contact safety if you need help." };
   const held = screened.action === "hold";
+  // Eight days cover the next week for all viewers throughout the four-hour listing.
+  const windows = timeZone ? encodeWindows(scheduleWindows(blocks, timeZone, Date.now(), 8)) : null;
   const sql = await getSql();
   const [, rows] = await sql.transaction([
     sql`SELECT pg_advisory_xact_lock(hashtext('duo-list'),${user.id})`,
     sql(
       eligible +
-        ` INSERT INTO wp_lfg (user_id,puuid,roles,champs,blocks,voice,vibe,note,status,safe_listing)
+        ` INSERT INTO wp_lfg (user_id,puuid,roles,champs,blocks,voice,vibe,note,status,safe_listing,partner_role,play_windows)
       SELECT me.id,me.puuid,$3::text[],ARRAY(SELECT c->>'champion' FROM jsonb_array_elements(
         CASE WHEN jsonb_typeof(me.snapshot->'champPool')='array' THEN me.snapshot->'champPool' ELSE '[]'::jsonb END) c
-        WHERE c->>'champion' ~ '^[A-Za-z0-9]{1,30}$' LIMIT 5),$4::text[],$5::bool,$6,$7,$8,true FROM me
+        WHERE c->>'champion' ~ '^[A-Za-z0-9]{1,30}$' LIMIT 5),$4::text[],$5::bool,$6,$7,$8,true,$9,$10::int4multirange FROM me
       WHERE NOT EXISTS (SELECT 1 FROM wp_lfg l WHERE l.user_id=$1 AND l.safe_listing AND l.status IN ('open','held') AND l.expires_at>now())
       RETURNING id`,
-      [...params(user.id), roles, blocks, voice, vibe, note, held ? "held" : "open"],
+      [...params(user.id), roles, blocks, voice, vibe, note, held ? "held" : "open", partnerRole, windows],
     ),
   ]);
   return rows.length

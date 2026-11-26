@@ -6,6 +6,7 @@ import { queryRows } from "./db";
 import { HIDDEN_AUTHORS, canDisplayPost, visibleCommentsFor } from "./community-queries";
 import { playerFlair } from "./rank";
 import { teamBaronFields } from "./pure";
+import { followedReposts, repostableContent } from "./reposts";
 import type { PostView, CommentView } from "./post-types";
 
 type Filter = {
@@ -99,10 +100,13 @@ const recentDiscussionActivity = `, candidates AS (
 
 export async function readPosts(viewerId: number | null, filter: Filter, limit: number): Promise<PostView[]> {
   // Bound expensive flair and legacy-card lookups to the selected page.
-  const rows = await queryRows(`WITH RECURSIVE ${HIDDEN_AUTHORS}${filter.activeReplies ? recentDiscussionActivity : ""}, chosen AS (
+  const rows = await queryRows(`WITH RECURSIVE ${HIDDEN_AUTHORS}${filter.activeReplies ? recentDiscussionActivity : ""}${filter.following ? followedReposts : ""}, chosen AS (
     SELECT p.*, ${filter.activeReplies ? "a.answered_at" : "NULL::timestamptz"} AS answered_at,
-      ${filter.activeReplies ? "greatest(p.created_at,a.answered_at)" : "p.created_at"} AS sort_at
+      ${filter.following ? "s.user_id" : "NULL::int"} AS sharer,
+      ${filter.following ? "s.first_shared_at" : "NULL::timestamptz"} AS shared_at,
+      greatest(p.created_at, ${filter.following ? "s.first_shared_at" : filter.activeReplies ? "a.answered_at" : "NULL::timestamptz"}) AS sort_at
     FROM wp_posts p ${filter.activeReplies ? "LEFT JOIN activity a ON a.post_id=p.id" : ""}
+      ${filter.following ? "LEFT JOIN shared s ON s.post_id=p.id" : ""}
     WHERE ${canDisplayPost}
       AND (p.status = 'visible' OR ($4::int IS NOT NULL AND p.status = 'held' AND p.author_id = $1
         AND NOT EXISTS (SELECT 1 FROM wp_safety_urgent e WHERE e.target_kind = 'post' AND e.target_id = p.id AND e.reviewed_at IS NULL)))
@@ -110,7 +114,8 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
       AND ($4::int IS NULL OR p.id = $4)
       AND (NOT $5::boolean OR p.author_id = $1
         OR EXISTS (SELECT 1 FROM wp_follows WHERE follower_id = $1 AND followee_id = p.author_id)
-        OR EXISTS (SELECT 1 FROM wp_room_members WHERE user_id = $1 AND room_id = p.room_id))
+        OR EXISTS (SELECT 1 FROM wp_room_members WHERE user_id = $1 AND room_id = p.room_id)
+        ${filter.following ? "OR s.user_id IS NOT NULL" : ""})
       AND (NOT $6::boolean OR p.kind = 'build')
       AND ($7::text IS NULL OR lower(p.data->>'champion') = lower($7))
       AND (NOT $8::boolean OR p.data->'offMeta' = 'true'::jsonb)
@@ -126,10 +131,14 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
     ORDER BY sort_at DESC, p.id DESC LIMIT $10
     )
     SELECT p.id, p.author_id, p.kind, p.room_id, p.answered_at, ${postDataProjection} AS data, p.body, p.status, p.created_at,
+      p.sharer,p.shared_at,sh.display_name AS sharer_name,
+      (p.status='visible' AND p.author_id IS DISTINCT FROM $1 AND ${repostableContent("$11")}) AS can_repost,
+      EXISTS (SELECT 1 FROM wp_reposts r WHERE r.user_id=$1 AND r.post_id=p.id AND r.active) AS my_repost,
       u.email=$11 AS is_publisher, rm.champion_id AS room_champion,
       EXISTS (SELECT 1 FROM wp_decisions d WHERE d.post_id=p.id) AS is_question,
       u.display_name AS author_name, u.avatar_hue AS author_hue, rm.slug AS room_slug, rm.name AS room_name, flair.label
     FROM chosen p JOIN wp_users u ON u.id = p.author_id
+    LEFT JOIN wp_users sh ON sh.id=p.sharer
     LEFT JOIN wp_rooms rm ON rm.id = p.room_id
     LEFT JOIN LATERAL (
       SELECT jsonb_build_array(pl.rank_tier, pl.rank_div, pl.snapshot #> '{champPool,0,champion}') AS label
@@ -173,6 +182,8 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
     return {
       id, authorId: Number(r.author_id), authorName: String(r.author_name), authorHue: Number(r.author_hue),
       isQuestion:r.is_question === true,
+      canRepost: r.can_repost === true, myRepost: r.my_repost === true,
+      ...(r.sharer != null ? {repostedBy: {id: Number(r.sharer), name: String(r.sharer_name), at: String(r.shared_at)}} : {}),
       authorFlair: flair ? playerFlair(...flair) : null,
       ...(r.answered_at ? { lastReplyAt: String(r.answered_at) } : {}),
       ...(catalog && (r.kind === "card" || r.kind === "build") ? {itemPatch:catalog.patch,itemDetails:cardItems(catalog,r.kind === "card" ? record(data.match).items : data.items)} : {}),

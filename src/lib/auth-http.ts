@@ -5,12 +5,14 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 function configuredHttpsOrigin(origin: string): boolean {
   const configured = [process.env.APP_ORIGIN, process.env.VERCEL_PROJECT_PRODUCTION_URL,
-    process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL];
+    process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL,
+    ...(process.env.AUTH_PUBLIC_ALIASES || "").split(",").map(value => value.trim())];
   return configured.some(value => {
     if (!value) return false;
     try {
       const url = new URL(value.includes("://") ? value : "https://" + value);
-      return url.protocol === "https:" && url.origin === origin;
+      return url.protocol === "https:" && !url.username && !url.password && url.pathname === "/" &&
+        !url.search && !url.hash && url.origin === origin;
     } catch { return false; }
   });
 }

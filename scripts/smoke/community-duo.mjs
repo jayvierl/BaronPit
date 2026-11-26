@@ -6,7 +6,7 @@ export async function checkCommunityDuo(journey) {
   await journey("/review-hour/calendar?day=2000-01-01", {status: 410});
   await journey("/lfg/thanks", {includes: ["Tip preview only", "Free thanks", "$4.50", "$0.50"]});
   const preferences = "/api/lfg/preferences";
-  const settings = {action:"save", role:"Support", partnerRole:"ADC", blocks:["Weekend mornings"], vibe:"chill", communication:"text"};
+  const settings = {action:"save", role:"Support", partnerRole:"ADC", timeZone:"America/Chicago", blocks:["Weekend mornings"], vibe:"chill", communication:"text"};
   await journey(preferences, {method:"POST", body:settings, status:401});
   await journey(preferences, {method:"POST", session:true, body:settings, includes:['"ok":true']});
   await journey("/lfg", {session:true, includes:["Weekend mornings", "/lfg/thanks"]});

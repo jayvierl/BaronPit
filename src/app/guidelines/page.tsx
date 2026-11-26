@@ -24,7 +24,7 @@ export default function GuidelinesPage() {
         <li>Independent reports can hold content for review. A single urgent report can hide content immediately. A moderator checks the context before imposing a sanction.</li>
         <li>Sanctions follow a ladder — notice → content removal → temporary restriction → suspension → permanent ban — but severe violations can skip straight to the end of it. “They started it” is not a defense; we judge each person&apos;s content on its own.</li>
         <li>Every action on your content comes with a <strong>reform card</strong>: you see what was actioned and which rule it broke, in your profile. Reporters also see outcomes — reporting here is never a shout into the void.</li>
-        <li>New accounts start with lighter privileges (no links, extra filtering) and earn full ones quickly by participating normally. This is published policy, not a shadow ban.</li>
+        <li>New accounts start with extra filtering and limits on links. After your first 24 hours, you can repost up to 12 discussions or builds an hour to your followers.</li>
         <li>Think we got it wrong? Open <Link href="/me/safety">your safety inbox</Link> to appeal, or contact <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> with your account email and the notice date.</li>
       </ul>
 

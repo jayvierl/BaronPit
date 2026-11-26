@@ -10,15 +10,18 @@ import { Avatar, timeAgo } from "./ui";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SaveReply } from "./discussion-library-actions";
 import styles from "@/app/questions/questions.module.css";
+import threadStyles from "./thread.module.css";
 import { SafetyReport } from "./safety-report";
 
-type ThreadLoad = { postId: number; revision: number } & (
+type ThreadLoad = { postId: number; revision: number; visit: number } & (
   | { comments: CommentView[]; error?: never }
   | { error: string; comments?: never }
 );
 
 export function CommentSection({
   postId,
+  active = true,
+  visit = 1,
   signedIn,
   viewerName,
   viewerHue,
@@ -27,6 +30,8 @@ export function CommentSection({
   onVisibleReply,
 }: {
   postId: number;
+  active?: boolean;
+  visit?: number;
   signedIn: boolean;
   viewerName?: string;
   viewerHue?: number;
@@ -70,6 +75,7 @@ export function CommentSection({
     } catch { setNotice("This browser couldn’t save your reply. Copy it before signing in."); }
   }
   useEffect(() => {
+    if (!active) return;
     const controller = new AbortController();
     async function load() {
       try {
@@ -79,14 +85,14 @@ export function CommentSection({
         });
         const data = await response.json();
         if (!response.ok || data.ok !== true || !Array.isArray(data.comments)) throw new Error("Unavailable");
-        if (!controller.signal.aborted) setThread({ postId, revision, comments: data.comments });
+        if (!controller.signal.aborted) setThread({ postId, revision, visit, comments: data.comments });
       } catch {
-        if (!controller.signal.aborted) setThread({ postId, revision, error: "Replies couldn’t load." });
+        if (!controller.signal.aborted) setThread({ postId, revision, visit, error: "Replies couldn’t load." });
       }
     }
     void load();
     return () => controller.abort();
-  }, [postId, revision]);
+  }, [active, postId, revision, visit]);
 
   const lastAnchor = useRef("");
   useEffect(() => {
@@ -131,7 +137,7 @@ export function CommentSection({
 
   function showComment(c: CommentView, rootId: number, depth: number): React.ReactNode {
     return (
-      <div key={c.id} id={`reply-${c.id}`} style={{ marginLeft: depth === 1 ? 20 : 0 }}>
+      <div key={c.id} id={`reply-${c.id}`} className={threadStyles.replyBranch}>
         <div className="comment-row">
           <div className="comment-rail">
             <Link href={`/u/${c.authorId}`} aria-label={`${c.authorName}’s profile`}>
@@ -144,18 +150,21 @@ export function CommentSection({
               <Link href={`/u/${c.authorId}`} className="post-author">
                 {c.authorName}
               </Link>{" "}
-              <time className="time" dateTime={c.createdAt} suppressHydrationWarning>
-                {timeAgo(c.createdAt)}
-              </time>
+              <Link href={`/post/${postId}#reply-${c.id}`} className={threadStyles.permalink}
+                aria-label={`Link to reply by ${c.authorName}`}>
+                <time className="time" dateTime={c.createdAt} suppressHydrationWarning>{timeAgo(c.createdAt)}</time>
+              </Link>
             </div>
             <div className="post-body">
               {c.oneFix && <span className="onefix-tag">One fix</span>}
               {c.body}
             </div>
             {c.status === "held" && <span className="meta">Awaiting review</span>}
-            <button
+            <div className={threadStyles.replyActions}>
+              <button
                 type="button"
                 className="text-btn"
+                aria-label={`Reply to ${c.authorName}`}
                 onClick={() => {
                   setReplyTo({ rootId, name: c.authorName });
                   setOneFix(false);
@@ -164,18 +173,22 @@ export function CommentSection({
               >
                 Reply
               </button>
-            <SaveReply replyId={c.id} postId={postId} signedIn={signedIn}/>
-            <SafetyReport kind="comment" targetId={c.id} />
+              <SaveReply replyId={c.id} postId={postId} signedIn={signedIn}/>
+              <SafetyReport kind="comment" targetId={c.id} />
+            </div>
           </div>
         </div>
-        {c.replies.map((child) => showComment(child, rootId, depth + 1))}
+        {c.replies.length > 0 && <div className={depth === 0 ? threadStyles.children : undefined}>
+          {c.replies.map((child) => showComment(child, rootId, depth + 1))}
+        </div>}
       </div>
     );
   }
 
-  const current = thread?.postId === postId && thread.revision === revision ? thread : null;
+  const current = thread?.postId === postId && thread.revision === revision && thread.visit === visit ? thread : null;
   return (
-    <section id={`replies-${postId}`} className="comments" aria-label="Replies">
+    <section id={`replies-${postId}`} className="comments" aria-labelledby={`replies-title-${postId}`}>
+      <h2 className={threadStyles.repliesTitle} id={`replies-title-${postId}`}>Replies</h2>
       {!current ? (
         <p className="meta" role="status">
           Loading replies…
@@ -225,7 +238,7 @@ export function CommentSection({
       {signedIn && action.authStep && <button type="button" className="text-btn" onClick={resumeAfterAuth}>
         {action.authStep === "enrol" ? "Confirm eligibility and return to reply" : "Sign in and return to reply"}
       </button>}
-        <form
+        <form className={threadStyles.replyForm}
           onSubmit={(e) => {
             e.preventDefault();
             void submit();

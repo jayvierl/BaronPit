@@ -18,9 +18,9 @@ The example at `/lfg/thanks` is a local calculator in USD. Its illustrative plat
 
 ## Private duo preferences
 
-Players can privately save their role, preferred partner role, broad play times, vibe and desired chat preference. This works while verified matching is paused. A plan creates no listing or invitation. Guests can explore the controls and keep a short-lived browser draft through sign-in. A signed-in player can clear the plan in Duo Finder. Account deletion cascades to the preference row.
+Players can privately save their role, preferred partner role, broad play times, schedule time zone, vibe and desired chat preference. This works while verified matching is paused. A plan creates no listing or invitation. Guests can explore the controls and keep a short-lived browser draft through sign-in. A signed-in player can clear the plan in Duo Finder. Account deletion cascades to the preference row.
 
-When verified matching is enabled, the board applies these preferences inside the same age, server, Riot verification, block and mute boundaries as the ordinary listings. The filtered view matches the requested role (including Fill), at least one selected local time label, compatible playstyle and the requested communication setting. Local time labels do not establish a common time zone. Players can switch to all eligible listings. A new listing starts from the owner's role, vibe and usual times. Opening voice chat always requires an explicit choice.
+When verified matching is enabled, the board applies these preferences inside the same age, server, Riot verification, block and mute boundaries as the ordinary listings. The filtered view checks both players’ requested roles (including Fill), compatible playstyle, chat preferences and actual overlapping availability over the next seven days. A private IANA time zone preserves local schedule choices through daylight-saving changes. Listings publish compact UTC intervals. Other players see times in their own selected zone. Legacy listings without a known partner role stay on the full eligible board. Legacy times without a zone cannot establish a schedule match. A new listing starts from the owner’s role, preferred partner role, vibe and usual times. Opening voice chat always requires an explicit choice.
 
 ## Existing Blob assets
 

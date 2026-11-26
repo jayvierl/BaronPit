@@ -67,7 +67,7 @@ const signed = { cookie: "wp_session=" + session };
 let completed = 0;
 async function journey(
   path,
-  { status = 200, session = false, includes = [], excludes = [], method = "GET", body, base = origin } = {},
+  { status = 200, session = false, includes = [], excludes = [], method = "GET", body, base = origin, signInReturn } = {},
 ) {
   const res = await fetch(base + path, {
     method,
@@ -80,6 +80,11 @@ async function journey(
     signal: AbortSignal.timeout(20000),
   });
   const text = await res.text();
+  if (signInReturn) {
+    const location = new URL(res.headers.get("location"), base);
+    assert.equal(location.pathname, "/signin");
+    assert.equal(location.searchParams.get("next"), signInReturn);
+  }
   if (status === "missing") {
     // Next can flush a loading boundary before notFound(); its streamed fallback carries this digest.
     assert.ok(
@@ -127,6 +132,17 @@ try {
     includes: ["Fixture win condition", "Lobby rally clock"],
     excludes: ["Fixture offrole question", "Fixture blocked discussion", "Never take Baron alone.", "Community objective progress"],
   });
+  await journey("/api/social/repost", {session:"helper", method:"POST", body:{postId:523,active:true}, includes:['"active":true']});
+  await journey("/?tab=following", {session:true, includes:["Fixture offrole question","Fixture Teammate"], excludes:["Fixture blocked discussion"]});
+  await journey("/api/social/repost", {session:"helper", method:"POST", body:{postId:523,active:false}, includes:['"active":false']});
+  await journey("/?tab=following", {session:true, excludes:["Fixture offrole question"]});
+  await journey("/api/social/follow", {session:true, method:"POST", body:{userId:502,follow:false}, includes:['"active":false']});
+  await journey("/?tab=following", {session:true, includes:["Make this feed yours","The Baron Pit","Join room"], excludes:["Fixture blocked discussion"]});
+  await journey("/api/social/follow", {session:true, method:"POST", body:{userId:502,follow:true}, includes:['"active":true']});
+  await journey("/activity?tab=duos", {session:true, includes:["Duo"], excludes:["Fixture Blocked"]});
+  for (const signedOutPage of ["/activity?tab=duos", "/activity?tab=watching&before=42", "/playbook?before=42"]) {
+    await journey(signedOutPage, {status:307, signInReturn:signedOutPage});
+  }
   await journey("/u/502", {
     session: true,
     includes: ["Fixture Teammate", "Fixture win condition", "Unverified Riot link"],

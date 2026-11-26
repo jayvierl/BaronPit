@@ -2,22 +2,28 @@ import { signInHref } from "@/lib/signin-return";
 import "./duo.css";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
-import { duoEnabled, duoEligible, readDuoBoard, type DuoListing, type DuoRequest } from "@/lib/duo";
+import { duoEnabled, readDuoBoard, type DuoListing, type DuoRequest } from "@/lib/duo";
+import { privateDuoReadiness, type DuoReadiness } from "@/lib/duo-readiness";
 import { loadDuoFit } from "@/lib/duo-fit-store";
 import { LfgBoard, LfgForm } from "@/components/lfg-ui";
 import { DuoFitForm } from "@/components/duo-fit-form";
 
 export const dynamic = "force-dynamic";
 type BoardState =
-  | { status: "paused" | "guest" | "ineligible" | "error" }
-  | { status: "ready"; listings: DuoListing[]; requests: DuoRequest[] };
+  | { status: "guest" | "error" }
+  | { status: "paused"; readiness?: DuoReadiness }
+  | { status: "ineligible"; readiness: Extract<DuoReadiness,{ready:false}> }
+  | { status: "ready"; listings: DuoListing[]; requests: DuoRequest[]; asOf: number };
 
 async function loadBoard(userId: number | undefined, onlyFit: boolean): Promise<BoardState> {
-  if (!duoEnabled()) return { status: "paused" };
-  if (!userId) return { status: "guest" };
+  const enabled = duoEnabled();
+  if (!userId) return { status: enabled ? "guest" : "paused" };
   try {
-    if (!(await duoEligible(userId))) return { status: "ineligible" };
-    return { status: "ready", ...(await readDuoBoard(userId, onlyFit)) };
+    const readiness = await privateDuoReadiness(userId);
+    if (!enabled) return { status: "paused", readiness };
+    if (!readiness.ready) return { status: "ineligible", readiness };
+    const asOf = Date.now();
+    return { status: "ready", asOf, ...(await readDuoBoard(userId, onlyFit, asOf)) };
   } catch {
     return { status: "error" };
   }
@@ -31,6 +37,7 @@ export default async function LfgPage({ searchParams }: { searchParams: Promise<
     viewer ? loadDuoFit(viewer.id).catch(() => undefined) : null,
   ]);
   const fit = stored ?? null;
+  const readiness = state.status === "paused" || state.status === "ineligible" ? state.readiness : undefined;
   return (
     <div className="duo-page">
       <header>
@@ -46,19 +53,20 @@ export default async function LfgPage({ searchParams }: { searchParams: Promise<
       {state.status === "guest" && (
         <p><Link href={signInHref("/lfg")} className="btn">Sign in to find a duo</Link></p>
       )}
-      {state.status === "ineligible" && (
+      {readiness && !readiness.ready && (
         <aside className="duo-status">
-          <h2>Check your eligibility</h2>
-          <p>Confirm your age group and terms in your account. After your first 24 hours, matching requires
-            verified Riot ownership and recent ranked data. Refresh your linked player’s stats to update your eligibility.</p>
-          <Link href="/me">My account</Link>
+          <h2>{readiness.title}</h2>
+          <p>{readiness.detail}</p>
+          {readiness.availableAt && <p>Check again after <time dateTime={readiness.availableAt}>{new Date(readiness.availableAt).toUTCString()}</time>.</p>}
+          {readiness.href && <Link href={readiness.href}>{readiness.action}</Link>}
         </aside>
       )}
       {state.status === "ready" && (
         <>
           <p className="meta">Listings last four hours. You see a teammate’s Riot ID after both of you agree to connect.</p>
-          <LfgBoard listings={state.listings} requests={state.requests} fit={fit} onlyFit={onlyFit} />
+          <LfgBoard listings={state.listings} requests={state.requests} fit={fit} onlyFit={onlyFit} asOf={state.asOf} />
           {!state.listings.some(l => l.own) && <LfgForm key={JSON.stringify(fit)} fit={fit} />}
+          <p className="meta"><Link href="/pilot#duo-study">Volunteer for the Duo Finder study</Link></p>
         </>
       )}
       {state.status === "error" && <p className="notice" role="status">Duo Finder couldn’t load. Try again shortly.</p>}

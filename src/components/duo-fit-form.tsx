@@ -7,13 +7,17 @@ import { DUO_ROLES, SCHEDULE_BLOCKS } from "@/lib/pure";
 import { communications, partnerRoles, parseDuoFit, playstyles, type DuoFit } from "@/lib/duo-fit";
 import { beginDraftSignIn, restoreAfterMount } from "@/lib/auth-draft";
 import { signInHref } from "@/lib/signin-return";
+import { DuoTimeZone, useBrowserTimeZone } from "./duo-time-zone";
+import { scheduleHours, timeZoneName } from "@/lib/duo-schedule";
 import { ActionFeedback, usePostAction } from "./post-action";
 
 const empty = { role: "", partnerRole: "Any", blocks: [] as string[], vibe: "both", communication: "any" };
 const draftScope = "private-duo-plan";
 
 export function DuoFitForm({ saved, signedIn }: { saved: DuoFit | null; signedIn: boolean }) {
-  const [draft, setDraft] = useState(saved ?? empty);
+  const browserZone = useBrowserTimeZone();
+  const [draft, setDraft] = useState<{ role:string; partnerRole:string; blocks:string[]; vibe:string; communication:string; timeZone?:string }>(saved ?? empty);
+  const timeZone = draft.timeZone ?? browserZone;
   const [notice, setNotice] = useState("");
   const action = usePostAction();
   const router = useRouter();
@@ -31,15 +35,16 @@ export function DuoFitForm({ saved, signedIn }: { saved: DuoFit | null; signedIn
   function signIn(mode?: "enrol") {
     let href = signInHref("/lfg#duo-plan", mode);
     try {
-      href = beginDraftSignIn(window.localStorage, draftScope, "/lfg#duo-plan", draft, mode);
+      href = beginDraftSignIn(window.localStorage, draftScope, "/lfg#duo-plan", {...draft,timeZone}, mode);
     } catch { /* Sign-in remains available when browser storage is disabled. */ }
     router.push(href);
   }
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    if (!timeZoneName(timeZone)) { setNotice("Choose a valid schedule time zone, such as Europe/London."); return; }
     if (!signedIn || action.authStep) return signIn(action.authStep === "enrol" ? "enrol" : undefined);
     setNotice("");
-    if (await action.send("/api/lfg/preferences", { ...draft, action: "save" })) {
+    if (await action.send("/api/lfg/preferences", { ...draft, timeZone, action: "save" })) {
       setNotice("Your duo plan is saved privately.");
       router.refresh();
     }
@@ -62,6 +67,7 @@ export function DuoFitForm({ saved, signedIn }: { saved: DuoFit | null; signedIn
     <section className="duo-plan card" id="duo-plan" aria-labelledby="duo-plan-title">
       <h2 id="duo-plan-title">Your duo plan</h2>
       <p>Choose who you want to queue with. Your preferences stay private. You decide when to post a listing.</p>
+      {saved?.blocks.length && !saved.timeZone ? <p className="notice">Save your time zone to match your play times with another player’s.</p> : null}
       <form onSubmit={save}>
         <fieldset disabled={action.busy}>
           <div className="duo-fields">
@@ -89,7 +95,8 @@ export function DuoFitForm({ saved, signedIn }: { saved: DuoFit | null; signedIn
           </div>
           <details className="duo-times">
             <summary>Usual play times · {draft.blocks.length ? draft.blocks.length + " selected" : "Any time"}</summary>
-            <p className="meta">These times are local to each player. Agree on a time and time zone after connecting.</p>
+            <DuoTimeZone value={timeZone} onChange={zone => setDraft({...draft, timeZone:zone})} />
+            <p className="meta">{scheduleHours} Weekends are Saturday and Sunday in this time zone.</p>
             <div className="duo-checks">
               {SCHEDULE_BLOCKS.map(block => <label key={block}>
                 <input type="checkbox" checked={draft.blocks.includes(block)} onChange={e => {

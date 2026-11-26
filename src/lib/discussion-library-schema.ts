@@ -1,4 +1,12 @@
 export const librarySchema = [
+  `CREATE TABLE IF NOT EXISTS wp_reposts (
+    user_id int NOT NULL REFERENCES wp_users(id) ON DELETE CASCADE,
+    post_id int NOT NULL REFERENCES wp_posts(id) ON DELETE CASCADE,
+    first_shared_at timestamptz NOT NULL DEFAULT now(), active boolean NOT NULL DEFAULT true,
+    PRIMARY KEY(user_id,post_id)
+  )`,
+  "CREATE INDEX IF NOT EXISTS wp_reposts_source ON wp_reposts(post_id)",
+  "CREATE INDEX IF NOT EXISTS wp_reposts_following ON wp_reposts(user_id,first_shared_at DESC) WHERE active",
   `CREATE TABLE IF NOT EXISTS wp_discussion_saves (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id int NOT NULL REFERENCES wp_users(id) ON DELETE CASCADE,

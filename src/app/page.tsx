@@ -1,3 +1,6 @@
+import styles from "./home.module.css";
+import { FollowingStarter } from "@/components/following-starter";
+import { hasIncomingDuoRequest } from "@/lib/duo-activity";
 import { Suspense } from "react";
 import { CommunityObjective } from "@/components/community-objective";
 import { CommunityWelcome } from "@/components/community-welcome";
@@ -32,13 +35,14 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const activeTab = tab === "following" && user ? "following" : "everyone";
   const today = new Date().toISOString().slice(0, 10);
   const available = dbAvailable();
-  const [patch, champions, posts, rooms, trending, unread] = await Promise.all([
+  const [patch, champions, posts, rooms, trending, unread, duoInvite] = await Promise.all([
     currentPatch(),
     user ? championList() : [],
     available ? feed(user,activeTab).catch(() => null) : null,
     available ? listFeaturedRooms(user?.id).catch(() => []) : [],
     available ? trendingChampions().catch(() => []) : [],
     user && available ? hasUnreadReplies(user.id).catch(() => false) : false,
+    user && available ? hasIncomingDuoRequest(user.id).catch(() => false) : false,
   ]);
   function renderPost(post: NonNullable<typeof posts>[number]) {
     return <PostCard key={post.id} post={post} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} />;
@@ -47,60 +51,51 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   return (
     <div>
       {user?.pilotActive && <PilotVisit kind="social"/>}
-      <header className="lobby-header">
-        <div className="community-heading">
-          <h1 className="page-title">Community</h1>
-          <Link href="/rooms" className="text-btn">Browse rooms</Link>
-        </div>
-        {!user && <CommunityWelcome />}
-        <section className="duo-invite" aria-labelledby="duo-invite-title">
-          <div>
-            <h2 id="duo-invite-title">Find your duo</h2>
-            <p>{duoEnabled() ? "Find someone who shares your hours, playstyle and plans for the next game." : "Save your role, usual play times and voice preference for when verified matching opens."}</p>
-          </div>
-          <Link className="btn gold" href="/lfg">{duoEnabled() ? "Open Duo Finder" : "Set duo preferences"}</Link>
-        </section>
-        <details className="community-lookup">
-          <summary>Look up a player</summary>
-          <LookupForm platforms={PLATFORMS.map(({id,label}) => ({id,label}))}/>
-        </details>
+      <header className={styles.heading}>
+        <h1>Home</h1>
+        {user ? <Link href="/rooms">Browse rooms</Link> : <Link href={signInHref("/#compose","signup")}>Create account</Link>}
       </header>
-      {unread && <p className="notice"><Link href="/activity">New replies in discussions you watch</Link></p>}
       <nav className="tabs" aria-label="Feed selection">
         <Link href="/?tab=everyone" aria-current={activeTab === "everyone" ? "page" : undefined} className={activeTab === "everyone" ? "active" : ""}>Everyone</Link>
-        {user
-          ? <Link href="/?tab=following" aria-current={activeTab === "following" ? "page" : undefined} className={activeTab === "following" ? "active" : ""}>Following</Link>
-          : <Link href={signInHref("/?tab=following")}>Following</Link>}
-        <Link href="/questions">Match questions</Link>
+        <Link href={user ? "/?tab=following" : signInHref("/?tab=following")} aria-current={activeTab === "following" ? "page" : undefined} className={activeTab === "following" ? "active" : ""}>Following</Link>
       </nav>
+      {(unread || duoInvite) && <div className={styles.activity} aria-label="New activity">
+        {unread && <Link href="/activity">New replies</Link>}
+        {duoInvite && <Link href="/activity?tab=duos">New duo request</Link>}
+      </div>}
 
       {user ? (
         <Composer patch={patch} champions={champions.map((c) => c.id)} userName={user.displayName} userHue={user.avatarHue} />
       ) : (
-        <>
-          <GuestPostDraft destination="/#compose" label="Join the discussion"/>
-          <Link href={signInHref("/#compose","signup")} className="text-btn">Create your account</Link>
-        </>
+        <GuestPostDraft destination="/#compose" label="Start a conversation"/>
       )}
 
       <div>
         {posts === null ? (
           <div className="empty" role="status">The feed is temporarily unavailable. Refresh to try again.</div>
         ) : posts.length === 0 ? (
-          <div className="empty">
-            <p><strong style={{ color: "var(--ink)" }}>The floor is open.</strong></p>
-            <p>Nothing here yet — the first posts set the tone. Look up a player, share a game card, or open a room and say hello.</p>
-          </div>
+          activeTab === "following" && user
+            ? <FollowingStarter userId={user.id} rooms={rooms}/>
+            : <div className="empty"><p>Start the first conversation.</p><Link href="/questions/new">Ask a match question</Link></div>
         ) : (
           posts.slice(0, 1).map(renderPost)
         )}
       </div>
 
+      <section className={styles.duo} aria-labelledby="duo-invite-title">
+        <div><h2 id="duo-invite-title">Find your duo</h2>
+          <p>{duoEnabled() ? "See who plays your hours and needs your role." : "Save your role and play times while verified matching is in the works."}</p>
+        </div>
+        <Link className="btn secondary small" href="/lfg">{duoEnabled() ? "Browse duos" : "Set duo preferences"}</Link>
+      </section>
+      {posts?.slice(1).map(renderPost)}
+      <nav className={styles.destinations} aria-label="Community shortcuts">
+        <Link href="/questions">Match questions</Link><Link href="/rooms">Rooms</Link><Link href="/player">Player lookup</Link>
+      </nav>
       {activeTab === "everyone" && <>
         <Suspense fallback={null}><CommunityReview viewerId={user?.id ?? null} /></Suspense>
         {available && <Suspense fallback={null}><CommunityObjective viewerId={user?.id ?? null} /></Suspense>}
       </>}
-      {posts?.slice(1).map(renderPost)}
 
       {available && <Suspense fallback={null}><HomeSpotlight today={today} viewerId={user?.id ?? null} patch={patch}/></Suspense>}
 
@@ -139,10 +134,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         </>
       )}
 
+      <details className="community-lookup">
+        <summary>Look up a player</summary>
+        <LookupForm platforms={PLATFORMS.map(({id,label}) => ({id,label}))}/>
+      </details>
       <LobbyRally />
-      <p className="meta" style={{ marginTop: 18 }}>
-        Discuss the play respectfully and keep first contact in the app. <Link href="/guidelines">Community guidelines</Link>
-      </p>
+      {!user && <CommunityWelcome/>}
+
     </div>
   );
 }

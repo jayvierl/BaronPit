@@ -24,7 +24,7 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
  */
 
 type Sql = NeonQueryFunction<false, false>;
-const SCHEMA_REVISION = "baron-community-20261126-3";
+const SCHEMA_REVISION = "baron-social-duo-20261126-4";
 let client: Sql | undefined;
 let ready: Promise<void> | undefined;
 

@@ -1,6 +1,7 @@
 import { beforeAll, afterAll, expect, it, vi } from "vitest";
 import { postgres } from "../../test/postgres";
 import { duoFitReasons, parseDuoFit, type DuoFit } from "./duo-fit";
+import { encodeWindows, overlaps, scheduleWindows, sharedWindows, timeZoneName } from "./duo-schedule";
 import { loadDuoFit, saveDuoFit } from "./duo-fit-store";
 import { q } from "./db";
 import { getCurrentUser, type User } from "./auth";
@@ -15,7 +16,7 @@ vi.mock("./auth", async load => ({
   ...(await load<typeof import("./auth")>()), getCurrentUser: vi.fn(), rateLimit: vi.fn(async () => true),
 }));
 
-const fit: DuoFit = { role: "Support", partnerRole: "ADC", blocks: ["Weekend mornings"], vibe: "chill", communication: "text" };
+const fit: DuoFit = { role: "Support", partnerRole: "ADC", timeZone: "UTC", blocks: ["Weekend mornings"], vibe: "chill", communication: "text" };
 const request = (body: unknown, origin = "https://ward.test") => new Request("https://ward.test/api/lfg/preferences", {
   method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body),
 });
@@ -38,8 +39,23 @@ it("accepts structured partner choices, resolves Fill and allows any schedule wi
   expect(parseDuoFit({ ...fit, partnerRole: "@external" })).toBeNull();
   expect(parseDuoFit({ ...fit, blocks: ["Weekend mornings", "Weekend mornings"] })).toBeNull();
   expect(parseDuoFit({ ...fit, blocks: [] })).toMatchObject({ blocks: [] });
-  expect(duoFitReasons(fit, { roles: ["Fill"], blocks: ["Weekend mornings"], vibe: "both", voice: false }))
-    .toEqual(["Can fill ADC", "Weekend mornings", "Flexible playstyle", "Text only"]);
+  expect(duoFitReasons(fit, { roles: ["Fill"], partnerRole: "Support", vibe: "both", voice: false }, true))
+    .toEqual(["Can fill ADC", "Looking for Support", "Overlapping play times", "Flexible playstyle", "Text only"]);
+});
+it("compares real instants across DST gaps, folds, fractional offsets and day boundaries", () => {
+  const intervals = (date: string) => scheduleWindows(["Weekend late nights"], "America/Chicago", Date.parse(date), 1)
+    .map(([start,end]) => [start,end].map(t => new Date(t * 900_000).toISOString().slice(11,16)));
+  expect(intervals("2026-03-08T00:00:00Z")).toEqual([["06:00","11:00"]]);
+  expect(intervals("2026-11-01T00:00:00Z")).toEqual([["05:00","12:00"]]);
+  const friday = Date.parse("2026-03-06T13:00:00Z");
+  const [kathmandu] = scheduleWindows(["Weekend late nights"], "Asia/Kathmandu", friday, 1);
+  expect(new Date(kathmandu[0] * 900_000).toISOString()).toBe("2026-03-06T18:15:00.000Z");
+  expect(overlaps([kathmandu], scheduleWindows(["Weekday evenings"], "UTC", friday, 1))).toBe(true);
+  expect(overlaps([[0,5]],[[5,9]])).toBe(false);
+  expect(sharedWindows([[0,5],[9,11]],[[2,10]])).toEqual([[2,5],[9,10]]);
+  expect(timeZoneName("Not/AZone")).toBeNull();
+  expect(timeZoneName("CST")).toBeNull();
+  expect(parseDuoFit({...fit,timeZone:"Invalid/Zone"})).toBeNull();
 });
 it("saves private intent during a matching pause, scopes writes to the session, and supports private deletion", async () => {
   vi.stubEnv("DUO_MATCHING_ENABLED", "false");
@@ -69,12 +85,29 @@ it("filters before the listing limit, preserves a player's own controls, and enf
   // Fill the page with more recent non-matching listings, leaving an older eligible listing behind them.
   await q`INSERT INTO wp_lfg(user_id,puuid,roles,blocks,vibe,voice,safe_listing)
     SELECT 3,'account-3',ARRAY['Mid'],ARRAY['Weekend evenings'],'tryhard',true,true FROM generate_series(1,41)`;
-  const eligible = await readDuoBoard(1, true);
+  const asOf = Date.parse("2026-01-05T00:00:00Z");
+  // Weekends 06:00–12:00 UTC overlap 00:00–06:00 local in Chicago.
+  const available = encodeWindows(scheduleWindows(["Weekend late nights"], "America/Chicago", asOf, 8));
+  await q`UPDATE wp_lfg SET blocks=ARRAY['Weekend late nights'], partner_role='Support',play_windows=${available}::int4multirange WHERE user_id=2`;
+  await q`INSERT INTO wp_lfg(user_id,puuid,roles,blocks,partner_role,play_windows,vibe,voice,safe_listing)
+    VALUES(3,'account-3',ARRAY['ADC'],ARRAY['Weekend mornings'],'Jungle',${available}::int4multirange,'chill',false,true),
+      (3,'account-3',ARRAY['ADC'],ARRAY['Weekend mornings'],'Support',NULL,'chill',false,true),
+      (3,'account-3',ARRAY['ADC'],ARRAY['Weekend mornings'],'Support',
+        ${encodeWindows(scheduleWindows(["Weekend mornings"],"Asia/Tokyo",asOf,8))}::int4multirange,'chill',false,true)`;
+  const eligible = await readDuoBoard(1, true, asOf);
   expect(eligible.listings).toHaveLength(2);
   expect(eligible.listings.map(l => l.roles)).toEqual([["Support"], ["Fill"]]);
   expect((await readDuoBoard(1)).listings).toHaveLength(40);
+  await saveDuoFit(1, {...fit, role:"Fill"});
+  expect((await readDuoBoard(1, true, asOf)).listings.filter(l => !l.own).map(l => l.partnerRole).sort())
+    .toEqual(["Jungle","Support"]);
+  // An older plan can still be read and edited. Without its zone it cannot prove overlapping hours.
+  await saveDuoFit(1, {...fit, timeZone:undefined});
+  expect((await loadDuoFit(1))?.timeZone).toBeUndefined();
+  expect((await readDuoBoard(1, true, asOf)).listings.every(l => l.own)).toBe(true);
+  await saveDuoFit(1, fit);
   expect((await readDuoBoard(4, true)).listings).toHaveLength(0);
   await q`INSERT INTO wp_mutes(muter_id,muted_id) VALUES(2,1)`;
-  expect((await readDuoBoard(1, true)).listings.map(l => l.roles)).toEqual([["Support"]]);
+  expect((await readDuoBoard(1, true, asOf)).listings.map(l => l.roles)).toEqual([["Support"]]);
   expect((await readDuoBoard(2)).listings.every(l => !l.roles.includes("Support"))).toBe(true);
 });

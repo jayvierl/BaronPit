@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { LibraryAction, LibraryKind } from "@/lib/discussion-library";
 import { signInHref } from "@/lib/signin-return";
 import { ActionFeedback, usePostAction } from "./post-action";
+import { ThreadIcon } from "./thread-icon";
 
 export function ShareDiscussion({ postId }: { postId: number }) {
   const [notice, setNotice] = useState("");
@@ -26,7 +27,7 @@ export function ShareDiscussion({ postId }: { postId: number }) {
     }
   }
   return <>
-    <button type="button" className="action-btn" onClick={share}>Share</button>
+    <button type="button" className="action-btn" title="Share thread" aria-label="Share thread" onClick={share}><ThreadIcon name="share" /></button>
     {notice && <span className="meta" role="status">{notice}</span>}
     {manual && <input readOnly value={manual} aria-label="Discussion link to copy" onFocus={e => e.target.select()} />}
   </>;
@@ -57,7 +58,9 @@ function PrivateActions({ kind, id, postId, signedIn }: { kind: LibraryKind; id:
     if (await action.send("/api/library", { action: which, kind, id, active })) setState({ ...state, [key]: active });
   }
   return <details className="library-options" onToggle={e => { if (e.currentTarget.open) void load(); }}>
-    <summary>{kind === "comment" ? "Save reply" : "Save or watch"}</summary>
+    <summary aria-label={kind === "comment" ? "Save reply" : "Save or watch thread"} title={kind === "comment" ? "Save reply" : "Save or watch thread"}>
+      {kind === "comment" ? "Save reply" : <ThreadIcon name="save" />}
+    </summary>
     <div className="library-menu">
       {!signedIn ? <Link href={signInHref(`/post/${postId}` + (kind === "comment" ? `#reply-${id}` : ""))}>Sign in to {kind === "comment" ? "save this reply" : "save or watch this thread"}</Link> :
         state ? <>

@@ -34,6 +34,18 @@ function render(kind: string, data: Record<string, unknown>, status = "visible")
     }),
   );
 }
+describe("thread controls", () => {
+  it("exposes named positive reactions, reply count, sharing, reporting and a permanent thread link", () => {
+    const html = render("text",{});
+    for (const label of ["Like, 0 likes","Fire, 0 reactions","Applause, 0 reactions","On target, 0 reactions",
+      "Purple heart, 0 reactions","Good game, 0 reactions","Show replies, 0 replies","Share thread","Save or watch thread","Open thread by River"]) {
+      expect(html).toContain(`aria-label="${label}"`);
+    }
+    expect(html).toContain(">Report</button>");
+    expect(html).toContain('aria-expanded="false" aria-controls="thread-replies-1"');
+    expect(html).not.toContain("Loading replies");
+  });
+});
 describe("Baron call ballots", () => {
   it("shows the call badge and its four answers only on a call poll", () => {
     const call = {call: true, options: BARON_CALL_OPTIONS};

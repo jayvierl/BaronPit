@@ -13,9 +13,14 @@ export default function PrivacyPage() {
         <li><strong>Moderation records:</strong> filter scores, held/removed content, reports, and sanctions, kept so enforcement is consistent and appealable. When U.S. law requires preservation after a qualifying CyberTipline report, the one-year period runs from the completed submission. A legal hold can require longer retention. Designated responders handle urgent evidence.</li>
         <li><strong>Safety signals:</strong> sign-in and participation rate limits use time-limited counters. Staff keep restricted records of enforcement and appeals. We use these records to review abuse and correct mistakes.</li>
       </ul>
+      <p>Your followers can see your name on a discussion you repost. Undo removes the attribution from their feed. We retain the original share date so repeated reposts keep their place. Deleting your account deletes that record.</p>
       <h2 className="section">Private community tools</h2>
       <p>Your optional duo plan stores only your role, preferred partner role, play times, playstyle and chat preference. Only you can view or clear it in Duo Finder. Saving it never publishes a listing.</p>
       <p>Your saved posts, saved replies and watched discussions belong to your account. Your playbook is private. Other players see the reply you mark helpful and any follow-up you choose to post publicly.</p>
+      <p>Duo Finder participants can join a separate 28-day study on the pilot page. The research store keeps
+        your account reference and consent date. The admin dashboard counts your listing, request and acceptance activity
+        and counts pair outcomes only when both players volunteered before their request. Staff see aggregate totals.
+        You can withdraw at any time. Consent expires after 28 days and the daily cleanup deletes the row.</p>
       <p>The optional four-week community pilot records days of participation, grouped by activity, and your recruitment channel. The pilot page explains retention and how to withdraw. An enrolled player may also opt in once on a featured matchup. For up to 30 minutes in that tab, the pilot records the start time and whether they open another visible discussion or post a new visible question. The sample stores no page addresses or post IDs and is erased with the pilot records. A club or coaching interest submission is optional. We do not send this data to advertising services.</p>
       <h2 className="section">What we don&apos;t do</h2>
       <ul>

@@ -1,0 +1,11 @@
+.heading, .duo, .destinations, .activity { display: flex; align-items: center; gap: .85rem; }
+.heading { justify-content: space-between; padding-block: .45rem .8rem; }
+.heading h1 { margin: 0; font-size: 1.25rem; letter-spacing: -.035em; }
+.heading a, .destinations a { color: var(--ink-mid); font-size: .9rem; font-weight: 600; }
+.duo { border-block: 1px solid var(--border); padding-block: 1rem; justify-content: space-between; }
+.duo h2 { font-size: 1rem; margin: 0; }
+.duo p { font-size: .875rem; color: var(--ink-mid); margin: .25rem 0 0; }
+.duo a { flex-shrink: 0; }
+.destinations, .activity { gap: .4rem 1rem; flex-wrap: wrap; padding-block: .6rem; }
+.destinations a, .activity a { padding-block: .35rem; }
+@media (max-width: 400px) { .duo { flex-wrap: wrap; } }

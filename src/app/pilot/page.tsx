@@ -2,13 +2,15 @@ import Link from "next/link";
 import { getCurrentUser, isBanned } from "@/lib/auth";
 import { isPilotHost, pilotState } from "@/lib/pilot";
 import { signInHref } from "@/lib/signin-return";
+import { duoEnabled } from "@/lib/duo";
+import { duoPilotState } from "@/lib/duo-pilot";
 import { PilotForms } from "@/components/pilot-forms";
 
 export const dynamic = "force-dynamic";
 export default async function PilotPage({ searchParams }: { searchParams: Promise<{ from?: string }> }) {
   const [params, user] = await Promise.all([searchParams, getCurrentUser()]);
   const channel = params.from === "club" ? "club" : "community";
-  const data = user ? await pilotState(user.id).catch(() => null) : null;
+  const [data, duoStart] = user ? await Promise.all([pilotState(user.id).catch(() => null),duoPilotState(user.id).catch(() => undefined)]) : [null, null];
   return (
     <div>
       <h1 className="page-title">Bot lane review pilot</h1>
@@ -46,6 +48,8 @@ export default async function PilotPage({ searchParams }: { searchParams: Promis
       ) : (
         <PilotForms
           host={isPilotHost(user)}
+          duoStarted={duoStart}
+          duoOpen={duoEnabled()}
           channel={channel}
           joinedAt={data.member?.joinedAt ?? null}
           interest={data.interest}

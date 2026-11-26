@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser, isAdmin, isBanned } from "@/lib/auth";
 import { pilotDashboard } from "@/lib/pilot";
 import { featuredResults } from "@/lib/featured-sample";
+import { DuoPilotResults } from "@/components/duo-pilot-results";
 import { PilotReview } from "@/components/pilot-review";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +45,7 @@ export default async function AdminPilotPage() {
           Results will appear as members participate.
         </p>
       )}
+      <DuoPilotResults />
       <section className="card">
         <h2>Four-week decision</h2>
         <p>

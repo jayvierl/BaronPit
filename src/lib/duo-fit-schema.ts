@@ -4,4 +4,6 @@ export const duoFitSchema = [
     user_id int PRIMARY KEY REFERENCES wp_users(id) ON DELETE CASCADE,
     role text NOT NULL, partner_role text NOT NULL, blocks text[] NOT NULL,
     vibe text NOT NULL, communication text NOT NULL)`,
+  `ALTER TABLE wp_duo_fit ADD COLUMN IF NOT EXISTS time_zone text`,
+  `ALTER TABLE wp_lfg ADD COLUMN IF NOT EXISTS partner_role text, ADD COLUMN IF NOT EXISTS play_windows int4multirange`,
 ];

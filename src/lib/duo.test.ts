@@ -36,6 +36,8 @@ const user = (id: number): User => ({
 });
 const prefs = {
   roles: ["Support"],
+  partnerRole: "ADC",
+  timeZone: "America/Chicago",
   blocks: ["Weekend mornings"],
   voice: false,
   vibe: "chill",
@@ -74,6 +76,8 @@ describe("verified duo and relationship controls", () => {
     ])
       expect(duoPreferences({ ...prefs, note }).ok).toBe(false);
     expect(duoPreferences({ ...prefs, roles: ["discord.gg/example"] }).ok).toBe(false);
+    expect(duoPreferences({...prefs, timeZone:"Unknown/Zone"}).ok).toBe(false);
+    expect(duoPreferences({...prefs, partnerRole:"invented"}).ok).toBe(false);
     expect(duoPreferences(prefs).ok).toBe(true);
   });
   it("binds visibility and consent to verified identity, age, region, current data and reciprocal blocks", async () => {
@@ -92,7 +96,9 @@ describe("verified duo and relationship controls", () => {
       own: false,
       form: "6W · 4L in 10 games",
     });
-    expect(JSON.stringify(listings)).not.toMatch(/PRIVATE-|private-puuid/);
+    expect(l.partnerRole).toBe("ADC");
+    expect(l.playWindows.length).toBeGreaterThan(0);
+    expect(JSON.stringify(listings)).not.toMatch(/PRIVATE-|private-puuid|America\/Chicago/);
     for (const id of [3, 4, 5, 6]) {
       expect((await readDuoBoard(id)).listings).toHaveLength(0);
       expect(await duoAction(user(id), l.id, "request")).toMatchObject({ ok: false });

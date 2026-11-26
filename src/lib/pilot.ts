@@ -69,6 +69,7 @@ export async function leavePilot(id: number) {
   const sql = await getSql();
   await sql.transaction([
     sql`DELETE FROM wp_pilot_members WHERE user_id=${id}`,
+    sql`DELETE FROM wp_duo_pilot_members WHERE user_id=${id}`,
     sql`DELETE FROM wp_pilot_interest WHERE user_id=${id}`,
   ]);
 }
@@ -106,6 +107,7 @@ export async function clearExpiredPilotData() {
   const sql = await getSql();
   await sql.transaction([
     sql`DELETE FROM wp_pilot_members WHERE joined_at<=now()-interval '56 days'`,
+    sql`DELETE FROM wp_duo_pilot_members WHERE joined_at<=now()-interval '28 days'`,
     sql`DELETE FROM wp_pilot_interest WHERE updated_at<=now()-interval '56 days'`,
   ]);
 }

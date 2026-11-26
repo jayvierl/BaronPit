@@ -1,7 +1,7 @@
 "use client";
 
 import { signInHref } from "@/lib/signin-return";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ItemIcons } from "./item-icons";
 import { useRouter } from "next/navigation";
 import type { PostView } from "@/lib/social";
@@ -12,9 +12,15 @@ import { Avatar, RichBody, timeAgo } from "./ui";
 import { ChampionPortrait } from "./champion-portrait";
 import { MatchCard } from "./match-card";
 import { PostLibraryActions } from "./discussion-library-actions";
+import { RepostControl } from "./repost-control";
 import { CommentSection } from "./comment-section";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SafetyReport } from "./safety-report";
+import { ThreadIcon } from "./thread-icon";
+import styles from "./thread.module.css";
+
+const reactionNames: Record<string, string> = { "🔥": "Fire", "❤️": "Like", "👏": "Applause", "🎯": "On target", "💜": "Purple heart", GG: "Good game" };
+
 
 export function PostCard({
   post,
@@ -37,6 +43,8 @@ export function PostCard({
   const [reactions, setReactions] = useState(post.reactions);
   const [mine, setMine] = useState<string[]>(post.myReactions);
   const [showComments, setShowComments] = useState(threadPage);
+  const [replyVisit, setReplyVisit] = useState(threadPage ? 1 : 0);
+  const reactionPicker = useRef<HTMLDetailsElement>(null);
   const [addedReplies, setAddedReplies] = useState(0);
   const action = usePostAction();
   const [myVote, setMyVote] = useState(post.myVote);
@@ -72,10 +80,13 @@ export function PostCard({
 
   const d = post.data as Record<string, unknown>;
   const destination = post.kind === "clip" && post.status === "visible" ? clipLink(d.url) : null;
+  const likeCount = reactions["❤️"] ?? 0;
+  const replyCount = post.commentCount + addedReplies;
+  const otherReactionCount = REACTION_EMOJIS.reduce((n, emoji) => emoji === "❤️" ? n : n + (reactions[emoji] ?? 0), 0);
   const pollTotal = pollResults?.reduce((a, b) => a + b, 0) ?? 0;
 
   return (
-    <article className="thread-post">
+    <article className={`thread-post ${styles.post}`} aria-label={`Post by ${post.authorName}`}>
       <div className="thread-rail">
         <a href={`/u/${post.authorId}`} aria-label={`${post.authorName}’s profile`}>
           <Avatar name={post.authorName} hue={post.authorHue} size={40} />
@@ -83,28 +94,29 @@ export function PostCard({
         {showComments && <span className="line" />}
       </div>
       <div className="thread-main">
-        <div className="thread-head">
+        {post.repostedBy && <div className="meta">
+          <a href={`/u/${post.repostedBy.id}`}>{post.repostedBy.name}</a> reposted{" "}
+          <a href={`/post/${post.id}`}>this {post.kind === "build" ? "build" : "discussion"}</a>
+        </div>}
+        <div className={`thread-head ${styles.byline}`}>
           <a className="post-author" href={`/u/${post.authorId}`}>
             {post.authorName}
           </a>
           {post.authorFlair && <span className="flair" title="From the author’s verified Riot account">{post.authorFlair}</span>}
-          <time className="time" dateTime={post.createdAt} suppressHydrationWarning>
-            {timeAgo(post.createdAt)}
-          </time>
-          <SafetyReport kind="post" targetId={post.id} />
+          <a className={styles.permalink} href={`/post/${post.id}`} aria-label={`Open thread by ${post.authorName}`}>
+            <time className="time" dateTime={post.createdAt} title={post.createdAt} suppressHydrationWarning>{timeAgo(post.createdAt)}</time>
+          </a>
+          <div className={styles.report}><SafetyReport kind="post" targetId={post.id} /></div>
         </div>
         {(post.roomName || post.status === "held") && (
-          <div className="meta">
+          <div className={styles.context}>
             {post.roomName && (
               <>
                 in <a href={`/rooms/${post.roomSlug}`}>{post.roomName}</a>
               </>
             )}
             {post.status === "held" && (
-              <>
-                {" "}
-                · <strong>held for review</strong>
-              </>
+              <strong>Awaiting moderator review</strong>
             )}
           </div>
         )}
@@ -207,67 +219,54 @@ export function PostCard({
           </p>
         )}
         <ActionFeedback error={action.error} />
-        <div className="action-row">
-          {REACTION_EMOJIS.map((e) => (
-            <button
-              key={e}
-              type="button"
-              className={`action-btn${mine.includes(e) ? " mine" : ""}`}
-              disabled={action.busy}
-              aria-pressed={mine.includes(e)}
-              onClick={() => react(e)}
-              aria-label={`React ${e}`}
-            >
-              <span className="emoji">{e === "GG" ? null : e}</span>
-              {e === "GG" && <span style={{ fontWeight: 700, fontSize: 13 }}>GG</span>}
-              {(reactions[e] ?? 0) > 0 ? reactions[e] : ""}
-            </button>
-          ))}
-          <button
-            type="button"
-            className="action-btn"
-            onClick={() => setShowComments(!showComments)}
-            aria-expanded={showComments}
-            aria-label="Replies"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1.1L3 20l1.1-5.3A8.5 8.5 0 1 1 21 11.5Z" />
-            </svg>
-            {post.commentCount + addedReplies || ""}
+        <div className={styles.tools} role="group" aria-label="Post actions">
+          <button type="button" className={`action-btn${mine.includes("❤️") ? " mine" : ""}`}
+            aria-label={`Like, ${likeCount} ${likeCount === 1 ? "like" : "likes"}`} title="Like" aria-pressed={mine.includes("❤️")}
+            disabled={action.busy} onClick={() => react("❤️")}>
+            <ThreadIcon name="heart" filled={mine.includes("❤️")} />{likeCount || ""}
           </button>
+          <details className={styles.reactionPicker} ref={reactionPicker}
+            onBlur={event => {
+              if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
+            }}
+            onKeyDown={event => {
+              if (event.key === "Escape") {
+                event.currentTarget.open = false;
+                event.currentTarget.querySelector("summary")?.focus();
+              }
+            }}>
+            <summary title="More reactions" aria-label={`More reactions, ${otherReactionCount} total`}><ThreadIcon name="reactions" />{otherReactionCount || ""}</summary>
+            <div className={styles.choices} role="group" aria-label="Choose a reaction">
+              {REACTION_EMOJIS.filter(e => e !== "❤️").map(e => (
+                <button key={e} type="button" className={`action-btn${mine.includes(e) ? " mine" : ""}`}
+                  disabled={action.busy} aria-pressed={mine.includes(e)} title={reactionNames[e] ?? e}
+                  aria-label={`${reactionNames[e] ?? e}, ${reactions[e] ?? 0} reactions`} onClick={() => {
+                    if (reactionPicker.current) {
+                      reactionPicker.current.open = false;
+                      reactionPicker.current.querySelector("summary")?.focus();
+                    }
+                    void react(e);
+                  }}>
+                  <span aria-hidden="true">{e}</span>{reactions[e] || ""}
+                </button>
+              ))}
+            </div>
+          </details>
+          <button type="button" className="action-btn"
+            onClick={() => { if (!showComments) setReplyVisit(n => n + 1); setShowComments(!showComments); }}
+            aria-expanded={showComments} aria-controls={`thread-replies-${post.id}`} title="Replies"
+            aria-label={`${showComments ? "Hide" : "Show"} replies, ${replyCount} ${replyCount === 1 ? "reply" : "replies"}`}>
+            <ThreadIcon name="reply" />{replyCount || ""}
+          </button>
+          {post.canRepost && <RepostControl key={String(post.myRepost)} postId={post.id} initial={post.myRepost === true} signedIn={signedIn}/>}
           {post.status === "visible" && <PostLibraryActions postId={post.id} signedIn={signedIn}/>}
-          <a
-            className="action-btn"
-            href={`/post/${post.id}`}
-            aria-label="Open post"
-            style={{ marginLeft: "auto" }}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <path d="M12 3v13" />
-              <path d="m7 10 5-5 5 5" />
-              <path d="M4 21h16" />
-            </svg>
-          </a>
         </div>
 
-        {showComments && (
-          <CommentSection
+        <div id={`thread-replies-${post.id}`} hidden={!showComments}>
+          {replyVisit > 0 && <CommentSection
+            key={viewerId ?? "guest"}
+            active={showComments}
+            visit={replyVisit}
             postId={post.id}
             signedIn={signedIn}
             viewerName={viewerName}
@@ -275,8 +274,8 @@ export function PostCard({
             onVisibleReply={() => setAddedReplies((n) => n + 1)}
             decisionQuestion={post.isQuestion}
             allowOneFix={post.kind === "card"}
-          />
-        )}
+          />}
+        </div>
       </div>
     </article>
   );

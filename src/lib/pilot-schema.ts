@@ -1,5 +1,10 @@
 /** Cohort membership and consented daily flags. No viewed object IDs, URLs, match IDs, or device identifiers. */
 export const pilotSchema = [
+  `CREATE TABLE IF NOT EXISTS wp_duo_pilot_members (
+    user_id integer PRIMARY KEY REFERENCES wp_users(id) ON DELETE CASCADE,
+    joined_at timestamptz NOT NULL DEFAULT now())`,
+  "CREATE INDEX IF NOT EXISTS wp_duo_requests_recent ON wp_duo_requests(created_at DESC)",
+
   `CREATE TABLE IF NOT EXISTS wp_pilot_members (
     user_id integer PRIMARY KEY REFERENCES wp_users(id) ON DELETE CASCADE,
     kind text NOT NULL CHECK (kind IN ('host','participant')),

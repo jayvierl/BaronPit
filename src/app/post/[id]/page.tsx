@@ -3,6 +3,9 @@ import { FeaturedSample } from "@/components/featured-sample";
 import { PilotVisit } from "@/components/pilot-visit";
 import { validId } from "@/lib/ids";
 import { discussionMetadata, unavailableMetadata } from "@/lib/discussion-library-preview";
+import Link from "next/link";
+import { ThreadIcon } from "@/components/thread-icon";
+import styles from "@/components/thread.module.css";
 import { notFound } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getPost } from "@/lib/social";
@@ -41,7 +44,12 @@ export default async function PostPage({ params, searchParams }: { params: Promi
   return (
     <>
       {user?.pilotActive && <PilotVisit kind="social" />}
+      <header className={styles.detailHeading}>
+        <Link href="/" title="Back to feed" aria-label="Back to feed"><ThreadIcon name="back" /></Link>
+        <h1>Thread</h1>
+      </header>
       <PostCard
+        key={post.id}
         post={post}
         patch={patch}
         signedIn={!!user}

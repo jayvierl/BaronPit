@@ -1,3 +1,5 @@
+import { partnerRoles } from "./duo-fit";
+import { timeZoneName } from "./duo-schedule";
 import { hasPaymentOffer } from "./duo-gratuity";
 import { SCHEDULE_BLOCKS, DUO_ROLES } from "./pure";
 import { scoreContent, type ModResult } from "./moderation";
@@ -5,6 +7,8 @@ import { scoreContent, type ModResult } from "./moderation";
 type Choice = "chill" | "tryhard" | "both";
 export interface DuoPreferences {
   roles: string[];
+  partnerRole: string | null;
+  timeZone: string | null;
   blocks: string[];
   voice: boolean;
   vibe: Choice;
@@ -25,8 +29,10 @@ function choices(value: unknown, allowed: readonly string[], min: number, max: n
 export function duoPreferences(value: unknown): ListingInput {
   if (!value || typeof value !== "object" || Array.isArray(value))
     return { ok: false, error: "Choose your duo preferences." };
-  const { roles, blocks, voice, vibe, note } = value as Record<string, unknown>;
+  const { roles, blocks, voice, vibe, note, partnerRole, timeZone } = value as Record<string, unknown>;
   if (
+    (timeZone != null && !timeZoneName(timeZone)) ||
+    (partnerRole != null && !partnerRoles.some(r => r === partnerRole)) ||
     !choices(roles, DUO_ROLES, 1, 3) ||
     !choices(blocks, SCHEDULE_BLOCKS, 1, 8) ||
     typeof voice !== "boolean" ||
@@ -55,7 +61,7 @@ export function duoPreferences(value: unknown): ListingInput {
     return { ok: false, error: "Revise the note to follow the community guidelines." };
   return {
     ok: true,
-    value: { roles, blocks, voice, vibe, note: note.trim() },
+    value: { roles, partnerRole: typeof partnerRole === "string" ? partnerRole : null, timeZone: timeZoneName(timeZone), blocks, voice, vibe, note: note.trim() },
     moderation: result,
   };
 }

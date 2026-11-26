@@ -7,12 +7,14 @@ import type { Interest, PilotChannel } from "@/lib/pilot";
 
 type Props = {
   host: boolean;
+  duoStarted: string | null | undefined;
+  duoOpen: boolean;
   channel: PilotChannel;
   joinedAt: string | null;
   interest: Interest | null;
   current: boolean;
 };
-export function PilotForms({ host, channel, joinedAt, interest, current }: Props) {
+export function PilotForms({ host, duoStarted, duoOpen, channel, joinedAt, interest, current }: Props) {
   const action = usePostAction();
   const router = useRouter();
   const [status, setStatus] = useState("");
@@ -101,6 +103,29 @@ export function PilotForms({ host, channel, joinedAt, interest, current }: Props
           </form>
         )
       )}
+      <section className="card" id="duo-study">
+        <h2>Duo Finder study</h2>
+        <p>For 28 days, you can let us count whether you submit a listing, send a request, or accept one.
+          If both players agreed before a request, we can also count the pair’s acceptance, a confirmed game
+          together and a mutual choice to queue again. Staff see totals for the last seven days and an earlier completed week.</p>
+        <p className="meta">This study keeps your account reference and consent date. Withdrawing removes
+          your participation and any pair involving you from the results immediately.</p>
+        {duoStarted === undefined ? <p role="status">Your duo study settings couldn’t load. Refresh to try again.</p>
+          : duoStarted ? <>
+            <p>Your consent ends on {new Date(Date.parse(duoStarted) + 28 * 86400000).toISOString().slice(0,10)} UTC.</p>
+            <button type="button" className="text-btn" disabled={action.busy}
+              onClick={() => void submit({action:"leave-duo"}, "Your duo study consent was deleted.")}>Withdraw from the duo study</button>
+          </> : !duoOpen ? <p>Enrollment opens with verified Duo Finder matching.</p>
+          : host ? <p>Staff and invited hosts are excluded from the duo study.</p>
+          : current && <form onSubmit={event => {
+            event.preventDefault();
+            void submit({action:"join-duo",consent:new FormData(event.currentTarget).has("duo-consent")}, "You joined the duo study.");
+          }}>
+            <p>Enrollment requires an eligible verified Riot account. Duo Finder is available independently of this study.</p>
+            <label><input type="checkbox" name="duo-consent" required /> I agree to this separate 28-day duo study.</label>
+            <p><button className="btn secondary" disabled={action.busy}>Join the duo study</button></p>
+          </form>}
+      </section>
       {!current && (
         <p className="notice">Participation requires current community terms and an unrestricted account.</p>
       )}
@@ -148,7 +173,7 @@ export function PilotForms({ host, channel, joinedAt, interest, current }: Props
           </form>
         </details>
       )}
-      {(joinedAt || interest) && (
+      {(joinedAt || interest || duoStarted) && (
         <p>
           <button
             className="text-btn"

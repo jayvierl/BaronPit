@@ -7,6 +7,9 @@ export interface PostView {
   itemDetails?: CardItem[];
   itemPatch?: string;
   lastReplyAt?: string;
+  canRepost?: boolean;
+  myRepost?: boolean;
+  repostedBy?: {id: number; name: string; at: string};
   data: Record<string, unknown>; status: string; createdAt: string;
   reactions: Record<string, number>; myReactions: string[];
   commentCount: number; pollResults: number[] | null; myVote: number | null;

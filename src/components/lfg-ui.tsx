@@ -1,10 +1,11 @@
 "use client";
-import { useState } from "react";
-import { duoFitReasons, type DuoFit } from "@/lib/duo-fit";
+import { useMemo, useState } from "react";
+import { DuoTimeZone, useBrowserTimeZone } from "./duo-time-zone";
+import { nextWindowLabel, overlaps, sharedWindows, scheduleHours, scheduleWindows, timeZoneName } from "@/lib/duo-schedule";
+import { duoFitReasons, partnerRoles, type DuoFit } from "@/lib/duo-fit";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { SCHEDULE_BLOCKS } from "@/lib/pure";
-import { DUO_ROLES } from "@/lib/pure";
+import { DUO_ROLES, SCHEDULE_BLOCKS } from "@/lib/pure";
 import type { DuoListing, DuoRequest } from "@/lib/duo";
 import { postJson } from "@/lib/client";
 import { SafetyReport } from "./safety-report";
@@ -45,6 +46,10 @@ function DuoButton({ action, id, children }: { action: string; id: number; child
 }
 export function LfgForm({ fit }: { fit: DuoFit | null }) {
   const router = useRouter();
+  const browserZone = useBrowserTimeZone();
+  const [partnerRole, setPartnerRole] = useState<string>(fit?.partnerRole ?? "Any");
+  const [chosenZone, setChosenZone] = useState(fit?.timeZone);
+  const timeZone = chosenZone ?? browserZone;
   const [roles, setRoles] = useState<string[]>(fit ? [fit.role] : []),
     [blocks, setBlocks] = useState<string[]>(fit?.blocks ?? []);
   // Voice on a listing is about this player. A partner preference never opts the player into voice.
@@ -55,10 +60,11 @@ export function LfgForm({ fit }: { fit: DuoFit | null }) {
     [message, setMessage] = useState("");
   async function publish(e: React.FormEvent) {
     e.preventDefault();
+    if (!timeZoneName(timeZone)) { setMessage("Choose a valid schedule time zone."); return; }
     setBusy(true);
     setMessage("");
     try {
-      const { ok, data } = await postJson("/api/lfg", { action: "create", roles, blocks, voice, vibe, note });
+      const { ok, data } = await postJson("/api/lfg", { action: "create", roles, partnerRole, blocks, timeZone, voice, vibe, note });
       if (ok) {
         setMessage(data.held ? "Your listing is in review." : "Your listing is open for four hours.");
         setNote("");
@@ -72,7 +78,7 @@ export function LfgForm({ fit }: { fit: DuoFit | null }) {
     <form className="card" onSubmit={publish}>
       <h2>Post a listing</h2>
       <div className="field" role="group" aria-label="Roles">
-        <strong>Choose up to three roles</strong>
+        <strong>Roles I play (choose up to three)</strong>
         <div className="duo-controls">
           {DUO_ROLES.map((r) => (
             <button
@@ -88,8 +94,15 @@ export function LfgForm({ fit }: { fit: DuoFit | null }) {
           ))}
         </div>
       </div>
+      <label className="field">My partner plays
+        <select value={partnerRole} onChange={e => setPartnerRole(e.target.value)}>
+          {partnerRoles.map(r => <option key={r} value={r}>{r === "Any" ? "Any role" : r}</option>)}
+        </select>
+      </label>
+      <DuoTimeZone value={timeZone} onChange={setChosenZone} />
       <div className="field" role="group" aria-label="Play times">
         <strong>When do you play?</strong>
+        <p className="meta">{scheduleHours}</p>
         <div className="duo-controls">
           {SCHEDULE_BLOCKS.map((b) => (
             <button
@@ -133,12 +146,16 @@ export function LfgForm({ fit }: { fit: DuoFit | null }) {
     </form>
   );
 }
-export function LfgBoard({ listings, requests, fit, onlyFit }: {
-  listings: DuoListing[]; requests: DuoRequest[]; fit: DuoFit | null; onlyFit: boolean;
+export function LfgBoard({ listings, requests, fit, onlyFit, asOf }: {
+  listings: DuoListing[]; requests: DuoRequest[]; fit: DuoFit | null; onlyFit: boolean; asOf:number;
 }) {
   const [filter, setFilter] = useState<string[]>([]);
+  const browserZone = useBrowserTimeZone();
+  const viewZone = timeZoneName(fit?.timeZone) ?? browserZone;
+  const selected = useMemo(() => scheduleWindows(filter, viewZone, asOf), [filter, viewZone, asOf]);
+  const preferred = useMemo(() => scheduleWindows(fit?.blocks ?? [], fit?.timeZone, asOf), [fit, asOf]);
   const displayed = listings.filter(
-    (l) => l.own || !filter.length || l.blocks.some((b) => filter.includes(b)),
+    (l) => l.own || !filter.length || overlaps(selected, l.playWindows),
   );
   return (
     <>
@@ -146,7 +163,7 @@ export function LfgBoard({ listings, requests, fit, onlyFit }: {
         <section>
           <h2>Your duo requests</h2>
           {requests.map((r) => (
-            <article className="card" key={r.id}>
+            <article className="card" key={r.id} id={"duo-request-" + r.id}>
               <strong>
                 {r.status === "accepted" ? "Matched" : r.incoming ? "Incoming request" : "Request sent"}
               </strong>
@@ -224,7 +241,7 @@ export function LfgBoard({ listings, requests, fit, onlyFit }: {
         <Link href="/lfg?view=all#open-listings" aria-current={!onlyFit || !fit ? "page" : undefined}>All eligible listings</Link>
         <Link href="#duo-plan">{fit ? "Edit my plan" : "Set my preferences"}</Link>
       </nav>
-      <p className="meta">Listings show each player’s local play times. Confirm the time zone after connecting.</p>
+      <p className="meta">Play times use {viewZone}. Filter the displayed listings by your availability over the next seven days.</p>
       <div role="group" className="duo-controls" aria-label="Filter by play time">
         {SCHEDULE_BLOCKS.map((b) => (
           <button
@@ -246,45 +263,55 @@ export function LfgBoard({ listings, requests, fit, onlyFit }: {
               : "No open listings for your region and age group yet."}
         </p>
       )}
-      {displayed.map((l) => (
-        <article key={l.id} className="card">
-          <strong>{l.own ? (l.held ? "Your listing is in review" : "Your listing") : l.rank}</strong>
-          <p>
-            {l.roles.join(" / ")} · {l.platform} · {l.form}
-          </p>
-          <p>
-            {l.blocks.join(" · ")} · {l.voice ? "Open to voice" : "Text only"} ·{" "}
-            {l.vibe === "both" ? "Flexible" : l.vibe === "tryhard" ? "Competitive" : "Chill"}
-          </p>
-          {fit && !l.own && <FitReasons fit={fit} listing={l} />}
-          {!!l.champs.length && <p>Recent champions · {l.champs.join(", ")}</p>}
-          {l.note && <p>{l.note}</p>}
-          {l.own ? (
-            <DuoButton action="close" id={l.id}>
-              Close listing
-            </DuoButton>
-          ) : (
-            <div className="duo-controls">
-              {l.requested ? (
-                <span className="meta">Request already sent</span>
-              ) : (
-                <DuoButton action="request" id={l.id}>
-                  Request a duo
-                </DuoButton>
-              )}
-              <DuoButton action="block-listing" id={l.id}>
-                Block player
+      {displayed.map(l => {
+        const mutual = sharedWindows(preferred, l.playWindows);
+        const filtered = filter.length ? sharedWindows(selected, l.playWindows) : [];
+        const shared = filtered.length ? filtered : mutual;
+        const hasSharedTime = !l.own && shared.length > 0;
+        const next = nextWindowLabel(hasSharedTime ? shared : l.playWindows, viewZone, asOf);
+        const playTime = next
+          ? (hasSharedTime ? "Shared play time · " : "Next play time · ") + next
+          : "Time zone unconfirmed · " + l.blocks.join(" / ");
+        return (
+          <article key={l.id} className="card">
+            <strong>{l.own ? (l.held ? "Your listing is in review" : "Your listing") : l.rank}</strong>
+            <p>
+              {l.roles.join(" / ")} · {l.partnerRole ? (l.partnerRole === "Any" ? "Open to any partner role" : "Looking for " + l.partnerRole) : "Partner role unspecified"} · {l.platform} · {l.form}
+            </p>
+            <p>
+              {playTime} · {l.voice ? "Open to voice" : "Text only"} ·{" "}
+              {l.vibe === "both" ? "Flexible" : l.vibe === "tryhard" ? "Competitive" : "Chill"}
+            </p>
+            {fit && !l.own && <FitReasons fit={fit} listing={l} sharedTime={mutual.length > 0} />}
+            {!!l.champs.length && <p>Recent champions · {l.champs.join(", ")}</p>}
+            {l.note && <p>{l.note}</p>}
+            {l.own ? (
+              <DuoButton action="close" id={l.id}>
+                Close listing
               </DuoButton>
-              <SafetyReport kind="lfg" targetId={l.id} />
-            </div>
-          )}
-        </article>
-      ))}
+            ) : (
+              <div className="duo-controls">
+                {l.requested ? (
+                  <span className="meta">Request already sent</span>
+                ) : (
+                  <DuoButton action="request" id={l.id}>
+                    Request a duo
+                  </DuoButton>
+                )}
+                <DuoButton action="block-listing" id={l.id}>
+                  Block player
+                </DuoButton>
+                <SafetyReport kind="lfg" targetId={l.id} />
+              </div>
+            )}
+          </article>
+        );
+      })}
     </>
   );
 }
 
-function FitReasons({ fit, listing }: { fit: DuoFit; listing: DuoListing }) {
-  const reasons = duoFitReasons(fit, listing);
+function FitReasons({ fit, listing, sharedTime }: { fit: DuoFit; listing: DuoListing; sharedTime: boolean }) {
+  const reasons = duoFitReasons(fit, listing, sharedTime);
   return reasons.length ? <p className="duo-reasons"><strong>Shared preferences</strong> · {reasons.join(" · ")}</p> : null;
 }

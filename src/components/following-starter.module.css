@@ -1,0 +1,9 @@
+.starter { padding: 20px 0; }
+.starter h2 { font-size: 1.1rem; margin: 0; }
+.starter > p { color: var(--ink-mid); margin: 5px 0 14px; }
+.starter article { border-inline-start: 2px solid var(--border); padding-inline-start: 14px; }
+.row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.row a { font-weight: 600; }
+.preview { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.preview a { color: inherit; }
+.starter > a { display: inline-block; margin-top: 12px; }
