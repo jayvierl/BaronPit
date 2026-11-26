@@ -4,6 +4,7 @@ import { renderToPipeableStream } from "react-dom/server";
 import { expect, it, vi } from "vitest";
 import { activeConversations } from "../lib/home-conversations";
 import { trendingChampions } from "../lib/player-insights";
+import { visibleChampionRoomSlugs } from "../lib/rooms";
 import type { PostView } from "../lib/post-types";
 import { HomeDiscoveryRail } from "./home-discovery-rail";
 
@@ -11,6 +12,7 @@ vi.mock("./home-player-suggestions", () => ({ HomePlayerSuggestions: () => null 
 vi.mock("../lib/db", () => ({ dbAvailable: () => true }));
 vi.mock("../lib/duo", () => ({ duoEnabled: () => false }));
 vi.mock("../lib/player-insights", () => ({ trendingChampions: vi.fn(async () => [{ champion: "Nami", games: 4 }]) }));
+vi.mock("../lib/rooms", () => ({ visibleChampionRoomSlugs: vi.fn(async () => ["champ-nami"]) }));
 
 const day = 24 * 60 * 60 * 1000;
 const now = Date.now();
@@ -60,6 +62,7 @@ it("renders active conversations or reads champion activity for the same rail sl
   expect(active).toContain("3 replies");
   expect(active).not.toContain("Popular in recent champion pools");
   expect(trendingChampions).not.toHaveBeenCalled();
+  expect(visibleChampionRoomSlugs).not.toHaveBeenCalled();
 
   const empty = await renderRail([post(30, { createdAt: daysAgo(15) })], "everyone");
   expect(empty).toContain("Popular in recent champion pools");
@@ -67,4 +70,13 @@ it("renders active conversations or reads champion activity for the same rail sl
   expect(empty).not.toContain("Active conversations");
   expect(empty).not.toContain('href="/post/30"');
   expect(trendingChampions).toHaveBeenCalledOnce();
+});
+
+it("keeps champion activity usable when a room cannot be opened", async () => {
+  vi.mocked(visibleChampionRoomSlugs).mockResolvedValueOnce([]);
+  const html = await renderRail([], "everyone");
+  expect(visibleChampionRoomSlugs).toHaveBeenLastCalledWith(["Nami"]);
+  expect(html).toContain('href="/builds?champ=Nami"');
+  expect(html.replaceAll("<!-- -->", "")).toContain("appearances · Builds");
+  expect(html).not.toContain('href="/rooms/champ-nami"');
 });

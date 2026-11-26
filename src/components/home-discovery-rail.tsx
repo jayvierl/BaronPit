@@ -9,6 +9,7 @@ import { activeConversations } from "@/lib/home-conversations";
 import { trendingChampions } from "@/lib/player-insights";
 import type { PostView } from "@/lib/post-types";
 import type { listFeaturedRooms } from "@/lib/rooms";
+import { visibleChampionRoomSlugs } from "@/lib/rooms";
 import { ChampionPortrait } from "./champion-portrait";
 import { HomePlayerSuggestions } from "./home-player-suggestions";
 import { JoinButton } from "./social-ui";
@@ -81,6 +82,7 @@ async function ChampionActivity({ patch }: Pick<Props, "patch">) {
   const trends = sample
     .filter(({ champion, games }) => /^[a-z\d]+$/i.test(champion) && Number.isSafeInteger(games) && games > 0)
     .slice(0, 4);
+  const rooms = new Set(await visibleChampionRoomSlugs(trends.map(trend => trend.champion)).catch(() => []));
 
   return (
     <section className={styles.section} aria-labelledby="discovery-champions-title">
@@ -88,15 +90,19 @@ async function ChampionActivity({ patch }: Pick<Props, "patch">) {
       {trends.length > 0 ? <>
         <p>Appearances across up to 200 cached player snapshots.</p>
         <ul className={styles.list}>
-          {trends.map(({ champion, games }) => <li key={champion}>
-            <Link href={`/rooms/champ-${champion.toLowerCase()}`} className={styles.champion} prefetch={false}>
-              <ChampionPortrait compact id={champion} patch={patch} size={30} />
-              <span className={styles.identity}>
-                <strong>{championNames.get(champion) ?? champion}</strong>
-                <small>{number.format(games)} {games === 1 ? "appearance" : "appearances"}</small>
-              </span>
-            </Link>
-          </li>)}
+          {trends.map(({ champion, games }) => {
+            const slug = `champ-${champion.toLowerCase()}`;
+            const hasRoom = rooms.has(slug);
+            return <li key={champion}>
+              <Link href={hasRoom ? `/rooms/${slug}` : `/builds?champ=${encodeURIComponent(champion)}`} className={styles.champion} prefetch={false}>
+                <ChampionPortrait compact id={champion} patch={patch} size={30} />
+                <span className={styles.identity}>
+                  <strong>{championNames.get(champion) ?? champion}</strong>
+                  <small>{number.format(games)} {games === 1 ? "appearance" : "appearances"}{!hasRoom && " · Builds"}</small>
+                </span>
+              </Link>
+            </li>;
+          })}
         </ul>
       </> : <p>No champion pool activity to display yet.</p>}
       <Link href="/player" className={styles.more} prefetch={false}>Look up a player <span aria-hidden="true">→</span></Link>

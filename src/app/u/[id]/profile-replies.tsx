@@ -2,15 +2,15 @@ import Link from "next/link";
 import { SafetyReport } from "@/components/safety-report";
 import { RichBody, timeAgo } from "@/components/ui";
 import { profileReplies } from "@/lib/profile-replies";
-import { pageCursor } from "@/lib/discussion-library";
+import { withSearchReturn } from "@/lib/search-scopes";
 import styles from "./profile.module.css";
 
-export async function ProfileReplies({ authorId, viewerId, before }: {
-  authorId: number; viewerId: number | null; before?: string;
+export async function ProfileReplies({ authorId, viewerId, cursor, searchReturn }: {
+  authorId: number; viewerId: number | null; cursor: string | null; searchReturn?: string;
 }) {
-  const cursor = pageCursor(before);
   const page = await profileReplies(authorId, viewerId, cursor).catch(() => null);
-  const firstPage = `/u/${authorId}?tab=replies`;
+  const repliesPath = `/u/${authorId}?tab=replies`;
+  const firstPage = withSearchReturn(repliesPath, searchReturn);
   if (!page) return <p role="status" className={styles.empty}>Replies are temporarily unavailable. <Link href={firstPage}>Try again</Link></p>;
   if (!page.replies.length) return <div className={styles.empty}>
     <h2>{cursor ? "No older replies" : "No public replies yet"}</h2>
@@ -35,7 +35,7 @@ export async function ProfileReplies({ authorId, viewerId, before }: {
     })}
     {(page.next || cursor) && <nav className={styles.replyPages} aria-label="Reply pages">
       {cursor && <Link href={firstPage}>Latest replies</Link>}
-      {page.next && <Link href={`${firstPage}&before=${page.next}`}>Older replies</Link>}
+      {page.next && <Link href={withSearchReturn(`${repliesPath}&before=${page.next}`, searchReturn)}>Older replies</Link>}
     </nav>}
   </section>;
 }

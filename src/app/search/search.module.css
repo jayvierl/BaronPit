@@ -20,6 +20,7 @@
 .scopes a:hover, .scopes a:focus-visible { color: var(--ink); }
 .scopes a[aria-current="page"] { color: var(--ink); border-color: currentColor; }
 .hint { color: var(--ink-mid); font-size: .92rem; }
+.notebook { color: var(--accent-ink); font-weight: 600; }
 @media (max-width: 420px) {
   .scopes { justify-content: space-between; }
   .scopes a { padding-inline: .2rem; min-width: 44px; }

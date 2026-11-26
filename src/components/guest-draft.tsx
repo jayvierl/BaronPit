@@ -3,6 +3,7 @@ import styles from "./thread.module.css";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { beginDraftSignIn } from "@/lib/auth-draft";
+import { POST_TO_THE_PIT } from "@/lib/brand";
 import { signInHref } from "@/lib/signin-return";
 
 export function GuestPostDraft({roomId, destination, label, anchorId = "compose", onDraftChange}: {
@@ -11,7 +12,7 @@ export function GuestPostDraft({roomId, destination, label, anchorId = "compose"
   const [body, setBody] = useState("");
   const [error, setError] = useState("");
   const router = useRouter();
-  return <form id={anchorId ?? undefined} className={`composer ${styles.editor}`} onSubmit={event => {
+  return <form id={anchorId ?? undefined} className={`composer ${styles.editor}`} aria-label={roomId === undefined ? POST_TO_THE_PIT : undefined} onSubmit={event => {
     event.preventDefault();
     if (!body.trim()) { router.push(signInHref(destination)); return; }
     try {

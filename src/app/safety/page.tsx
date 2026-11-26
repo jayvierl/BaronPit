@@ -1,10 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { SUPPORT_EMAIL } from "@/lib/brand";
-export const metadata: Metadata = {title:"Safety centre"};
-export default function SafetyCentre() {
+import { SAFETY_CENTER, SUPPORT_EMAIL } from "@/lib/brand";
+export const metadata: Metadata = {title:SAFETY_CENTER};
+export default function SafetyCenter() {
   return <article className="card reading-page">
-    <h1 className="page-title">Safety centre</h1>
+    <h1 className="page-title">{SAFETY_CENTER}</h1>
     <p>Report a problem from the menu beside a post, reply, profile, room or duo request. The person you report will not see your identity.</p>
     <section><h2 className="section">Your reports and appeals</h2><p>Check your private inbox for the outcome of a report or a decision about your content. A notice explains the rule, the action, how long it lasts and how you can appeal. A different moderator considers the appeal.</p>
       <Link href="/me/safety">Open my safety inbox</Link></section>

@@ -52,6 +52,7 @@ function sameLookup(a, b) {
   const canonical = (path) => {
     const url = new URL(path, "http://fixture.invalid");
     assert.equal(url.pathname, "/player");
+    url.searchParams.delete("fromPlayer");
     url.searchParams.sort();
     return url.search;
   };
@@ -59,6 +60,21 @@ function sameLookup(a, b) {
 }
 
 export async function checkPlayerProfiles(journey) {
+  const source = "/search?scope=people&q=Fixture+Other&region=na1";
+  const people = await journey(source, {html:true});
+  const profile = linkFrom(people, /\bFixture Other$/);
+  assert.equal(profile, "/u/504?" + new URLSearchParams({from:source}));
+  const fromSearch = await journey(profile, {html:true});
+  assert.equal(linkFrom(fromSearch, /Back to search/), source);
+  const fromSearchStats = await journey(linkFrom(fromSearch, /^Player stats$/), {html:true});
+  const follow = new URL(linkFrom(fromSearchStats, /^Sign in to follow$/), "http://fixture.invalid");
+  assert.equal(follow.searchParams.get("next"), "/u/504?" + new URLSearchParams({tab:"stats", from:source}));
+  const earlier = await journey("/u/504?" + new URLSearchParams({tab:"replies", before:"77", from:source}), {html:true});
+  const followEarlier = new URL(linkFrom(earlier, /^Sign in to follow$/), "http://fixture.invalid");
+  assert.equal(followEarlier.searchParams.get("next"), "/u/504?" + new URLSearchParams({tab:"replies", before:"77", from:source}));
+  const ownProfile = await journey("/u/501", {html:true, session:true});
+  assert.equal(linkFrom(ownProfile, /^My duo preferences$/), "/lfg#duo-plan");
+
   // The ranked queue, the weighted combined record and the all-queue match sample
   // intentionally disagree. Following the HTML links also catches incomplete Riot IDs.
   const verifiedStats = {
@@ -100,6 +116,8 @@ export async function checkPlayerProfiles(journey) {
     sameLookup(linkFrom(feed, /^Platinum III · Nami main$/), history);
     const lookup = await journey(match, options);
     checkStats(lookup, verifiedStats);
+    assert.ok(lookup.includes('href="/builds?champ=Nami"'), "Unseeded Nami room uses a Builds link.");
+    assert.ok(!lookup.includes('href="/rooms/champ-nami"'), "Unseeded Nami room must not link to a missing page.");
     assert.match(lookup, /id="match-NA1_999999" tabindex="-1"/i);
     assert.match(sectionFrom(lookup, "Recent form"), /href="#match-NA1_999999"/);
     if (!session) await checkMatchFilters(journey, history);
@@ -118,6 +136,10 @@ export async function checkPlayerProfiles(journey) {
     const teammate = linkFrom(lookup, /^Fixture Archer#NA1$/);
     sameLookup(linkFrom(claim, /View stats for Fixture Archer#NA1/), teammate);
     const legacy = await journey(teammate, options);
+    const sourceMatch = new URL(teammate, "http://fixture.invalid").searchParams.get("fromPlayer");
+    assert.equal(linkFrom(legacy, /Back to previous player/), sourceMatch);
+    assert.match(sourceMatch ?? "", /#match-NA1_999999$/);
+    assert.ok(legacy.includes('href="/rooms/champ-ashe"'), "The visible Ashe room stays linked.");
     checkStats(legacy, {
       queues: { "Ranked Solo/Duo": ["Gold IV · 23 LP", "Ranked games 100", "Win rate 62%", "62W · 38L"] },
       recent: ["Last 1 game · all queues", "Most played role Bot (1 game)", "Ashe (1 game)"],

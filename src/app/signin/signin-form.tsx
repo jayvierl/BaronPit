@@ -15,6 +15,7 @@ export function SignInForm({ returnTo, enrol, initialSignup, expired }: {
   const path = returnTo.split(/[?#]/, 1)[0];
   const purpose = path === "/lfg" ? "Sign in to return to Duo Finder with your choices."
     : path === "/profile/edit" ? "Your link will take you back to the profile editor."
+    : path.startsWith("/u/") ? "Your link will take you back to this community profile."
     : path.startsWith("/rooms/") ? "Your link will take you back to this room."
     : path.startsWith("/post/") ? "Your link will take you back to this discussion."
     : "We’ll email you a one-time link. No password needed.";

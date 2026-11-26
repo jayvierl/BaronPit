@@ -100,6 +100,32 @@ describe("thread controls", () => {
     expect(html.indexOf("Ashe build")).toBeGreaterThan(message);
   });
 
+  it("opens a feed thread from its text without hijacking hashtags or official links", () => {
+    const post: PostView = { ...base, kind: "text", data: {}, lastReplyAt: base.createdAt, lastReplyId: 24,
+      body: "Open the wave #mid then rotate https://www.leagueoflegends.com/en-us/news/tags/patch-notes/" };
+    const props = { post, patch: "16.23.1", signedIn: false };
+    const feed = renderToStaticMarkup(createElement(PostCard, props));
+    expect(feed).toMatch(/<p class="post-body"><a[^>]*href="\/post\/1">Open the wave <\/a>/);
+    expect(feed).toContain('href="/search?q=%23mid"');
+    expect(feed).toContain('href="https://www.leagueoflegends.com/en-us/news/tags/patch-notes/"');
+    expect(feed).toContain('href="/post/1#reply-24">Latest player reply');
+    const detail = renderToStaticMarkup(createElement(PostCard, { ...props, threadPage: true }));
+    expect(detail).toContain('<p class="post-body">Open the wave ');
+    expect(detail).toContain('href="#replies-1"');
+    expect(detail).not.toContain('aria-label="Hide replies');
+  });
+
+  it("shows held authors their original poll and withdrawal without publishing actions", () => {
+    const post: PostView = { ...base, kind: "poll", data: { options: ["Reset", "Push"] }, status: "held" };
+    const html = renderToStaticMarkup(createElement(PostCard, {
+      post, patch: "16.23.1", signedIn: true, viewerId: post.authorId, threadPage: true,
+    }));
+    expect(html).toContain("Awaiting moderator review");
+    expect(html).toContain(">Withdraw post</button>");
+    expect(html).toContain(">Reset</p>");
+    expect(html).not.toMatch(/aria-label="Post actions"|poll-option|Your reply|id="replies-1"/);
+  });
+
   it("labels the server-designated patch briefing in feed and thread cards", () => {
     const briefing = { ...base, kind: "text", data: { briefing: true, patch: "16.23.1" } };
     for (const threadPage of [false, true]) {

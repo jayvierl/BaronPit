@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 
 const origin = new URL(process.argv[2] || "https://baronpit.com").origin;
 const routes = [
-  ["/", ["Feed selection", "Start a thread", 'aria-label="Discover"', "Find your duo", "Match questions", "Lobby rally clock", "community objective"]],
+  ["/", ["Feed selection", "Post to the Pit", 'aria-label="Discover"', "Find your duo", "Match questions", "Lobby rally clock", "community objective"]],
   ["/rooms/general", ["The Baron Pit", "baron-room-960.webp"]],
   ["/questions", ["Matchup notebook"]],
   ["/lfg", ["Find a duo", "Thanking a teammate after a game"]],
   ["/lfg/thanks", ["Thank your duo"]],
   ["/review-hour", ["Bot lane review hour"]],
-  ["/safety", ["Safety centre"]],
+  ["/safety", ["Safety Center"]],
   ["/pilot/phone-test", ["Try a matchup thread on your phone"]],
   ["/builds/compare", ["Compare build paths"]],
 ];

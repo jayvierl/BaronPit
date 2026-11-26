@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 
 function authorLink(html) {
-  return html.match(/<a\b[^>]*\bhref="\/u\/501"[^>]*>[\s\S]*?<\/a>/g)?.find(link => link.includes('class="avatar"'));
+  return html.match(/<a\b[^>]*\bhref="\/u\/501(?:\?[^"\s]*)?"[^>]*>[\s\S]*?<\/a>/g)?.find(link => link.includes('class="avatar"'));
 }
 
 export async function checkCrossAppIdentity(journey, expected) {
   const feed = await journey("/?tab=following", {session:true, html:true});
   const search = await journey("/search?q=River%20Scout", {html:true});
-  const composer = feed.match(/<fieldset\b[^>]*aria-label="Start a thread"[^>]*>([\s\S]*?)<textarea/);
+  const composer = feed.match(/<fieldset\b[^>]*aria-label="Post to the Pit"[^>]*>([\s\S]*?)<textarea/);
   const views = [
     ["existing post", authorLink(feed)],
     ["community search", authorLink(search)],

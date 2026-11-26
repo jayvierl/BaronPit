@@ -169,4 +169,34 @@ describe("recent-form refresh", () => {
     expect(await lookup()).toEqual({ ok: false, code: "invalid_key" });
     expect(mocked.q).toHaveBeenCalledTimes(1);
   });
+  it("shows successful public data without persisting an incomplete newcomer lookup", async () => {
+    mocked.q.mockResolvedValue([]);
+    const ranked = [{queueType:"RANKED_SOLO_5x5", tier:"GOLD", rank:"II", leaguePoints:30, wins:10, losses:3}];
+    const me = {puuid:"ref", championName:"Ashe", teamId:100, win:true, kills:2, deaths:1, assists:4,
+      totalMinionsKilled:100, neutralMinionsKilled:0, goldEarned:8500, teamPosition:"BOTTOM"};
+    const transport = vi.fn(async (url: string) => {
+      if (url.includes("/riot/account/")) return Response.json({puuid:"ref", gameName:"Fixture", tagLine:"NA1"});
+      if (url.includes("/summoner/")) return Response.json({summonerLevel:32, profileIconId:1});
+      if (url.includes("/league/")) return Response.json(ranked);
+      if (url.includes("/ids?")) return Response.json(["NA1_5", "NA1_4", "NA1_3", "NA1_2", "NA1_1"]);
+      if (url.endsWith("NA1_5")) return Response.json({metadata:{matchId:"NA1_5"},
+        info:{gameDuration:1400, gameEndTimestamp:Date.now(), queueId:420, participants:[me]}});
+      return new Response(null,{status:503});
+    });
+    vi.stubGlobal("fetch", transport);
+    expect(await lookup()).toMatchObject({ok:true, source:"partial", fresh:false, player:{rankedEntries:ranked, snapshot:{games:1}}});
+    expect(mocked.q).toHaveBeenCalledTimes(1);
+    expect(transport.mock.calls.some(([url]) => url.endsWith("NA1_1"))).toBe(false);
+  });
+  it("returns a ranked-only snapshot when the Match-V5 list is unavailable", async () => {
+    mocked.q.mockResolvedValue([]);
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (url.includes("/riot/account/")) return Response.json({puuid:"ref", gameName:"Fixture", tagLine:"NA1"});
+      if (url.includes("/summoner/")) return Response.json({summonerLevel:32, profileIconId:1});
+      if (url.includes("/league/")) return Response.json([]);
+      return new Response(null,{status:503});
+    });
+    expect(await lookup()).toMatchObject({ok:true, source:"partial", fresh:false, player:{rankedEntries:[], snapshot:{games:0}}});
+    expect(mocked.q).toHaveBeenCalledTimes(1);
+  });
 });

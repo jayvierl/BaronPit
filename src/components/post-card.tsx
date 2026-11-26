@@ -49,10 +49,13 @@ export function PostCard({
   viewerIdentity?: AvatarIdentity | null;
 }) {
   const router = useRouter();
+  const threadHref = `/post/${post.id}`;
+  const visible = post.status === "visible";
   const [withdrawn,setWithdrawn] = useState(false);
   const [reactions, setReactions] = useState(post.reactions);
   const [mine, setMine] = useState<string[]>(post.myReactions);
-  const [showComments, setShowComments] = useState(threadPage);
+  const [inlineReplies, setInlineReplies] = useState(false);
+  const showComments = visible && (threadPage || inlineReplies);
   const [replyVisit, setReplyVisit] = useState(threadPage ? 1 : 0);
   const reactionPicker = useRef<HTMLDetailsElement>(null);
   const [addedReplies, setAddedReplies] = useState(0);
@@ -65,7 +68,7 @@ export function PostCard({
 
   const react = async (emoji: string) => {
     if (!signedIn) {
-      router.push(signInHref(`/post/${post.id}`));
+      router.push(signInHref(threadHref));
       return;
     }
     const active = !mine.includes(emoji);
@@ -78,7 +81,7 @@ export function PostCard({
   };
   const vote = async (idx: number) => {
     if (!signedIn) {
-      router.push(signInHref(`/post/${post.id}`));
+      router.push(signInHref(threadHref));
       return;
     }
     if (myVote === idx || !(await action.send("/api/social/vote", { postId: post.id, optionIdx: idx }))) return;
@@ -108,7 +111,7 @@ export function PostCard({
       <div className="thread-main">
         {post.repostedBy && <div className={styles.attribution}>
           <Link href={`/u/${post.repostedBy.id}`}>{post.repostedBy.name}</Link> reposted{" "}
-          <a href={`/post/${post.id}`}>this {post.kind === "build" ? "build" : "discussion"}</a>
+          <Link href={threadHref} prefetch={false}>this {post.kind === "build" ? "build" : "discussion"}</Link>
         </div>}
         <header className={`thread-head ${styles.byline}`}>
           <div className={styles.bylineText}>
@@ -118,9 +121,11 @@ export function PostCard({
             {post.roomName && post.roomSlug && <span className={styles.topic}>
               <span aria-hidden="true">›</span> <Link href={`/rooms/${post.roomSlug}`}>{post.roomName}</Link>
             </span>}
-            <a className={styles.permalink} href={`/post/${post.id}`}>
-              <span aria-hidden="true">·</span> <PermalinkTime iso={post.createdAt} context={`Open thread by ${post.authorName}`} />
-            </a>
+            {threadPage
+              ? <span className={styles.permalink}><span aria-hidden="true">·</span> <time className="time" dateTime={post.createdAt} title={post.createdAt} suppressHydrationWarning>{timeAgo(post.createdAt)}</time></span>
+              : <Link className={styles.permalink} href={threadHref} prefetch={false}>
+                  <span aria-hidden="true">·</span> <PermalinkTime iso={post.createdAt} context={`Open thread by ${post.authorName}`} />
+                </Link>}
           </div>
           <details className={styles.options} onKeyDown={closeDisclosure}>
             <summary aria-label="Post options" title="Post options"><ThreadIcon name="more" /></summary>
@@ -141,7 +146,7 @@ export function PostCard({
             {post.status === "held" && <strong>Awaiting moderator review</strong>}
           </div>
         )}
-        {post.body && <RichBody body={post.body} />}
+        {post.body && <RichBody body={post.body} threadHref={threadPage ? undefined : threadHref} threadLinkClassName={styles.bodyLink}/>}
         {post.kind === "build" && (
           <div className={styles.buildAttachment}>
             <div className={styles.attachmentHeading}>
@@ -163,7 +168,7 @@ export function PostCard({
                       <span className="stale-tag">
                         Outdated — unconfirmed for patch {patch.split(".").slice(0, 2).join(".")}
                       </span>
-                      {viewerId != null && viewerId === post.authorId && (
+                      {visible && viewerId != null && viewerId === post.authorId && (
                         <button
                           type="button"
                           className={`text-btn ${styles.reconfirm}`}
@@ -204,6 +209,7 @@ export function PostCard({
             {(d.options as string[]).map((opt, i) => {
               const n = pollResults?.[i] ?? 0;
               const pct = pollTotal ? Math.round((n / pollTotal) * 100) : 0;
+              if (!visible) return <p key={i} className="meta">{opt}</p>;
               return (
                 <button
                   key={i}
@@ -233,25 +239,30 @@ export function PostCard({
             <span aria-hidden="true">↗</span>
           </a>
         )}
-        {(post.isQuestion && !threadPage || post.lastReplyAt) && <div className={styles.discussionLinks}>
-          {post.isQuestion && !threadPage && <Link href={`/post/${post.id}`}>Discuss this decision →</Link>}
-          {post.lastReplyAt && <Link href={`/post/${post.id}#replies-${post.id}`}>Latest player reply{" "}
+        {visible && !threadPage && (post.isQuestion || post.lastReplyId) && <div className={styles.discussionLinks}>
+          {post.isQuestion && <Link href={threadHref} prefetch={false}>Discuss this decision →</Link>}
+          {post.lastReplyId && post.lastReplyAt && <Link href={`${threadHref}#reply-${post.lastReplyId}`} prefetch={false}>Latest player reply{" "}
             <time dateTime={post.lastReplyAt} suppressHydrationWarning>{timeAgo(post.lastReplyAt)}</time>
           </Link>}
         </div>}
-        <ActionFeedback error={action.error} />
-        <div className={styles.tools} role="group" aria-label="Post actions">
+        {visible && <ActionFeedback error={action.error} />}
+        {visible && <div className={styles.tools} role="group" aria-label="Post actions">
           <button type="button" className={`action-btn${mine.includes("❤️") ? " mine" : ""}`}
             aria-label={`Like, ${likeCount} ${likeCount === 1 ? "like" : "likes"}`} title="Like" aria-pressed={mine.includes("❤️")}
             disabled={action.busy} onClick={() => react("❤️")}>
             <ThreadIcon name="heart" filled={mine.includes("❤️")} />{likeCount > 0 && <span className={styles.count}>{likeCount}</span>}
           </button>
-          <button type="button" className="action-btn"
-            onClick={() => { if (!showComments) setReplyVisit(n => n + 1); setShowComments(!showComments); }}
-            aria-expanded={showComments} aria-controls={`thread-replies-${post.id}`} title="Replies"
-            aria-label={`${showComments ? "Hide" : "Show"} replies, ${replyCount} ${replyCount === 1 ? "reply" : "replies"}`}>
-            <ThreadIcon name="reply" />{replyCount > 0 && <span className={styles.count}>{replyCount}</span>}
-          </button>
+          {threadPage
+            ? <a href={`#replies-${post.id}`} className="action-btn" title="Replies"
+                aria-label={`Jump to replies, ${replyCount} ${replyCount === 1 ? "reply" : "replies"}`}>
+                <ThreadIcon name="reply" />{replyCount > 0 && <span className={styles.count}>{replyCount}</span>}
+              </a>
+            : <button type="button" className="action-btn"
+                onClick={() => { if (!inlineReplies) setReplyVisit(n => n + 1); setInlineReplies(open => !open); }}
+                aria-expanded={showComments} aria-controls={`thread-replies-${post.id}`} title="Replies"
+                aria-label={`${showComments ? "Hide" : "Show"} replies, ${replyCount} ${replyCount === 1 ? "reply" : "replies"}`}>
+                <ThreadIcon name="reply" />{replyCount > 0 && <span className={styles.count}>{replyCount}</span>}
+              </button>}
           <details className={styles.reactionPicker} ref={reactionPicker}
             onBlur={event => {
               if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
@@ -277,15 +288,16 @@ export function PostCard({
             </div>
           </details>
           {post.canRepost && <RepostControl key={String(post.myRepost)} postId={post.id} initial={post.myRepost === true} signedIn={signedIn}/>}
-          {post.status === "visible" && <PostLibraryActions postId={post.id} signedIn={signedIn}/>}
-        </div>
+          <PostLibraryActions postId={post.id} signedIn={signedIn}/>
+        </div>}
 
       </div>
-      <div id={`thread-replies-${post.id}`} className={styles.replyPanel} hidden={!showComments}>
+      {visible && <div id={`thread-replies-${post.id}`} className={styles.replyPanel} hidden={!showComments}>
           {replyVisit > 0 && <CommentSection
             key={viewerId ?? "guest"}
             active={showComments}
             visit={replyVisit}
+            threadPage={threadPage}
             initialComments={initialComments}
             postId={post.id}
             signedIn={signedIn}
@@ -295,7 +307,7 @@ export function PostCard({
             decisionQuestion={post.isQuestion}
             allowOneFix={post.kind === "card"}
           />}
-      </div>
+      </div>}
     </article>
   );
 }

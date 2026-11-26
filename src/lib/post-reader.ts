@@ -94,17 +94,18 @@ const postDataProjection = `CASE WHEN p.kind = 'card' AND NOT p.card_validated T
 const recentDiscussionActivity = `, candidates AS (
     SELECT DISTINCT c.post_id FROM wp_comments c WHERE c.status='visible' AND c.created_at>=now()-interval '7 days'
   ), ${visibleCommentsFor("posts", "candidates")}, activity AS (
-    SELECT t.post_id,max(c.created_at) AS answered_at FROM thread t
+    SELECT DISTINCT ON (t.post_id) t.post_id,c.created_at AS answered_at,c.id AS reply_id FROM thread t
     JOIN wp_comments c ON c.id=t.id JOIN wp_posts original ON original.id=t.post_id
     WHERE c.created_at>=now()-interval '7 days' AND c.author_id<>original.author_id
       AND c.author_id IS DISTINCT FROM (SELECT id FROM wp_users WHERE email=$11)
-    GROUP BY t.post_id
+    ORDER BY t.post_id,c.created_at DESC,c.id DESC
   )`;
 
 export async function readPosts(viewerId: number | null, filter: Filter, limit: number): Promise<PostView[]> {
   // Bound expensive flair and legacy-card lookups to the selected page.
   const rows = await queryRows(`WITH RECURSIVE ${HIDDEN_AUTHORS}${filter.activeReplies ? recentDiscussionActivity : ""}${filter.following ? followedReposts : ""}, chosen AS (
     SELECT p.*, ${filter.activeReplies ? "a.answered_at" : "NULL::timestamptz"} AS answered_at,
+      ${filter.activeReplies ? "a.reply_id" : "NULL::int"} AS reply_id,
       ${filter.following ? "s.user_id" : "NULL::int"} AS sharer,
       ${filter.following ? "s.first_shared_at" : "NULL::timestamptz"} AS shared_at,
       greatest(p.created_at, ${filter.following ? "s.first_shared_at" : filter.activeReplies ? "a.answered_at" : "NULL::timestamptz"}) AS sort_at
@@ -134,7 +135,7 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
             AND split_part(older.data->>'patch','.',2)=split_part(p.data->>'patch','.',2))))
     ORDER BY sort_at DESC, p.id DESC LIMIT $10
     )
-    SELECT p.id, p.author_id, p.kind, p.room_id, p.answered_at, ${postDataProjection} AS data, p.body, p.status, p.created_at,
+    SELECT p.id, p.author_id, p.kind, p.room_id, p.answered_at, p.reply_id, ${postDataProjection} AS data, p.body, p.status, p.created_at,
       p.sharer,p.shared_at,sh.display_name AS sharer_name,
       (p.status='visible' AND p.author_id IS DISTINCT FROM $1 AND ${repostableContent("$11")}) AS can_repost,
       EXISTS (SELECT 1 FROM wp_reposts r WHERE r.user_id=$1 AND r.post_id=p.id AND r.active) AS my_repost,
@@ -195,7 +196,7 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
       authorFlair: flair && rankFields ? playerFlair(rankFields, flair[2]) : null,
       authorTier: rankFields ? placedRank(rankFields).tier : null,
       ...(flair && r.platform && r.riot_id ? {authorStatsHref:playerStatsHref(String(r.platform), String(r.riot_id))} : {}),
-      ...(r.answered_at ? { lastReplyAt: String(r.answered_at) } : {}),
+      ...(r.answered_at && r.reply_id ? { lastReplyAt: String(r.answered_at), lastReplyId: Number(r.reply_id) } : {}),
       ...(catalog && (r.kind === "card" || r.kind === "build") ? {itemPatch:catalog.patch,itemDetails:cardItems(catalog,r.kind === "card" ? record(data.match).items : data.items)} : {}),
       kind: String(r.kind), body: version ? briefingText(version, r.room_champion as string | null) : String(r.body), data, status: String(r.status), createdAt: String(r.created_at),
       roomId: r.room_id == null ? null : Number(r.room_id), roomSlug: r.room_slug as string | null, roomName: r.room_name as string | null,

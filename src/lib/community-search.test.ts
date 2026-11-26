@@ -3,7 +3,7 @@ import { postgres } from "../../test/postgres";
 import { q } from "./db";
 import type { User } from "./auth";
 import { searchAll } from "./social";
-import { searchHref, searchScope } from "./search-scopes";
+import { readSearchReturn, searchHref, searchScope, withSearchReturn } from "./search-scopes";
 import { playerStatsHref } from "./platforms";
 
 vi.mock("@neondatabase/serverless", async () => ({ neon: (await import("../../test/postgres")).neonForTests }));
@@ -23,7 +23,8 @@ beforeAll(async () => {
       (23,3,'text','Another support build','visible'),
       (24,2,'text','Held support comment','held');
     INSERT INTO wp_players(puuid,platform,game_name,tag_line) VALUES
-      ('echo1','na1','Écho River','NA1'),('echo2','euw1','Écho River','WAVE');`);
+      ('echo1','na1','Écho River','NA1'),('echo2','euw1','Écho River','WAVE');
+    UPDATE wp_players SET rank_tier='GOLD',rank_div='IV',fetched_at='2020-11-26 08:00:00Z' WHERE puuid='echo2';`);
 }, 30_000);
 afterAll(async () => { await postgres.close(); vi.unstubAllEnvs(); });
 
@@ -34,6 +35,7 @@ it("keeps duplicate names on their own platform and treats a full Riot ID as a p
   const exact = await searchAll("Écho River#wave", null);
   expect(exact.users).toEqual([]);
   expect(exact.players).toHaveLength(1);
+  expect(exact.players[0].rank).toBe("Gold IV · as of Nov 26, 2020");
   const url = new URL(playerStatsHref(exact.players[0].platform, exact.players[0].riotId), "https://example.invalid");
   expect(url.pathname).toBe("/player");
   expect(url.searchParams.get("riotId")).toBe("Écho River#WAVE");
@@ -66,4 +68,19 @@ it("keeps the term across shareable categories and defaults unknown categories t
   const url = new URL(searchHref("posts","Écho #support"), "https://example.invalid");
   expect(url.searchParams.get("q")).toBe("Écho #support");
   expect(url.searchParams.get("scope")).toBe("posts");
+});
+
+it("keeps a selected region and safely returns from exact lookups without a redirect loop", () => {
+  const exact = searchHref("players", "Écho River#WAVE", "euw1");
+  const results = exact + "&results=1";
+  expect(readSearchReturn(exact)).toBe(results);
+  const direct = playerStatsHref("euw1", "Écho River#WAVE");
+  const link = new URL(withSearchReturn(direct + "#match-history", results), "https://example.invalid");
+  expect(link.searchParams.get("from")).toBe(results);
+  expect(link.searchParams.get("riotId")).toBe("Écho River#WAVE");
+  expect(link.hash).toBe("#match-history");
+  for (const value of ["//example.invalid/search", "https://example.invalid/search", "/search/../player", "/player"]) {
+    expect(readSearchReturn(value)).toBeUndefined();
+  }
+  expect(readSearchReturn("/search?scope=unknown&region=invalid&from=/player&q=Nami")).toBe("/search?q=Nami");
 });

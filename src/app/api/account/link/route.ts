@@ -31,6 +31,9 @@ export async function POST(req: Request) {
       : "Player lookup failed — try again in a moment.";
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
+  if (result.source === "partial") {
+    return NextResponse.json({ ok: false, error: "Riot returned part of this profile. Try linking again when the full lookup is available." }, { status: 503 });
+  }
   const player = result.player;
   await ensureRooms();
   const sql = await getSql();

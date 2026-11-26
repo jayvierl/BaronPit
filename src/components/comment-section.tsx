@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { beginDraftSignIn, restoreAfterMount } from "@/lib/auth-draft";
 import { validId } from "@/lib/ids";
 import { signInHref } from "@/lib/signin-return";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import type { CommentView } from "@/lib/social";
 import type { AvatarIdentity } from "@/lib/author-identity";
@@ -22,10 +22,40 @@ type ThreadLoad = { postId: number; revision: number; visit: number } & (
   | { error: string; comments?: never }
 );
 
+function readReplyAnchor() {
+  const match = /^#reply-(\d+)$/.exec(window.location.hash);
+  const id = match ? Number(match[1]) : null;
+  return validId(id) ? id : null;
+}
+
+function subscribeToReplyAnchor(onChange: () => void) {
+  window.addEventListener("hashchange", onChange);
+  window.addEventListener("popstate", onChange);
+  return () => {
+    window.removeEventListener("hashchange", onChange);
+    window.removeEventListener("popstate", onChange);
+  };
+}
+
+const skipReplyAnchor = () => () => {};
+const noReplyAnchor = () => null;
+
+function revealReply(section: HTMLElement | null, id: number) {
+  const target = document.getElementById(`reply-${id}`);
+  if (!section || !target || !section.contains(target)) return false;
+  for (let ancestor = target.parentElement; ancestor && ancestor !== section; ancestor = ancestor.parentElement) {
+    if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
+  }
+  target.scrollIntoView({ block: "start" });
+  target.focus({ preventScroll: true });
+  return true;
+}
+
 export function CommentSection({
   postId,
   active = true,
   visit = 1,
+  threadPage = false,
   initialComments,
   signedIn,
   viewerId,
@@ -37,6 +67,7 @@ export function CommentSection({
   postId: number;
   active?: boolean;
   visit?: number;
+  threadPage?: boolean;
   initialComments?: CommentView[] | null;
   signedIn: boolean;
   viewerId?: number | null;
@@ -56,6 +87,8 @@ export function CommentSection({
   const sectionRef = useRef<HTMLElement>(null);
   const action = usePostAction();
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const linkedReply = useSyncExternalStore(threadPage ? subscribeToReplyAnchor : skipReplyAnchor,
+    threadPage ? readReplyAnchor : noReplyAnchor, noReplyAnchor);
   const setInputRef = (el: HTMLInputElement | HTMLTextAreaElement | null) => { inputRef.current = el; };
 
   const scope = `reply:${postId}`;
@@ -138,25 +171,16 @@ export function CommentSection({
     });
   }
 
-  const lastAnchor = useRef("");
+  const lastAnchor = useRef<number | null>(null);
   useEffect(() => {
-    if (!active || !renderedComments) return;
-    function revealAnchor() {
-      const hash = window.location.hash;
-      if (!/^#reply-\d+$/.test(hash)) { lastAnchor.current = ""; return; }
-      const target = document.getElementById(hash.slice(1));
-      if (!target || !sectionRef.current?.contains(target)) return;
-      for (let ancestor = target.parentElement; ancestor && ancestor !== sectionRef.current; ancestor = ancestor.parentElement) {
-        if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
-      }
-      target.scrollIntoView({block:"center"});
-      target.focus({preventScroll:true});
-      lastAnchor.current = hash;
+    if (!active || linkedReply === null) {
+      lastAnchor.current = null;
+      return;
     }
-    if (lastAnchor.current !== window.location.hash) revealAnchor();
-    window.addEventListener("hashchange", revealAnchor);
-    return () => window.removeEventListener("hashchange", revealAnchor);
-  }, [active, renderedComments]);
+    if (renderedComments && linkedReply !== lastAnchor.current && revealReply(sectionRef.current, linkedReply)) {
+      lastAnchor.current = linkedReply;
+    }
+  }, [active, linkedReply, renderedComments]);
 
   const payload = {
     postId,
@@ -194,8 +218,8 @@ export function CommentSection({
     const count = replyCounts.get(c.id) ?? 0;
     const replyLabel = count === 1 ? "1 reply" : `${count} replies`;
     return (
-      <div key={c.id} id={`reply-${c.id}`} className={threadStyles.replyBranch} tabIndex={-1}>
-        <div className="comment-row">
+      <div key={c.id} className={threadStyles.replyBranch}>
+        <div id={`reply-${c.id}`} className={`comment-row ${threadStyles.replyRow}`} tabIndex={-1}>
           <div className="comment-rail">
             <AvatarProfileLink userId={c.authorId} className={threadStyles.avatarLink}
               name={c.authorName} hue={c.authorHue} avatar={c.authorAvatar} size={32} />
@@ -206,9 +230,15 @@ export function CommentSection({
               <Link href={`/u/${c.authorId}`} className="post-author">
                 {c.authorName}
               </Link>{" "}
-              <Link href={`/post/${postId}#reply-${c.id}`} className={threadStyles.permalink}>
-                <PermalinkTime iso={c.createdAt} context={`Link to reply by ${c.authorName}`} />
-              </Link>
+              {threadPage
+                ? <a href={`#reply-${c.id}`} className={threadStyles.permalink} onClick={event => {
+                    if (linkedReply === c.id && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+                      revealReply(sectionRef.current, c.id);
+                    }
+                  }}><PermalinkTime iso={c.createdAt} context={`Link to reply by ${c.authorName}`} /></a>
+                : <Link href={`/post/${postId}#reply-${c.id}`} className={threadStyles.permalink} prefetch={false}>
+                    <PermalinkTime iso={c.createdAt} context={`Link to reply by ${c.authorName}`} />
+                  </Link>}
             </div>
             <div className="post-body">
               {c.oneFix && <span className="onefix-tag">One fix</span>}
@@ -251,6 +281,7 @@ export function CommentSection({
   return (
     <section ref={sectionRef} id={`replies-${postId}`} className="comments" aria-labelledby={`replies-title-${postId}`}>
       <h2 className={threadStyles.repliesTitle} id={`replies-title-${postId}`}>Replies</h2>
+      {linkedReply !== null && renderedComments && !commentsById.has(linkedReply) && <p className="notice" role="status">This reply isn’t available. You can still read the visible replies below.</p>}
       {!current ? (
         <PostCardLoading label="Loading replies…" />
       ) : current.comments ? (

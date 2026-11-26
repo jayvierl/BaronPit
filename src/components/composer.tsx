@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { clipLink } from "@/lib/clip-link";
 import { BARON_CALL_OPTIONS } from "@/lib/poll";
+import { POST_TO_THE_PIT } from "@/lib/brand";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { Avatar } from "./ui";
 import type { AvatarIdentity } from "@/lib/author-identity";
@@ -192,7 +193,7 @@ export function Composer({
       disabled={action.busy}
       className={`composer ${styles.editor}`}
       id={anchorId ?? undefined}
-      aria-label="Start a thread"
+      aria-label={roomId === undefined ? POST_TO_THE_PIT : "Post in this room"}
     >
       <div className="composer-head">
         {viewerIdentity && <Avatar {...viewerIdentity} size={40} />}

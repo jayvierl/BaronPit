@@ -39,6 +39,7 @@ async function loadBoard(userId: number | undefined, onlyFit: boolean): Promise<
 export default async function LfgPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const [query, viewer] = await Promise.all([searchParams, getCurrentUser()]);
   const onlyFit = query.view !== "all";
+  const boardHref = onlyFit ? "/lfg" : "/lfg?view=all";
   const [state, stored, measuring] = await Promise.all([
     loadBoard(viewer?.id, onlyFit),
     viewer ? loadDuoFit(viewer.id).catch(() => undefined) : null,
@@ -60,10 +61,11 @@ export default async function LfgPage({ searchParams }: { searchParams: Promise<
         <aside className="duo-status">
           <h2>Verified duo matching is coming</h2>
           <p>Listings open after Riot account verification and safety coverage are ready. You can save your private preferences now.</p>
+          <Link href="#duo-plan">Set duo preferences</Link>
         </aside>
       )}
       {state.status === "guest" && (
-        <p><Link href={signInHref("/lfg")} className="btn">Sign in to find a duo</Link></p>
+        <p><Link href={signInHref(boardHref)} className="btn">Sign in to find a duo</Link></p>
       )}
       {readiness && !readiness.ready && (
         <aside className="duo-status">
@@ -87,8 +89,8 @@ export default async function LfgPage({ searchParams }: { searchParams: Promise<
       )}
       {viewer && duoEnabled() && <DuoGameChecks userId={viewer.id}/> }
       {state.status === "error" && <p className="notice" role="status">Duo Finder couldn’t load. Try again shortly.</p>}
-      {stored === undefined ? <p role="status">Your saved duo plan is temporarily unavailable. Refresh to try again.</p>
-        : <DuoFitForm saved={fit} signedIn={!!viewer} />}
+      {stored === undefined ? <p id="duo-plan" className="duo-plan" role="status">Your saved duo plan is temporarily unavailable. Refresh to try again.</p>
+        : <DuoFitForm saved={fit} signedIn={!!viewer} returnTo={`${boardHref}#duo-plan`} />}
       <p><Link href="/pilot#duo-evening">Share availability for the proposed NA bot-lane evening</Link></p>
       <footer className="duo-foot">
         <p className="meta">Keep passwords, payment details and contact handles private. You can report a listing or request. Voice is optional.</p>

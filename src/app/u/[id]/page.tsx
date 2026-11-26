@@ -1,4 +1,5 @@
 import { ChampionPortrait } from "@/components/champion-portrait";
+import { POST_TO_THE_PIT } from "@/lib/brand";
 import Link from "next/link";
 import { Suspense } from "react";
 import { ProfileReplies } from "./profile-replies";
@@ -12,6 +13,8 @@ import { feedByAuthor, followCounts, isFollowing, endorsementCounts, dailyHighli
 import { earnedBadges } from "@/lib/pure";
 import { linkedPlayers as readLinkedPlayers, publicProfile } from "@/lib/player-insights";
 import { playerStatsHref } from "@/lib/platforms";
+import { pageCursor } from "@/lib/discussion-library";
+import { readSearchReturn, withSearchReturn } from "@/lib/search-scopes";
 import { readProfileLink } from "@/lib/profile-featured-link";
 import { signInHref } from "@/lib/signin-return";
 import { Avatar } from "@/components/ui";
@@ -27,15 +30,23 @@ export const dynamic = "force-dynamic";
 
 export default async function ProfilePage({ params, searchParams }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; updated?: string; before?: string }>;
+  searchParams: Promise<{ tab?: string; updated?: string; before?: string; from?: string }>;
 }) {
-  const [{id},{tab,updated,before},viewer] = await Promise.all([params,searchParams,getCurrentUser()]);
+  const [{id},{tab,updated,before,from},viewer] = await Promise.all([params,searchParams,getCurrentUser()]);
   const userId = Number(id);
   if (!Number.isSafeInteger(userId) || userId <= 0 || userId > 2147483647) notFound();
   const today = new Date().toISOString().slice(0, 10);
   const profile = await publicProfile(userId, viewer?.id ?? null, today);
   if (!profile) notFound();
   const activeTab = tab === "players" || tab === "stats" ? "stats" : tab === "replies" ? "replies" : "posts";
+  const searchReturn = readSearchReturn(from);
+  const cursor = activeTab === "replies" ? pageCursor(before) : null;
+  const profilePath = `/u/${userId}`;
+  function tabHref(target: "posts" | "replies" | "stats", before?: string | null) {
+    const path = target === "posts" ? profilePath : `${profilePath}?tab=${target}`;
+    return withSearchReturn(before ? `${path}&before=${before}` : path, searchReturn);
+  }
+  const statsHref = tabHref("stats");
   const [patch,counts,endorsements,linkedPlayers,following,posts,featuredLink] = await Promise.all([
     activeTab === "posts" ? currentPatch() : "", followCounts(userId), endorsementCounts(userId), readLinkedPlayers(userId),
     viewer && viewer.id !== userId ? isFollowing(viewer.id,userId) : false,
@@ -46,11 +57,12 @@ export default async function ProfilePage({ params, searchParams }: {
   const badges = player?.verified ? earnedBadges(player.snapshot) : [];
   if (profile.featured && player?.verified) badges.unshift("Hand of Baron · featured today");
   const highlight = activeTab === "posts" && player?.verified ? dailyHighlight(player, today) : null;
-  const lookupHref = player && playerStatsHref(player.platform, `${player.gameName}#${player.tagLine}`);
+  const lookupHref = player && withSearchReturn(playerStatsHref(player.platform, `${player.gameName}#${player.tagLine}`), searchReturn);
   const isSelf = viewer?.id === userId;
 
   return (
     <div>
+      {searchReturn && <Link href={searchReturn} className={`${styles.link} ${styles.returnLink}`}>← Back to search</Link>}
       {isSelf && updated === "1" && <p className="notice ok" role="status">Profile updated.</p>}
       <header className={styles.identity}>
         <div className={styles.byline}>
@@ -58,7 +70,7 @@ export default async function ProfilePage({ params, searchParams }: {
             <h1 className="profile-name">{profile.name}</h1>
             {player && <p className={styles.riotId}>{player.gameName}#{player.tagLine}
               <span> · {player.verified ? "Verified Riot link" : "Unverified Riot link"}</span></p>}
-            {player?.verified && activeTab !== "posts" && <Link href={`/u/${userId}?tab=stats`} className={styles.identityRank}>
+            {player?.verified && activeTab === "replies" && <Link href={statsHref} className={styles.identityRank} scroll={false}>
               <RankBadge tier={placedRank(player).tier}>{socialRankLabel(player)}</RankBadge>
             </Link>}
             {!player && isSelf && activeTab === "replies" && <Link href="/me" className={styles.link}>Link a Riot ID</Link>}
@@ -75,10 +87,10 @@ export default async function ProfilePage({ params, searchParams }: {
         <div className={styles.actions}>
           {isSelf ? <>
             <Link href="/profile/edit" className="btn secondary">Edit profile</Link>
-            <Link href="/lfg" className="btn secondary">My duo preferences</Link>
+            <Link href="/lfg#duo-plan" className="btn secondary">My duo preferences</Link>
           </> : viewer ? <FollowButton userId={userId} initial={following} />
-            : <Link className="btn small" href={signInHref(`/u/${userId}`)}>Sign in to follow</Link>}
-          <ShareLink path={`/u/${userId}`} kind="profile"/>
+            : <Link className="btn small" href={signInHref(tabHref(activeTab, cursor))}>Sign in to follow</Link>}
+          <ShareLink path={profilePath} kind="profile"/>
           {!isSelf && (viewer ? <UserSafetyMenu userId={userId}/> : <SafetyReport kind="user" targetId={userId}/>)}
         </div>
         {badges.length > 0 && <div className={styles.badges}>
@@ -95,36 +107,36 @@ export default async function ProfilePage({ params, searchParams }: {
       </header>
       <nav aria-label="Profile sections" className="tabs">
         {([["posts","Posts"], ["replies","Replies"], ["stats","Player stats"]] as const).map(([id,label]) =>
-          <Link key={id} href={id === "posts" ? `/u/${userId}` : `/u/${userId}?tab=${id}`}
+          <Link key={id} href={tabHref(id)}
             prefetch={false} scroll={false} aria-current={activeTab === id ? "page" : undefined} className={activeTab === id ? "active" : ""}>{label}</Link>)}
       </nav>
 
       {activeTab === "replies" && (
-        <Suspense key={before ?? ""} fallback={<p className={styles.empty} role="status">Loading replies…</p>}>
-          <ProfileReplies authorId={userId} viewerId={viewer?.id ?? null} before={before}/>
+        <Suspense key={cursor ?? ""} fallback={<p className={styles.empty} role="status">Loading replies…</p>}>
+          <ProfileReplies authorId={userId} viewerId={viewer?.id ?? null} cursor={cursor} searchReturn={searchReturn}/>
         </Suspense>
       )}
       {activeTab === "stats" && (
         linkedPlayers.length ? linkedPlayers.map(p => {
-          const href = playerStatsHref(p.platform, `${p.gameName}#${p.tagLine}`);
+          const href = withSearchReturn(playerStatsHref(p.platform, `${p.gameName}#${p.tagLine}`), searchReturn);
           return <section className={styles.account} key={p.puuid} aria-label={`${p.gameName}#${p.tagLine}`}>
             <h2>{p.gameName}#{p.tagLine}</h2>
             <p className="meta">{p.platform.toUpperCase()} · {p.verified ? "Verified Riot link" : "Unverified Riot link"}</p>
-            {p.verified ? <PlayerStats player={p} lookupHref={href}/>
+            {p.verified ? <PlayerStats player={p} lookupHref={`${href}#match-history`}/>
               : <Link className={styles.link} href={href}>View stats for {p.gameName}#{p.tagLine} →</Link>}
           </section>;
         }) : <div className={styles.empty}>
           <h2>{isSelf ? "Link your Riot ID to show player stats" : "No Riot account linked"}</h2>
-          <Link className={styles.link} href={isSelf ? "/me" : "/player"}>{isSelf ? "Link a Riot ID" : "Look up a Riot ID"}</Link>
+          <Link className={styles.link} href={isSelf ? "/me" : withSearchReturn("/player", searchReturn)}>{isSelf ? "Link a Riot ID" : "Look up a Riot ID"}</Link>
         </div>
       )}
       {activeTab === "posts" && <>
         {player?.verified && lookupHref ? (
-          <PlayerOverview player={player} statsPath={`/u/${userId}?tab=stats`} historyPath={lookupHref} />
+          <PlayerOverview player={player} statsPath={statsHref} historyPath={lookupHref} />
         ) : lookupHref && player ? (
           <p className={styles.lookupPrompt}><Link className={styles.link} href={lookupHref}>View stats for {player.gameName}#{player.tagLine} <span aria-hidden="true">→</span></Link></p>
         ) : (
-          <p className={styles.lookupPrompt}>{isSelf ? null : <span>No Riot account linked · </span>}<Link className={styles.link} href={isSelf ? "/me" : "/player"}>{isSelf ? "Link a Riot ID" : "Look up a player"}</Link></p>
+          <p className={styles.lookupPrompt}>{isSelf ? null : <span>No Riot account linked · </span>}<Link className={styles.link} href={isSelf ? "/me" : withSearchReturn("/player", searchReturn)}>{isSelf ? "Link a Riot ID" : "Look up a player"}</Link></p>
         )}
         {highlight && player && (
           <div className="highlight-row">
@@ -149,7 +161,7 @@ export default async function ProfilePage({ params, searchParams }: {
         ) : posts.length === 0 ? (
           <div className={styles.empty}>
             <h2>{isSelf ? "Start your first thread" : "No posts yet"}</h2>
-            <Link className={styles.link} href={isSelf ? "/#compose" : "/rooms"}>{isSelf ? "Write a post" : "Browse community rooms"} →</Link>
+            <Link className={styles.link} href={isSelf ? "/#compose" : "/rooms"}>{isSelf ? POST_TO_THE_PIT : "Browse community rooms"} →</Link>
           </div>
         ) : (
           posts.map((p) => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(viewer)} viewerId={viewer?.id ?? null} viewerIdentity={publicAvatarIdentity(viewer)} />)

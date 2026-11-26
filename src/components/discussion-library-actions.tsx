@@ -51,7 +51,7 @@ function PrivateActions({ kind, id, postId, signedIn }: { kind: LibraryKind; id:
     <div className="library-menu">
       {!signedIn ? <Link href={signInHref(`/post/${postId}` + (kind === "comment" ? `#reply-${id}` : ""))}>Sign in to {kind === "comment" ? "save this reply" : "save or watch this thread"}</Link> :
         state ? <>
-          <button type="button" className="text-btn" disabled={action.busy} aria-pressed={state.saved} onClick={toggleSave}>{state.saved ? "Remove from playbook" : "Save to playbook"}</button>
+          <button type="button" className="text-btn" disabled={action.busy} aria-pressed={state.saved} onClick={toggleSave}>{state.saved ? "Remove from saved" : kind === "comment" ? "Save this reply" : "Save this post"}</button>
           {kind === "post" && <label>Reply notifications
             <select value={state.replyMode} disabled={action.busy} onChange={e => setMode(e.target.value as ReplyMode)}>
               <option value="direct">Replies to me</option>
@@ -59,7 +59,10 @@ function PrivateActions({ kind, id, postId, signedIn }: { kind: LibraryKind; id:
               <option value="muted">Mute this thread</option>
             </select>
           </label>}
-          <Link href="/playbook">My playbook</Link>{kind === "post" && <Link href="/activity">Reply activity</Link>}
+          <Link href={kind === "comment" ? "/playbook?tab=replies" : "/playbook?tab=posts"}>{kind === "comment" ? "View saved replies" : "View saved posts"}</Link>
+          {kind === "post" && <Link href={state.replyMode === "all" ? "/activity?tab=watching" : state.replyMode === "muted" ? "/activity?tab=muted" : "/activity"}>
+            {state.replyMode === "all" ? "View watched discussions" : state.replyMode === "muted" ? "View muted discussions" : "Reply activity"}
+          </Link>}
         </> : error ? <span role="alert">{error} <button type="button" className="text-btn" onClick={load}>Retry</button></span> : <span role="status">Loading…</span>}
       <ActionFeedback error={action.error} />
     </div>

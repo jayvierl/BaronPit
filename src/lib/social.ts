@@ -258,7 +258,7 @@ export async function searchAll(term: string, viewer: User | null, scope: Search
     includes("people") && t.length >= 2 ? queryRows(`WITH ${HIDDEN_AUTHORS} SELECT id, display_name, avatar_hue, avatar_ref FROM wp_users
       WHERE safety_status = 'visible' AND id NOT IN (SELECT id FROM hidden) AND strpos(lower(display_name), lower($2)) > 0
       ORDER BY display_name, id LIMIT $3`, [viewer?.id ?? null, t, limit]) : [],
-    includes("players") && t.length >= 2 && tag === null ? q`SELECT puuid, platform, game_name, tag_line, rank_tier, rank_div, snapshot->'rankedEntries' AS ranked_entries FROM wp_players
+    includes("players") && t.length >= 2 && tag === null ? q`SELECT puuid, platform, game_name, tag_line, rank_tier, rank_div, fetched_at, snapshot->'rankedEntries' AS ranked_entries FROM wp_players
       WHERE strpos(lower(game_name || '#' || tag_line), lower(${t})) > 0
         AND (${platform ?? null}::text IS NULL OR platform=${platform ?? null})
       ORDER BY (lower(game_name || '#' || tag_line) = lower(${t})) DESC, game_name, platform, tag_line LIMIT ${limit}` : [],
@@ -269,7 +269,8 @@ export async function searchAll(term: string, viewer: User | null, scope: Search
   return {
     users: users.map(u => ({ id: Number(u.id), name: String(u.display_name), hue: Number(u.avatar_hue), avatar: publicAvatar(u.avatar_ref) })),
     players: players.map(p => {
-      const fields = {rankTier: p.rank_tier as string | null, rankDiv: p.rank_div as string | null, rankedEntries: readRankedEntries(p.ranked_entries)};
+      const fields = {rankTier: p.rank_tier as string | null, rankDiv: p.rank_div as string | null,
+        rankedEntries: readRankedEntries(p.ranked_entries), fetchedAt: String(p.fetched_at)};
       return {puuid: String(p.puuid), platform: String(p.platform), riotId: `${p.game_name}#${p.tag_line}`, rank: socialRankLabel(fields), tier: placedRank(fields).tier};
     }),
     rooms,

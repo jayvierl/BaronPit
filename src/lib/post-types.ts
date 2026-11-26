@@ -12,6 +12,7 @@ export interface PostView {
   itemDetails?: CardItem[];
   itemPatch?: string;
   lastReplyAt?: string;
+  lastReplyId?: number;
   canRepost?: boolean;
   myRepost?: boolean;
   repostedBy?: {id: number; name: string; at: string};

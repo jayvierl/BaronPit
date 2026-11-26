@@ -1,6 +1,6 @@
 # Community safety operations
 
-Players can report content where it appears, contact the operator from the public safety centre, and review their reports and appeal notices in their private inbox. Staff can review cases at `/admin/moderation`. The player inbox is at `/me/safety`. Give locked-out players the email address published at `/safety`.
+Players can report content where it appears, contact the operator from the public Safety Center, and review their reports and appeal notices in their private inbox. Staff can review cases at `/admin/moderation`. The player inbox is at `/me/safety`. Give locked-out players the email address published at `/safety`.
 
 ## Before launch
 
