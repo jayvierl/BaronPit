@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import styles from "./home.module.css";
 import { FollowingStarter } from "@/components/following-starter";
 import { hasIncomingDuoRequest } from "@/lib/duo-activity";
@@ -34,6 +35,8 @@ import { PostCard } from "@/components/post-card";
 import { socialRankLabel } from "@/lib/player-summary";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ tab?: string; before?: string; summary?: string }> }) {
   const [params,user] = await Promise.all([searchParams,getCurrentUser()]);

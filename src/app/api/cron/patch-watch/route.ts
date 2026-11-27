@@ -8,6 +8,7 @@ import { clearExpiredRoomTurns } from "@/lib/room-safety";
 import { clearExpiredDuoListings } from "@/lib/duo";
 import { clearExpiredAuthData } from "@/lib/auth";
 import { runDailyCall } from "@/lib/daily-call";
+import { pingIndexNowForPatch } from "@/lib/indexnow";
 
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "no-store" };
@@ -29,6 +30,9 @@ export async function GET(req: Request) {
     runPatchWatch(), runDailyCall(), clearExpiredAuthData(), clearExpiredDuoListings(), clearExpiredRoomTurns(),
     clearExpiredOwnership(), clearExpiredPilotData(), clearExpiredGameChecks(), maintainPhotos(),
   ]);
+  // A new patch changes every catalog page; tell IndexNow so search engines
+  // re-crawl them promptly. Best-effort and a no-op outside production.
+  if (patch.status === "fulfilled" && patch.value.changed) await pingIndexNowForPatch();
   const ok = patch.status === "fulfilled" && dailyCall.status === "fulfilled" && maintenance.every(task => task.status === "fulfilled");
   return NextResponse.json({ ok, ...(patch.status === "fulfilled" ? patch.value : {}),
     ...(dailyCall.status === "fulfilled" ? { dailyCall: dailyCall.value } : {}),

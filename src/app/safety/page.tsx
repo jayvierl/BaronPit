@@ -1,7 +1,11 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { SAFETY_CENTER, SUPPORT_EMAIL } from "@/lib/brand";
-export const metadata: Metadata = {title:SAFETY_CENTER};
+export const metadata: Metadata = {
+  title: SAFETY_CENTER,
+  description: "How Baron Pit handles reports, appeals, blocking and urgent safety problems — and how to reach the safety team.",
+  alternates: { canonical: "/safety" },
+};
 export default function SafetyCenter() {
   return <article className="card reading-page">
     <h1 className="page-title">{SAFETY_CENTER}</h1>

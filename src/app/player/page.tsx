@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { PilotVisit } from "@/components/pilot-visit";
 import { WinStreak } from "@/components/win-streak";
 import { currentWinStreak } from "@/lib/current-win-streak";
@@ -34,6 +35,13 @@ import { RecentResults } from "@/components/player-overview";
 import { gameCount, earnedBadges } from "@/lib/pure";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Player Stats — League of Legends Ranked Stats & Match History Lookup",
+  description: "Look up any League of Legends player's ranked stats on Baron Pit: recent match history, " +
+    "champion performance, match ratings and performance trends across the last 20 games.",
+  alternates: { canonical: "/player" },
+};
 
 export default async function PlayerPage({ searchParams }: {
   searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; match?: string; older?: string; queue?: string; champion?: string; from?: string; fromPlayer?: string; fromDiscussion?: string; timeline?: string; via?: string; playerKey?: string }>;

@@ -5,6 +5,7 @@ import localFont from "next/font/local";
 const inter = localFont({src:"./fonts/inter.woff2",variable:"--font-body",weight:"400 700",display:"swap"});
 const space = localFont({src:"./fonts/spacegrotesk.woff2",variable:"--font-display",weight:"500 700",display:"swap"});
 import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
 import { ExploreMenu } from "@/components/explore-menu";
 import { PrimaryNavigation } from "@/components/primary-navigation";
 import navStyles from "@/components/navigation.module.css";
@@ -36,6 +37,28 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = { viewportFit: "cover" };
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://baronpit.com/#website",
+      url: "https://baronpit.com/",
+      name: APP_NAME,
+      description: APP_DESCRIPTION,
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://baronpit.com/#organization",
+      url: "https://baronpit.com/",
+      name: APP_NAME,
+      description: APP_DESCRIPTION,
+      logo: "https://baronpit.com/baron-icon-180.png",
+      email: SUPPORT_EMAIL,
+    },
+  ],
+};
 
 function ExploreLinks({ desktop = false }: { desktop?: boolean }) {
   return <ExploreMenu menuId={desktop ? "desktop-explore-destinations" : undefined}>
@@ -103,7 +126,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </footer>
         </div>
-
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
+        <Analytics />
       </body>
     </html>
   );

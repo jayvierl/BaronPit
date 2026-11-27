@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { featuredRooms, listRooms } from "@/lib/rooms";
@@ -9,6 +10,13 @@ import { signInHref } from "@/lib/signin-return";
 import styles from "./rooms.module.css";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Community Rooms — League of Legends Discussion & Champion Mains",
+  description: "Browse Baron Pit's League of Legends community rooms: a room for every champion's mains, " +
+    "patch and meta discussion, off-meta builds, LFG and a welcome room for new players.",
+  alternates: { canonical: "/rooms" },
+};
 
 export default async function RoomsPage({searchParams}: {searchParams: Promise<{q?: string; limit?: string}>}) {
   const [user, patch, params] = await Promise.all([getCurrentUser(), currentPatch(), searchParams]);

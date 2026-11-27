@@ -1,4 +1,5 @@
 import { publicPatch } from "@/lib/patch-notes";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { GameAssetIcon } from "@/components/game-asset-icon";
@@ -8,6 +9,23 @@ import { buildItemId, buildsHref } from "@/lib/build-sharing";
 import { readSearchReturn } from "@/lib/search-scopes";
 import { readItemDirectoryReturn } from "@/lib/item-navigation";
 import styles from "@/app/builds/builds.module.css";
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const itemId = buildItemId(id);
+  if (!itemId) return {};
+  const catalog = await buildCatalog();
+  const item = catalog.items.find((i) => i.id === itemId);
+  if (!item) return {};
+  const patch = publicPatch(catalog.patch);
+  const effect = item.effect.replace(/\s+/g, " ").trim().slice(0, 150);
+  return {
+    title: `${item.name} — ${item.gold.toLocaleString("en-US")} Gold, Effects & Builds`,
+    description: `${item.name} costs ${item.gold.toLocaleString("en-US")} gold${patch ? ` on patch ${patch}` : ""}. ` +
+      `${effect ? `${effect} ` : ""}See community builds with ${item.name} on Baron Pit.`,
+    alternates: { canonical: `/items/${item.id}` },
+  };
+}
 
 export default async function ItemPage({ params, searchParams }: {
   params: Promise<{ id: string }>; searchParams: Promise<{ from?: string }>;

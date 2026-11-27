@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { GameAssetIcon } from "@/components/game-asset-icon";
 import { currentBuildCatalog } from "@/lib/build-catalog";
@@ -8,6 +9,18 @@ import { withSearchReturn } from "@/lib/search-scopes";
 import styles from "./items.module.css";
 
 const pageSize = 24;
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { catalog } = await currentBuildCatalog();
+  const patch = publicPatch(catalog.patch);
+  const shopCount = catalog.items.filter(item => item.shop).length;
+  return {
+    title: "League of Legends Items — Item Directory, Costs & Effects",
+    description: `Browse ${shopCount} Summoner's Rift items${patch ? ` on patch ${patch}` : ""}: ` +
+      "gold costs, effects and community builds for every item in the shop.",
+    alternates: { canonical: "/items" },
+  };
+}
 
 export default async function ItemsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const [{ catalog, current }, params] = await Promise.all([currentBuildCatalog(), searchParams]);

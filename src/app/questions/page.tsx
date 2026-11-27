@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { SafetyReport } from "@/components/safety-report";
 import { getCurrentUser } from "@/lib/auth";
@@ -12,6 +13,13 @@ import { championList } from "@/lib/riot";
 import styles from "./questions.module.css";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Match Questions — League of Legends Decisions, Answered by Players",
+  description: "Real in-game decisions from League of Legends matches, posted as questions and answered by other players. " +
+    "Browse unanswered questions by champion, role and patch, or see what the community decided.",
+  alternates: { canonical: "/questions" },
+};
 type Query = Record<string, string | string[] | undefined>;
 function value(input: Query, key: string) {
   return typeof input[key] === "string" ? input[key].slice(0, 120) : "";

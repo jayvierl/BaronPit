@@ -1,4 +1,5 @@
 import { DuoEvening } from "@/components/duo-evening";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getCurrentUser, isBanned } from "@/lib/auth";
 import { isPilotHost, pilotState } from "@/lib/pilot";
@@ -8,6 +9,13 @@ import { duoPilotState } from "@/lib/duo-pilot";
 import { PilotForms } from "@/components/pilot-forms";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Bot Lane Review Pilot — Get a Second Pair of Eyes on Your Games",
+  description: "Baron Pit's community pilot: bring one decision from your latest League of Legends game, " +
+    "ask a support or bot carry what they would try, and report back on your next game.",
+  alternates: { canonical: "/pilot" },
+};
 export default async function PilotPage({ searchParams }: { searchParams: Promise<{ from?: string }> }) {
   const [params, user] = await Promise.all([searchParams, getCurrentUser()]);
   const channel = params.from === "club" ? "club" : "community";

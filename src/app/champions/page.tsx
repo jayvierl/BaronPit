@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { publicPatch } from "@/lib/patch-notes";
 import { ChampionDirectory } from "@/components/champion-directory";
@@ -7,6 +8,17 @@ import { visibleChampionRoomSlugs } from "@/lib/rooms";
 import { readSearchReturn } from "@/lib/search-scopes";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const catalog = await championCatalog();
+  const patch = publicPatch(catalog.patch);
+  return {
+    title: "League of Legends Champions — Directory, Abilities & Rooms",
+    description: `Browse all ${catalog.list.length} League of Legends champions${patch ? ` on patch ${patch}` : ""}: ` +
+      "ability details, classes, community builds and a discussion room for every champion.",
+    alternates: { canonical: "/champions" },
+  };
+}
 
 export default async function ChampionsPage({ searchParams }: {
   searchParams?: Promise<{ q?: string | string[]; class?: string | string[]; from?: string | string[] }>;
