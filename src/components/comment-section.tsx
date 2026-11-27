@@ -9,6 +9,8 @@ import Link from "next/link";
 import type { CommentView } from "@/lib/social";
 import type { AvatarIdentity } from "@/lib/author-identity";
 import { PostCardLoading } from "./post-card-loading";
+import { TaggedText } from "./game-tag";
+import { TagFieldWrap, useTagSuggest } from "./tag-suggest";
 import { WithdrawSubmission } from "./withdraw-submission";
 import { Avatar, AvatarProfileLink, PermalinkTime } from "./ui";
 import { ActionFeedback, usePostAction } from "./post-action";
@@ -95,6 +97,12 @@ export function CommentSection({
   const linkedReply = useSyncExternalStore(threadPage ? subscribeToReplyAnchor : skipReplyAnchor,
     threadPage ? readReplyAnchor : noReplyAnchor, noReplyAnchor);
   const setInputRef = (el: HTMLInputElement | HTMLTextAreaElement | null) => { inputRef.current = el; };
+  const tagSuggest = useTagSuggest({
+    inputRef,
+    value: draft,
+    apply: (next) => setDraft(next),
+    enabled: signedIn,
+  });
 
   const scope = `reply:${postId}`;
   const destination = `/post/${postId}#replies-${postId}`;
@@ -249,7 +257,7 @@ export function CommentSection({
             </div>
             <div className="post-body">
               {c.oneFix && <span className="onefix-tag">One fix</span>}
-              {c.body}
+              <TaggedText body={c.body} />
             </div>
             {c.status === "held" && <span className="meta">Awaiting review</span>}
             <div className={threadStyles.replyActions}>
@@ -366,18 +374,25 @@ export function CommentSection({
           <div className="reply-composer">
             {signedIn && viewerIdentity && <Avatar {...viewerIdentity} size={32} />}
             {decisionQuestion ? (
-              <textarea ref={setInputRef} className={styles.replyInput} aria-label="Your reply" rows={3}
-                disabled={action.busy} placeholder="What would you try in this game?" value={signedIn ? draft : undefined}
-                onChange={signedIn ? e => setDraft(e.target.value) : undefined} maxLength={1000} />
-            ) : <input
-              ref={setInputRef}
-              disabled={action.busy}
-              aria-label="Your reply"
-              placeholder={oneFix ? "What would you change, and why?" : "Add your reply…"}
-              value={signedIn ? draft : undefined}
-              onChange={signedIn ? e => setDraft(e.target.value) : undefined}
-              maxLength={1000}
-            />}
+              <TagFieldWrap>
+                <textarea ref={setInputRef} {...tagSuggest.fieldProps} className={styles.replyInput} aria-label="Your reply" rows={3}
+                  disabled={action.busy} placeholder="What would you try in this game?" value={signedIn ? draft : undefined}
+                  onChange={signedIn ? e => { setDraft(e.target.value); tagSuggest.update(e.currentTarget); } : undefined} maxLength={1000} />
+                {tagSuggest.menu}
+              </TagFieldWrap>
+            ) : <TagFieldWrap>
+              <input
+                ref={setInputRef}
+                {...tagSuggest.fieldProps}
+                disabled={action.busy}
+                aria-label="Your reply"
+                placeholder={oneFix ? "What would you change, and why?" : "Add your reply…"}
+                value={signedIn ? draft : undefined}
+                onChange={signedIn ? e => { setDraft(e.target.value); tagSuggest.update(e.currentTarget); } : undefined}
+                maxLength={1000}
+              />
+              {tagSuggest.menu}
+            </TagFieldWrap>}
             <button type="submit" className="btn small" disabled={action.busy || unavailableTarget || (signedIn ? !draft.trim() : !hydrated) || reconsider}>
               {action.busy ? "Sending…" : signedIn ? "Reply" : "Sign in to reply"}
             </button>

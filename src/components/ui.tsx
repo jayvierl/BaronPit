@@ -1,6 +1,9 @@
+import { Fragment } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { publicAvatar, championAvatarArt, avatarImageUrl, isOfficialRiotIcon, type AvatarRef } from "@/lib/avatar";
+import { parseBodySegments } from "@/lib/game-tags";
+import { GameTagChip } from "./game-tag";
 import { WardMascot } from "./ward-mascot";
 
 type AvatarProps = {
@@ -65,21 +68,36 @@ export function PermalinkTime({ iso, context }: { iso: string; context: string }
 const officialNewsLink = /^https:\/\/www\.leagueoflegends\.com\/[a-z-]+\/news\/[a-z0-9-]+(?:\/[a-z0-9-]+)*\/?$/i;
 
 export function RichBody({ body, threadHref, threadLinkClassName }: { body: string; threadHref?: string; threadLinkClassName?: string }) {
-  const parts = body.split(/(https?:\/\/[^\s]+|#[\p{L}\p{N}_]+)/gu);
+  // Champion/item tag tokens render as chips; the text between them keeps
+  // the existing hashtag / official-link treatment.
+  const segments = parseBodySegments(body);
   // All prose opens the same thread. Keep one keyboard stop for it even if
   // hashtags or the official news link split the text into several segments.
-  const firstProse = threadHref ? parts.findIndex(part => part.trim() && !part.startsWith("#") && !officialNewsLink.test(part)) : -1;
+  // Tag chips are interactive themselves, so they are never wrapped in the
+  // thread link and always stay reachable.
+  let proseLinked = false;
+  function renderText(text: string, keyPrefix: string) {
+    const parts = text.split(/(https?:\/\/[^\s]+|#[\p{L}\p{N}_]+)/gu);
+    return parts.map((part, i) => {
+      const key = `${keyPrefix}:${i}`;
+      if (part.startsWith("#")) return <a key={key} className="tag" href={`/search?q=${encodeURIComponent(part)}`}>{part}</a>;
+      if (officialNewsLink.test(part)) {
+        return <a key={key} href={part} rel="noopener noreferrer" target="_blank">leagueoflegends.com ↗</a>;
+      }
+      if (threadHref && part.trim()) {
+        const tabIndex = proseLinked ? -1 : undefined;
+        proseLinked = true;
+        return <Link key={key} href={threadHref} prefetch={false}
+          className={threadLinkClassName} tabIndex={tabIndex}>{part}</Link>;
+      }
+      return part;
+    });
+  }
   return (
     <p className="post-body">
-      {parts.map((part, i) => {
-        if (part.startsWith("#")) return <a key={i} className="tag" href={`/search?q=${encodeURIComponent(part)}`}>{part}</a>;
-        if (officialNewsLink.test(part)) {
-          return <a key={i} href={part} rel="noopener noreferrer" target="_blank">leagueoflegends.com ↗</a>;
-        }
-        if (threadHref && part.trim()) return <Link key={i} href={threadHref} prefetch={false}
-          className={threadLinkClassName} tabIndex={i === firstProse ? undefined : -1}>{part}</Link>;
-        return part;
-      })}
+      {segments.map((segment, i) => segment.type === "tag"
+        ? <GameTagChip key={i} tag={segment.tag} />
+        : <Fragment key={i}>{renderText(segment.text, String(i))}</Fragment>)}
     </p>
   );
 }

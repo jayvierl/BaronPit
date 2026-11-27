@@ -11,6 +11,7 @@ import { BARON_CALL_OPTIONS } from "@/lib/poll";
 import { POST_TO_THE_PIT } from "@/lib/brand";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { BuildFields, type BuildShop } from "./build-fields";
+import { TagFieldWrap, useTagSuggest } from "./tag-suggest";
 import { Avatar } from "./ui";
 import type { AvatarIdentity } from "@/lib/author-identity";
 import styles from "./thread.module.css";
@@ -119,6 +120,11 @@ export function Composer({
     setConfirmDiscard(false);
     store({ ...live.current, ...changes, submissionId: null });
   }
+  const tagSuggest = useTagSuggest({
+    inputRef: bodyRef,
+    value: body,
+    apply: (next) => edit({ body: next }),
+  });
   function clearDraft() {
     store(emptyPostDraft);
     live.current = initialDraft;
@@ -216,25 +222,32 @@ export function Composer({
     >
       <div className="composer-head">
         {viewerIdentity && <Avatar {...viewerIdentity} size={40} />}
-        <textarea
-          ref={bodyRef}
-          aria-label={kind === "build" ? "Build reasoning" : "Post text"}
-          aria-describedby={countId}
-          disabled={action.busy}
-          rows={2}
-          placeholder={
-            kind === "build"
-              ? "When would you play this build, and why?"
-              : kind === "poll"
-                ? "What should the room vote on?"
-                : kind === "clip"
-                  ? "What happened in the clip?"
-                  : "What’s on your mind?"
-          }
-          value={body}
-          onChange={(e) => edit({ body: e.target.value })}
-          maxLength={2000}
-        />
+        <TagFieldWrap>
+          <textarea
+            ref={bodyRef}
+            {...tagSuggest.fieldProps}
+            aria-label={kind === "build" ? "Build reasoning" : "Post text"}
+            aria-describedby={countId}
+            disabled={action.busy}
+            rows={2}
+            placeholder={
+              kind === "build"
+                ? "When would you play this build, and why?"
+                : kind === "poll"
+                  ? "What should the room vote on?"
+                  : kind === "clip"
+                    ? "What happened in the clip?"
+                    : "What’s on your mind?"
+            }
+            value={body}
+            onChange={(e) => {
+              edit({ body: e.target.value });
+              tagSuggest.update(e.currentTarget);
+            }}
+            maxLength={2000}
+          />
+          {tagSuggest.menu}
+        </TagFieldWrap>
       </div>
       {!buildContext && <div className={`kind-tabs ${styles.formats}`} role="group" aria-label="Post format">
         {(["text", "build", "poll", "clip"] as PostKind[]).map((k) => (
