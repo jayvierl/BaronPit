@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { account, capture, fixtureContext, load, localPost, openFixtureBrowser, submit, visible } from "./browser-helpers.mjs";
 import { startFixtureServer } from "./fixture-server.mjs";
+import { verifyPlayerSuggestions } from "./player-search-suggestions.mjs";
 import { depthMatchId, depthName, depthTag } from "./profile-depth-fixture.mjs";
 
 const output = process.env.SMOKE_SCREENSHOTS ? resolve(process.env.SMOKE_SCREENSHOTS)
@@ -48,7 +49,7 @@ function postBody(post, body) {
 }
 
 function searchBox(page) {
-  return page.getByRole("main").getByRole("searchbox", { name: "Search the community" });
+  return page.getByRole("main").getByLabel("Search the community", { exact: true });
 }
 
 async function search(page, term) {
@@ -88,6 +89,9 @@ try {
   let buildId;
   let quotePath;
   let discussionPath;
+
+  await check("Partial names open the right player with keyboard and touch, while ordinary search still works", () =>
+    verifyPlayerSuggestions(browser, origin));
 
   await check("Keyboard and native Explore reach the room shortcuts", async () => {
     for (const page of [visitor, lane]) {

@@ -41,6 +41,8 @@ export async function checkNavigation(journey) {
   const feedTabs = followed.match(/<nav\b[^>]*aria-label="Feed selection"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
   assert.match(feedTabs, /<a\b(?=[^>]*aria-current="page")(?=[^>]*href="\/\?tab=following")[^>]*>Following<\/a>/);
   await journey("/search?scope=players", {includes:['aria-label="League region"', 'name="q"', "Player stats"]});
+  await journey("/api/search/suggestions?scope=players&q=Fi", {includes:["Fixture Archer#NA1", "Fixture Support#WAVE"], excludes:["fixture-owner", "fixture-support"]});
+  await journey("/api/search/suggestions?scope=people&q=Fixture+B", {session:true, includes:['"suggestions":[]'], excludes:["Fixture Blocked"]});
   const cached = await journey("/search?scope=players&q=Fixture%20Support", {html:true});
   assert.ok(cached.includes("Fixture Support#WAVE") && !cached.includes(">Community profiles</h2>"));
   const exact = "/search?scope=players&q=Fixture+Support%23WAVE&region=na1";
