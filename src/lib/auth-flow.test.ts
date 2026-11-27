@@ -164,7 +164,7 @@ describe("passwordless account lifecycle",()=>{
     const metadata = await discussionMetadata(String(post.id));
     expect(metadata.openGraph).toMatchObject({url:"https://app.test/post/" + post.id,description:question});
     const originalBrowser = memoryStorage(), mailBrowser = memoryStorage(), scope = "reply:" + post.id;
-    const body = "I would recall when the cannon wave is under their tower.";
+    const body = "I would buy [[i:1001|Boots]] after that recall.";
     const login = new URL(beginDraftSignIn(originalBrowser,scope,destination,{body}), "https://app.test");
     const next = login.searchParams.get("next")!;
     expect(hasDraftContinuation(next)).toBe(true);
@@ -181,7 +181,7 @@ describe("passwordless account lifecycle",()=>{
     expect(consumeAuthDraft(mailBrowser, scope, returnTo)).toBeNull();
     expect(copyableDraftText(mailBrowser, returnTo)).toBeNull();
     expect(copyableDraftText(originalBrowser, returnTo.replace("/post/" + post.id, "/me"))).toBeNull();
-    expect(copyableDraftText(originalBrowser, returnTo)).toBe(body);
+    expect(copyableDraftText(originalBrowser, returnTo)).toBe("I would buy Boots after that recall.");
     const recovered = consumeAuthDraft(originalBrowser,scope,returnTo);
     expect(recovered).toEqual({destination,payload:{body}});
     expect(await q`SELECT id FROM wp_comments WHERE post_id=${post.id}`).toHaveLength(0);

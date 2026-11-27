@@ -1,3 +1,4 @@
+import { plainBodyText } from "./game-tags";
 import { questionDecisionPost } from "./match-card-projection";
 import { HIDDEN_AUTHORS, visiblePostForInteraction } from "./community-queries";
 import { q, queryRows } from "./db";
@@ -85,13 +86,13 @@ export async function featuredMatchup(
   if (!r) return null;
   return {
     postId: Number(r.id),
-    question: String(r.body),
+    question: plainBodyText(String(r.body)),
     champion: String(r.champion),
     opponent: String(r.opponent),
     patch: r.patch as string | null,
     asker: { id: Number(r.author_id), name: String(r.asker) },
     helper: { id: Number(r.helper_id), name: String(r.helper), host: r.host === true },
-    answer: String(r.answer),
+    answer: plainBodyText(String(r.answer)),
     commentId: Number(r.comment_id),
     outcome: trialOutcomes[r.outcome as TrialOutcome] || null,
   };

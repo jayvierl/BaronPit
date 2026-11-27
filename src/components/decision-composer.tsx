@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { beginDraftSignIn, restoreAfterMount } from "@/lib/auth-draft";
 import { decisionRoles, decisionTopics, matchDiscussionThread, type QuestionStarter } from "@/lib/decisions-input";
 import { validId } from "@/lib/ids";
@@ -9,6 +9,7 @@ import type { DiscussionKind, MatchContext } from "@/lib/match-context";
 import { signInHref } from "@/lib/signin-return";
 import { MatchDiscussionPreview } from "./match-discussion-preview";
 import { ActionFeedback, usePostAction } from "./post-action";
+import { TagFieldWrap, useTagSuggest } from "./tag-suggest";
 import { useHydrated } from "./use-hydrated";
 import discussionStyles from "./match-discussion.module.css";
 import styles from "@/app/questions/questions.module.css";
@@ -72,6 +73,13 @@ export function DecisionComposer({ champions, match, starter, destination, signe
     setDraft(d => ({ ...d, [key]: value }));
     setConfirm(false);
   }
+  const bodyId = useId();
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const tags = useTagSuggest({
+    inputRef: bodyRef, limit: 1000, value: draft.body,
+    enabled: hydrated && !action.busy && !posted, apply: text => update("body", text),
+  });
+
   function continueSignIn() {
     try {
       const mode = action.authStep === "enrol" ? "enrol" : undefined;
@@ -118,14 +126,17 @@ export function DecisionComposer({ champions, match, starter, destination, signe
               onClick={() => { setKind(value); setConfirm(false); }}>{label}</button>
           ))}
         </fieldset>}
-        <label>
+        <label htmlFor={bodyId}>
           {perspective ? "Your perspective" : discuss ? "Your question" : observer ? "What are you asking about this match?" : "What were you deciding?"}
-          <textarea value={draft.body} onChange={e => update("body", e.target.value)}
-            rows={4} minLength={10} maxLength={1000} required
+        </label>
+        <TagFieldWrap>
+          <textarea id={bodyId} ref={bodyRef} {...tags.fieldProps} value={tags.display}
+            onChange={e => tags.change(e.currentTarget)} rows={4} minLength={10} maxLength={tags.maxLength} required
             placeholder={perspective ? "What stood out to you in this match?"
               : observer || discuss ? "Was rotating to dragon the best choice here?"
               : "Dragon spawned and our bot wave was pushing. Should I have stayed for the tower or rotated?"} />
-        </label>
+          {tags.menu}
+        </TagFieldWrap>
         <div className={styles.filters}>
           {!match && <label>Champion
             <select value={draft.champion}

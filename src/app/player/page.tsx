@@ -13,6 +13,7 @@ import { PlayerActivity, PlayerChampionAnalytics, PlayerPerformance, PlayerPlayS
 import { masteryNeedsCatalog, PlayerMastery } from "@/components/player-mastery";
 import { PlayerRankHistory } from "@/components/player-rank-history";
 import { RefreshPlayer } from "@/components/refresh-player";
+import { canOpenPlayerMention, mentionKey } from "@/lib/player-mentions";
 import { getCurrentUser } from "@/lib/auth";
 import { lookupPlayer, isPlatform, PLATFORMS, currentPatch, championList, profileIconUrl } from "@/lib/riot";
 import { q } from "@/lib/db";
@@ -30,7 +31,7 @@ import { gameCount, earnedBadges } from "@/lib/pure";
 export const dynamic = "force-dynamic";
 
 export default async function PlayerPage({ searchParams }: {
-  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; match?: string; older?: string; queue?: string; champion?: string; from?: string; fromPlayer?: string; fromDiscussion?: string; timeline?: string }>;
+  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; match?: string; older?: string; queue?: string; champion?: string; from?: string; fromPlayer?: string; fromDiscussion?: string; timeline?: string; via?: string; playerKey?: string }>;
 }) {
   const sp = await searchParams;
   const platform = sp.platform && isPlatform(sp.platform) ? sp.platform : "na1";
@@ -61,9 +62,20 @@ export default async function PlayerPage({ searchParams }: {
     );
   }
 
+  const session = getCurrentUser().catch(() => undefined);
+  const tagUnavailable = () => <div className={profileStyles.lookup}>
+    <h1 className="page-title">Player tag unavailable</h1>
+    <p className="meta">This player record is unavailable to view.</p>
+    {lookupForm}
+  </div>;
+  if (sp.via === "mention") {
+    const viewer = await session;
+    const available = viewer !== undefined && await canOpenPlayerMention(viewer?.id ?? null, platform, name, tag, sp.playerKey).catch(() => false);
+    if (!available) return tagUnavailable();
+  }
   const [result,patch,user] = await Promise.all([
     lookupPlayer(platform, name, tag, { profile: true, force: sp.force === "1" }),
-    currentPatch(),getCurrentUser().catch(() => undefined),
+    currentPatch(), session,
   ]);
   if (!result.ok) {
     const text =
@@ -86,6 +98,8 @@ export default async function PlayerPage({ searchParams }: {
   }
 
   const player = result.player;
+  // The cached ID could have been reassigned while Riot refreshed the lookup.
+  if (sp.via === "mention" && mentionKey(player.puuid) !== sp.playerKey) return tagUnavailable();
   const partial = result.source === "partial";
   const snap = player.snapshot;
   const matches = player.matchHistory?.matches ?? snap.matches;
@@ -107,6 +121,10 @@ export default async function PlayerPage({ searchParams }: {
   const latest = history.matches.slice(0, MATCH_DETAIL_LIMIT);
   const filtered = Boolean(history.queue || history.champion);
   const route = new URL(withSearchReturn(playerStatsHref(player.platform, player.gameName + "#" + player.tagLine), searchReturn), "https://lookup.invalid");
+  if (sp.via === "mention" && sp.playerKey) {
+    route.searchParams.set("via", "mention");
+    route.searchParams.set("playerKey", sp.playerKey);
+  }
   if (playerReturn) route.searchParams.set("fromPlayer", playerReturn);
   if (discussionId) route.searchParams.set("fromDiscussion", String(discussionId));
   const lookupHref = route.pathname + route.search;
@@ -157,6 +175,9 @@ export default async function PlayerPage({ searchParams }: {
               <Form action="/player#match-history" className={styles.filters} key={JSON.stringify([platform, player.gameName, player.tagLine, history.queue, history.champion])}>
                 <input type="hidden" name="platform" value={platform}/>
                 <input type="hidden" name="riotId" value={player.gameName + "#" + player.tagLine}/>
+                {sp.via === "mention" && sp.playerKey && <>
+                  <input type="hidden" name="via" value="mention"/><input type="hidden" name="playerKey" value={sp.playerKey}/>
+                </>}
                 {searchReturn && <input type="hidden" name="from" value={searchReturn}/>}
                 {playerReturn && <input type="hidden" name="fromPlayer" value={playerReturn}/>}
                 {discussionId && <><input type="hidden" name="fromDiscussion" value={discussionId}/><input type="hidden" name="match" value={sp.match}/></>}

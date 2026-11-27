@@ -241,8 +241,8 @@ try {
     await library.click();
     await submit(lane, await visible(build.getByRole("button", { name: "Save this post" })), "/api/library", 200);
     await library.click();
-    await lane.getByRole("textbox", { name: "Your reply" }).fill(replyBody);
-    await submit(lane, lane.locator("form").filter({ has: lane.getByRole("textbox", { name: "Your reply" }) })
+    await lane.getByLabel("Your reply", { exact: true }).fill(replyBody);
+    await submit(lane, lane.locator("form").filter({ has: lane.getByLabel("Your reply", { exact: true }) })
       .getByRole("button", { name: "Reply", exact: true }), "/api/social/comments", 200);
     await visible(lane.getByText(replyBody, { exact: true }));
     const repost = await visible(build.getByRole("button", { name: "Repost", exact: true }));
@@ -280,7 +280,7 @@ try {
     await load(lane, origin, buildPath);
     const notice = await visible(lane.getByText("The author closed new replies.", { exact: true }));
     await visible(lane.getByText(replyBody, { exact: true }));
-    assert.equal(await lane.getByRole("textbox", { name: "Your reply" }).count(), 0);
+    assert.equal(await lane.getByLabel("Your reply", { exact: true }).count(), 0);
     await localPost(lane, origin, "/api/social/comments", { postId: buildId, body: "Is a new reply allowed?" }, 400);
     await localPost(lane, origin, "/api/social/reply-policy", { postId: buildId, closed: false }, 404);
     await notice.scrollIntoViewIfNeeded();
@@ -290,7 +290,7 @@ try {
     const reopened = await submit(river, river.getByRole("button", { name: "Reopen replies", exact: true }), "/api/social/reply-policy", 200);
     assert.equal(reopened.closed, false);
     await load(lane, origin, buildPath);
-    await visible(lane.getByRole("textbox", { name: "Your reply" }));
+    await visible(lane.getByLabel("Your reply", { exact: true }));
     await visible(lane.getByText(replyBody, { exact: true }));
   });
 
@@ -341,7 +341,7 @@ try {
 
   await check("A helpful answer connects the profile thread to a persistent progress follow-up", async () => {
     await load(lane, origin, discussionPath);
-    const reply = lane.getByRole("textbox", { name: "Your reply" });
+    const reply = lane.getByLabel("Your reply", { exact: true });
     await reply.fill(answerBody);
     const sent = await submit(lane, lane.locator("form").filter({ has: reply }).getByRole("button", { name: "Reply", exact: true }),
       "/api/social/comments", 200);

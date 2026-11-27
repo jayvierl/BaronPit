@@ -84,7 +84,7 @@ export async function preparePost(input: CreatePostInput, viewerId: number | nul
   }
 }
 
-export function scoreSubmission(fields: string[], lowTrust: boolean) {
+export function scoreSubmission(fields: string[], lowTrust: boolean, bodyContactText?: string) {
   // Score each displayed field individually so a long neutral caption cannot dilute a harmful option.
-  return fields.map(field => scoreContent(field, {lowTrust})).reduce((worst, next) => next.score > worst.score ? next : worst);
+  return fields.map((field, i) => scoreContent(field, {lowTrust, contactText: i === 0 ? bodyContactText : undefined})).reduce((worst, next) => next.score > worst.score ? next : worst);
 }

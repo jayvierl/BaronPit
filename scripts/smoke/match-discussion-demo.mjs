@@ -234,8 +234,8 @@ async function main() {
       assert.equal(await river.locator(`main a[href="${postPath}"]`).count(), 0, "Saving is private to Demo Lane");
       await load(lane, origin, postPath);
       assert.equal(await article.getByRole("button", { name: /^Like, 1 like$/ }).getAttribute("aria-pressed"), "true");
-      await lane.getByRole("textbox", { name: "Your reply" }).fill(reply);
-      const posted = await submit(lane, lane.locator("form").filter({ has: lane.getByRole("textbox", { name: "Your reply" }) })
+      await lane.getByLabel("Your reply", { exact: true }).fill(reply);
+      const posted = await submit(lane, lane.locator("form").filter({ has: lane.getByLabel("Your reply", { exact: true }) })
         .getByRole("button", { name: "Reply", exact: true }), "/api/social/comments", 200);
       replyPath = postPath + "#reply-" + posted.commentId;
       await visible(lane.getByText(reply, { exact: true }));

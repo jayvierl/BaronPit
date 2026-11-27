@@ -1,4 +1,6 @@
 import { insertSubmission, priorSubmission, submissionHash, validSubmissionId, type SubmissionResult } from "./submissions";
+import { allMentionsVisible, readMentionBody, unavailableMention } from "./player-mentions";
+import { plainBodyText } from "./game-tags";
 import { includesRoomLink, roomWriteError } from "./room-safety";
 import { inProbation } from "./account-policy";
 import { validId } from "./ids";
@@ -48,9 +50,12 @@ export async function createPost(user: User, input: CreatePostInput, decision?: 
   if (!(await rateLimit(user.id, "post", 30, 60))) return { ok: false, error: "You're posting too fast — take a breath and try again in a bit." };
   const draft = await preparePost(input, user.id, checkedMatch);
   if (!draft.ok) return draft;
-  const { body, data, roomId, fields } = draft;
+  const { body, data, roomId } = draft;
+  const mentions = readMentionBody(body);
+  if (!mentions.ok) return mentions;
+  const fields = [mentions.text, ...draft.fields.slice(1)];
   const lowTrust = inProbation(user.createdAt);
-  const mod = await screenText(scoreSubmission(fields, lowTrust), fields, user.id, "post");
+  const mod = await screenText(scoreSubmission(fields, lowTrust, mentions.contactText), fields, user.id, "post");
   if (mod.action === "block") {
     await q`INSERT INTO wp_mod_log (target_kind, author_id, score, action, detail)
             VALUES ('post', ${user.id}, ${mod.score}, 'block', ${mod.hits.join(",")})`;
@@ -65,9 +70,9 @@ export async function createPost(user: User, input: CreatePostInput, decision?: 
   // A provider link is never published automatically.
   if (input.kind === "clip") status = "held";
   if (status === "visible" && body.length > 0) {
-    const fp = bodyFingerprint(body);
+    const fp = bodyFingerprint(mentions.text);
     const recent = await q`SELECT body FROM wp_posts WHERE author_id = ${user.id} AND created_at > now() - interval '1 hour'`;
-    if (recent.filter((r) => bodyFingerprint(String(r.body)) === fp).length >= 2) status = "held";
+    if (recent.filter((r) => bodyFingerprint(plainBodyText(String(r.body))) === fp).length >= 2) status = "held";
   }
   // Borderline work from an established account is already public at this
   // point; flag it for the reviewer sweep instead of holding it.
@@ -76,14 +81,14 @@ export async function createPost(user: User, input: CreatePostInput, decision?: 
   let rows;
   try {
     const sql = await getSql();
-    rows = await insertSubmission(sql, sql(`WITH ${HIDDEN_AUTHORS}, original AS MATERIALIZED (
+    rows = await insertSubmission(sql, sql(`WITH ${HIDDEN_AUTHORS}, mention_gate AS MATERIALIZED (SELECT ${allMentionsVisible("$25")} AS allowed), original AS MATERIALIZED (
     SELECT p.id,p.author_id FROM wp_posts p WHERE p.id=$21::int AND p.room_id IS NOT DISTINCT FROM $4::int
       AND $1 NOT IN (SELECT id FROM hidden) AND ${quoteSourceVisible("$20")}
   ), inserted AS (
     INSERT INTO wp_posts (author_id, kind, body, room_id, data, status, clip_review_required, card_validated, submission_id, submission_hash)
     SELECT $1,$2,$3,$4::int,$5::jsonb,$6,$7,$8,$9::uuid,$10
     WHERE CASE WHEN EXISTS(SELECT 1 FROM wp_posts WHERE author_id=$1 AND submission_id=$9::uuid)
-      OR ($21::int IS NOT NULL AND NOT EXISTS (SELECT 1 FROM original))
+      OR NOT (SELECT allowed FROM mention_gate) OR ($21::int IS NOT NULL AND NOT EXISTS (SELECT 1 FROM original))
       THEN false ELSE wp_reserve_room_turn($4::int,$1,$11) END
     ON CONFLICT (author_id,submission_id) WHERE submission_id IS NOT NULL DO NOTHING
     RETURNING id
@@ -96,11 +101,12 @@ export async function createPost(user: User, input: CreatePostInput, decision?: 
   ), audit AS (
     INSERT INTO wp_mod_log (target_kind, target_id, author_id, score, action, detail)
     SELECT 'post',id,$1,$22,CASE WHEN $6='held' THEN 'hold' ELSE 'flag' END,$23 FROM inserted WHERE $6='held' OR $24
-  ) SELECT id FROM inserted`, [user.id,input.kind,body,roomId,JSON.stringify(data),status,input.kind === "clip",input.kind === "card",key,hash,
+  ) SELECT id FROM inserted UNION ALL SELECT NULL AS id FROM mention_gate WHERE NOT allowed`, [user.id,input.kind,body,roomId,JSON.stringify(data),status,input.kind === "clip",input.kind === "card",key,hash,
     input.kind === "clip" || includesRoomLink(fields),!!decision,decision?.champion ?? null,decision?.opponent ?? null,decision?.role ?? null,
     decision?.topic ?? null,decision?.patch ?? null,decision?.itemId ?? null,decision?.itemName ?? null,PATCH_PUBLISHER,quotedPostId ?? null,
-    mod.score,mod.hits.join(","),flagged]),key,user.id);
+    mod.score,mod.hits.join(","),flagged,JSON.stringify(mentions.targets)]),key,user.id);
   } catch(error) { return await priorSubmission("post",user.id,key,hash) ?? {ok:false,error:roomWriteError(error)}; }
+  if (rows[0]?.id === null) return {ok:false,error:unavailableMention};
   if (!rows.length) return await priorSubmission("post",user.id,key,hash) ?? { ok: false,
     error: quotedPostId ? "The original post is unavailable to quote." : "That room is unavailable." };
   const postId = Number(rows[0].id);
@@ -171,7 +177,9 @@ export async function addComment(user: User, postId: number, bodyRaw: string, pa
   if (replay) return replay;
   if (!(await rateLimit(user.id, "comment", 60, 60))) return { ok: false, error: "You're commenting too fast — slow down a little." };
   const lowTrust = inProbation(user.createdAt);
-  const mod = await screenText(scoreContent(body, { lowTrust }), [body], user.id, "comment");
+  const mentions = readMentionBody(body);
+  if (!mentions.ok) return mentions;
+  const mod = await screenText(scoreContent(mentions.text, { lowTrust, contactText: mentions.contactText }), [mentions.text], user.id, "comment");
   if (mod.action === "block") {
     await q`INSERT INTO wp_mod_log (target_kind, author_id, score, action, detail) VALUES ('comment', ${user.id}, ${mod.score}, 'block', ${mod.hits.join(",")})`;
     return { ok: false, error: "That comment can't be published — it trips our community safety filter." };
@@ -187,7 +195,7 @@ export async function addComment(user: User, postId: number, bodyRaw: string, pa
   let rows;
   try {
     const sql = await getSql();
-    rows = await insertSubmission(sql,sql(`WITH RECURSIVE ${HIDDEN_AUTHORS}, candidate_replies AS (
+    rows = await insertSubmission(sql,sql(`WITH RECURSIVE ${HIDDEN_AUTHORS}, mention_gate AS MATERIALIZED (SELECT ${allMentionsVisible("$13")} AS allowed), candidate_replies AS (
     SELECT id FROM wp_comments WHERE id=$3::int AND post_id=$2
   ), ${visibleCommentsFor("candidateReplies")}, candidate AS MATERIALIZED (
     SELECT p.id,p.room_id FROM wp_posts p WHERE p.id=$2 AND ${visiblePostForInteraction} AND (NOT $6 OR p.kind='card')
@@ -196,15 +204,16 @@ export async function addComment(user: User, postId: number, bodyRaw: string, pa
     INSERT INTO wp_comments(post_id,author_id,parent_id,body,status,one_fix,submission_id,submission_hash)
     SELECT id,$1,$3::int,$4,$5,$6::boolean,$10::uuid,$11 FROM candidate
     WHERE CASE WHEN EXISTS(SELECT 1 FROM wp_comments WHERE author_id=$1 AND submission_id=$10::uuid)
-      THEN false ELSE wp_reserve_room_turn(room_id,$1,$9) END
+      OR NOT (SELECT allowed FROM mention_gate) THEN false ELSE wp_reserve_room_turn(room_id,$1,$9) END
     ON CONFLICT (author_id,submission_id) WHERE submission_id IS NOT NULL DO NOTHING
     RETURNING id
   ), hold_log AS (
     INSERT INTO wp_mod_log (target_kind, target_id, author_id, score, action, detail)
     SELECT 'comment', id, $1, $7, CASE WHEN $5='held' THEN 'hold' ELSE 'flag' END, $8 FROM submitted WHERE $5 = 'held' OR $12
-  ) SELECT id FROM submitted`,
-  [user.id, postId, parentId ?? null, body, status, oneFix, mod.score, mod.hits.join(","),includesRoomLink([body]),key,hash,flagged]),key,user.id);
+  ) SELECT id FROM submitted UNION ALL SELECT NULL AS id FROM mention_gate WHERE NOT allowed`,
+  [user.id, postId, parentId ?? null, body, status, oneFix, mod.score, mod.hits.join(","),includesRoomLink([mentions.text]),key,hash,flagged,JSON.stringify(mentions.targets)]),key,user.id);
   } catch(error) { return await priorSubmission("comment",user.id,key,hash) ?? {ok:false,error:roomWriteError(error)}; }
+  if (rows[0]?.id === null) return {ok:false,error:unavailableMention};
   if (!rows.length) return await priorSubmission("comment",user.id,key,hash) ?? { ok: false, error: oneFix ? "One Fix needs an available game card." : "Replies are closed or this conversation is unavailable." };
   return { ok: true, postId: Number(rows[0].id), status };
 }

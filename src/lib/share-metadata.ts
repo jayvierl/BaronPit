@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { APP_NAME } from "./brand";
+import { parseBodySegments } from "./game-tags";
 
 export function shareOrigin() {
   const values = process.env.VERCEL_ENV === "preview"
@@ -18,6 +19,15 @@ export function shareOrigin() {
 export function shareExcerpt(text: string) {
   return text.replace(/(?:https?:\/\/|www\.)\S+|[^\s@]+@[^\s@]+\.[^\s@]+|@[\w.-]+/gi, "")
     .replace(/\p{Cc}|\p{Cf}/gu, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Social handles are omitted from external unfurls, including Riot IDs containing spaces. */
+export function shareBodyExcerpt(body: string) {
+  const text = parseBodySegments(body).map(segment => {
+    if (segment.type === "text") return segment.text;
+    return segment.tag.kind === "player" ? " " : segment.tag.name;
+  }).join("");
+  return Array.from(shareExcerpt(text)).slice(0, 160).join("");
 }
 
 export function shareMetadata(path: string, title: string, description: string, type: "article" | "website" | "profile"): Metadata {

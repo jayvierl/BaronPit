@@ -1,3 +1,4 @@
+import { tagExcerpt } from "./tag-excerpt";
 import { buildCatalog, cardItems } from "./build-catalog";
 import { buildKeystone } from "./build-sharing";
 import { clipLink } from "./clip-link";
@@ -236,7 +237,7 @@ async function queryPosts(viewerId: number | null, filter: Filter, limit: number
       repliesClosed: r.replies_closed === true,
       canRepost: r.can_repost === true, myRepost: r.my_repost === true, canQuote: r.can_quote === true,
       ...(r.has_quote === true ? { quote: { original: r.quote_source_id != null ? {
-        postId: Number(r.quote_source_id), author: String(r.quote_author), body: String(r.quote_excerpt),
+        postId: Number(r.quote_source_id), author: String(r.quote_author), body: tagExcerpt(String(r.quote_excerpt), 180),
         room: typeof r.quote_room === "string" ? r.quote_room : null,
       } : null } } : {}),
       ...(r.sharer != null ? {repostedBy: {id: Number(r.sharer), name: String(r.sharer_name), at: String(r.shared_at)}} : {}),

@@ -8,7 +8,7 @@ import type { SearchSuggestion, SuggestionScope } from "@/lib/search-suggestions
 import { PlayerNameInput } from "./player-name-input";
 
 export function SearchNameFields({ scope, initialQuery, initialRegion, placeholder }: {
-  scope: SuggestionScope;
+  scope: Exclude<SuggestionScope, "mentions">;
   initialQuery: string;
   initialRegion?: PlatformId;
   placeholder: string;

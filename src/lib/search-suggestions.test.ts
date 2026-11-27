@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { postgres } from "../../test/postgres";
 import { q } from "./db";
+import type { User } from "./auth";
+import { createPost, addComment } from "./social";
+import { canOpenPlayerMention, mentionKey, readMentionBody, unavailableMention } from "./player-mentions";
 import { canSuggestNames, searchNameSuggestions } from "./search-suggestions";
 
 vi.mock("@neondatabase/serverless", async () => ({ neon: (await import("../../test/postgres")).neonForTests }));
@@ -65,4 +68,40 @@ it("rejects short, malformed and oversized prefixes before database access", () 
     expect(canSuggestNames(term)).toBe(false);
   }
   for (const term of ["Ja", "瑟提", "Jay#", "Jay#n", "Ja%"]) expect(canSuggestNames(term)).toBe(true);
+});
+
+it("checks player tags at insert and when opened, with identical treatment of absent and hidden players", async () => {
+  const user: User = { id:1, email:"me@example.invalid", displayName:"Viewer", avatarHue:1, bio:"",
+    createdAt:new Date().toISOString(), bannedUntil:null, strikeCount:0, ageBand:"adult", termsCurrent:true };
+  const token = (name: string, puuid: string) => "[[p:na1."+mentionKey(puuid)+"|@"+name+"]]";
+  const submit = (name: string, puuid: string) => createPost(user, {kind:"text", body:"Queue with "+token(name,puuid)});
+  expect(await searchNameSuggestions("Jay Lewis#NA1","mentions",1,"na1")).toEqual([
+    {kind:"player", riotId:"Jay Lewis#NA1", platform:"na1", mentionKey:mentionKey("local")},
+  ]);
+  const created = await submit("Jay Lewis#NA1","local");
+  expect(created).toMatchObject({ok:true,status:"visible"});
+  if (!created.ok) throw new Error(created.error);
+  expect(await canOpenPlayerMention(1,"na1","Jay Lewis","NA1",mentionKey("local"))).toBe(true);
+  const blocked = {ok:false,error:unavailableMention};
+  for (const [name,puuid] of [["Jay Muted#MUTE","muted"],["Jay Blocked#HIDE","hidden"],["Jay On Hold#HOLD","held"],
+    ["Jay Banned#BAN","suspended"],["Missing#NA1","local"],["Jay Lewis#NA1","old"]]) {
+    const [game,tag] = name.split("#");
+    expect(await canOpenPlayerMention(1,"na1",game,tag,mentionKey(puuid))).toBe(false);
+    expect(await submit(name,puuid)).toEqual(blocked);
+    expect(await addComment(user,created.postId,token(name,puuid))).toEqual(blocked);
+  }
+  expect(await submit("BadToken","local")).toEqual(blocked);
+  expect(await submit("Jay Claimed#OPEN","unowned")).toMatchObject({ok:true,status:"visible"});
+  const body = "Check "+token("Jay Lewis#NA1","local");
+  expect(await addComment(user,created.postId,body)).toMatchObject({ok:true,status:"visible"});
+  expect(await q`SELECT body FROM wp_comments WHERE post_id=${created.postId}`).toEqual([{body}]);
+});
+
+it("caps distinct player tags and preserves abuse signals in the visible names and surrounding words", () => {
+  const token = (name: string) => "[[p:na1."+mentionKey(name)+"|@"+name+"#NA1]]";
+  const tokens = Array.from({length:6}, (_,i) => token("Player "+i));
+  expect(readMentionBody(tokens.join(" ")).ok).toBe(false);
+  expect(readMentionBody(Array(6).fill(tokens[0]).join(" ")).ok).toBe(true);
+  const display = readMentionBody("Discord @contact · "+token("A Player")+" [[c:Lux|Lux]]");
+  expect(display).toMatchObject({ok:true, text:"Discord @contact · @A Player#NA1 Lux", contactText:"Discord @contact · A Player NA1 Lux"});
 });

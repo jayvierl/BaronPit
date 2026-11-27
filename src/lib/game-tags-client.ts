@@ -5,7 +5,7 @@ import type { TagCatalog } from "./game-tags";
 
 let pending: Promise<TagCatalog | null> | undefined;
 
-/** Fetch the tag catalog once per page; every chip and composer shares it. */
+/** Fetch the tag catalog once per successful load; every chip and composer shares it. */
 export function loadTagCatalog(): Promise<TagCatalog | null> {
   pending ??= fetch("/api/game-tags")
     .then(async (response) => {
@@ -14,7 +14,10 @@ export function loadTagCatalog(): Promise<TagCatalog | null> {
       if (!Array.isArray(data.champions) || !Array.isArray(data.items)) throw new Error("Tag catalog unavailable");
       return data;
     })
-    .catch(() => null);
+    .catch(() => {
+      pending = undefined;
+      return null;
+    });
   return pending;
 }
 

@@ -1,3 +1,5 @@
+import { shareBodyExcerpt } from "./share-metadata";
+import { tagExcerpt } from "./tag-excerpt";
 import { HIDDEN_AUTHORS, visibleCommentsFor, visiblePostForInteraction } from "./community-queries";
 import { queryRows } from "./db";
 import { postDataProjection } from "./match-card-projection";
@@ -94,7 +96,7 @@ export type LibraryEntry = { kind: LibraryKind; id: number; postId: number; auth
 function entries(rows: Record<string, unknown>[]) {
   const page: LibraryEntry[] = rows.slice(0, LIBRARY_PAGE_SIZE).map(row => ({
     kind: row.kind === "comment" ? "comment" : "post", id: Number(row.id), postId: Number(row.post_id),
-    authorId: Number(row.author_id), author: String(row.author), excerpt: String(row.excerpt || "Open discussion"), cursor: String(row.cursor),
+    authorId: Number(row.author_id), author: String(row.author), excerpt: tagExcerpt(String(row.excerpt || "Open discussion"), 220), cursor: String(row.cursor),
     unread: row.unread === true,
     replyReason: row.reason as LibraryEntry["replyReason"],
   }));
@@ -115,7 +117,7 @@ export async function savedPlaybook(userId: number, before: string | null, kind?
     candidates AS (SELECT DISTINCT post_id FROM saves WHERE comment_id IS NOT NULL),
     ${visibleCommentsFor("posts", "candidates")}
     SELECT s.cursor,coalesce(c.id,p.id) AS id,p.id AS post_id,u.id AS author_id,u.display_name AS author,
-      CASE WHEN c.id IS NULL THEN 'post' ELSE 'comment' END AS kind, left(coalesce(c.body,nullif(p.body,''),p.kind || ' post'),220) AS excerpt
+      CASE WHEN c.id IS NULL THEN 'post' ELSE 'comment' END AS kind, coalesce(c.body,nullif(p.body,''),p.kind || ' post') AS excerpt
     FROM saves s JOIN wp_posts p ON p.id=s.post_id LEFT JOIN wp_comments c ON c.id=s.comment_id
     JOIN wp_users u ON u.id=coalesce(c.author_id,p.author_id)
     WHERE ${visiblePostForInteraction} AND (c.id IS NULL OR EXISTS(SELECT 1 FROM thread t WHERE t.id=c.id))
@@ -133,7 +135,7 @@ export async function hasUnreadReplies(userId: number) {
 
 export async function replyActivity(userId: number, before: string | null) {
   const rows = await queryRows(`${activityCtes}
-    SELECT n.id AS cursor,n.id,n.post_id,'comment' AS kind,n.reason,u.id AS author_id,u.display_name AS author,left(n.body,220) AS excerpt,
+    SELECT n.id AS cursor,n.id,n.post_id,'comment' AS kind,n.reason,u.id AS author_id,u.display_name AS author,n.body AS excerpt,
       r.comment_id IS NULL AS unread FROM notices n JOIN wp_users u ON u.id=n.author_id
     LEFT JOIN wp_discussion_read_replies r ON r.user_id=$1 AND r.comment_id=n.id
     WHERE ($2::bigint IS NULL OR n.id < $2) ORDER BY n.id DESC LIMIT $3`, [userId, before, LIBRARY_PAGE_SIZE + 1]);
@@ -142,7 +144,7 @@ export async function replyActivity(userId: number, before: string | null) {
 
 export async function watchedDiscussions(userId: number, before: string | null, mode: "all" | "muted" = "all") {
   const rows = await queryRows(`WITH ${HIDDEN_AUTHORS} SELECT p.id AS cursor,p.id,p.id AS post_id,'post' AS kind,
-    u.id AS author_id,u.display_name AS author,left(coalesce(nullif(p.body,''),p.kind || ' post'),220) AS excerpt
+    u.id AS author_id,u.display_name AS author,coalesce(nullif(p.body,''),p.kind || ' post') AS excerpt
     FROM wp_thread_watches w JOIN wp_posts p ON p.id=w.post_id JOIN wp_users u ON u.id=p.author_id
     WHERE w.user_id=$1 AND w.reply_mode=$4 AND ($2::bigint IS NULL OR p.id < $2) AND ${visiblePostForInteraction}
     ORDER BY p.id DESC LIMIT $3`, [userId, before, LIBRARY_PAGE_SIZE + 1, mode]);
@@ -152,7 +154,7 @@ export async function watchedDiscussions(userId: number, before: string | null, 
 export async function publicDiscussion(id: number, viewerId: number | null = null) {
   // Unfurlers are anonymous. Signed-in viewers also retain their block and mute filters.
   const [row] = await queryRows(`WITH ${HIDDEN_AUTHORS}
-    SELECT p.kind, r.name AS room, left(p.body,160) AS body, d.champion, d.role,
+    SELECT p.kind, r.name AS room, p.body, d.champion, d.role,
       projected.data->'matchContext' AS match_context,
       CASE WHEN p.kind='card' THEN jsonb_build_array(
         projected.data#>'{match,champion}', projected.data#>'{match,win}', projected.data#>'{match,kills}',
@@ -170,7 +172,7 @@ export async function publicDiscussion(id: number, viewerId: number | null = nul
     match = `${score[0]} · ${score[1] ? "Victory" : "Defeat"} · ${score[2]}/${score[3]}/${score[4]} KDA`;
   }
   return {
-    room: typeof row.room === "string" ? row.room : null, kind: String(row.kind), body: String(row.body),
+    room: typeof row.room === "string" ? row.room : null, kind: String(row.kind), body: shareBodyExcerpt(String(row.body)),
     champion: typeof row.champion === "string" ? row.champion : null,
     role: typeof row.role === "string" ? row.role : null, match,
     discussionKind: projectMatchContext(row.match_context)?.discussionKind,

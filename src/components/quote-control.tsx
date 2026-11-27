@@ -6,6 +6,7 @@ import { beginDraftSignIn, restoreAfterMount } from "@/lib/auth-draft";
 import { QUOTE_LIMIT, type QuotePreview as Original } from "@/lib/quote-types";
 import { signInHref } from "@/lib/signin-return";
 import { ActionFeedback, usePostAction } from "./post-action";
+import { TagFieldWrap, useTagSuggest } from "./tag-suggest";
 import { QuotePreview } from "./quote-preview";
 import { ThreadIcon } from "./thread-icon";
 import { useHydrated } from "./use-hydrated";
@@ -21,6 +22,10 @@ export function QuoteControl({ original, signedIn, viewerId }: { original: Origi
   const [published, setPublished] = useState(false);
   const disclosure = useRef<HTMLDetailsElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
+  const tags = useTagSuggest({
+    inputRef: field, value: body, limit: QUOTE_LIMIT, enabled: signedIn && !action.busy,
+    apply: next => { setBody(next); setNotice(""); },
+  });
   const anchor = `quote-${original.postId}`;
   const returnTo = `/post/${original.postId}#${anchor}`;
   const scope = `quote:${original.postId}`;
@@ -73,8 +78,13 @@ export function QuoteControl({ original, signedIn, viewerId }: { original: Origi
   }}>
     <summary title="Quote post" aria-label="Quote post"><ThreadIcon name="quote" /> Quote post</summary>
     <form className={styles.composer} onSubmit={event => { event.preventDefault(); void publish(); }}>
-      <label>Your comment<textarea ref={field} rows={3} required maxLength={QUOTE_LIMIT} value={body} disabled={!ready || action.busy}
-        onChange={event => { setBody(event.target.value); setNotice(""); }}/></label>
+      <label htmlFor={`${anchor}-body`}>Your comment</label>
+      <TagFieldWrap>
+        <textarea id={`${anchor}-body`} ref={field} {...tags.fieldProps} rows={3} required
+          maxLength={tags.maxLength} value={tags.display} disabled={!ready || action.busy}
+          onChange={event => tags.change(event.currentTarget)}/>
+        {tags.menu}
+      </TagFieldWrap>
       <QuotePreview original={original}/>
       <ActionFeedback error={action.error}/>
       {notice && <p role="status" className="meta">{notice}</p>}

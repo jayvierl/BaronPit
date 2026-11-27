@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { playerStatsHref } from "@/lib/platforms";
 import { useId, useRef, useState } from "react";
 import {
   FALLBACK_PATCH,
@@ -21,6 +22,14 @@ import styles from "./game-tag.module.css";
  * enriches the card (and corrects the name to the catalog's own).
  */
 export function GameTagChip({ tag }: { tag: TagRef }) {
+  if (tag.kind === "player") {
+    return <Link className={styles.player} prefetch={false} href={playerStatsHref(tag.id, tag.name.slice(1)) + "&via=mention&playerKey=" + tag.key}
+      aria-label={`${tag.name}, ${tag.id.toUpperCase()} player`}>{tag.name}</Link>;
+  }
+  return <CatalogTag tag={tag}/>;
+}
+
+function CatalogTag({ tag }: { tag: Exclude<TagRef, { kind: "player" }> }) {
   const catalog = useTagCatalog();
   const [hover, setHover] = useState(false);
   const [focused, setFocused] = useState(false);

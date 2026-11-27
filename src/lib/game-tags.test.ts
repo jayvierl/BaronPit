@@ -9,6 +9,7 @@ import {
   parseBodySegments,
   pickSuggestion,
   plainBodyText,
+  playerTagRef,
   type TagCatalog,
 } from "./game-tags";
 
@@ -130,5 +131,33 @@ describe("composer suggestions", () => {
       type: "tag",
       tag: { kind: "item", id: "3031", name: "Infinity Edge" },
     });
+  });
+});
+
+describe("player and multi-word game tags", () => {
+  it("links only well-formed Riot IDs on supported platforms and keeps readable text", () => {
+    const key = "a".repeat(32);
+    const player = playerTagRef("Jay Lewis#NA1", "na1", key)!;
+    const token = formatTagToken(player);
+    expect(token).toBe("[[p:na1."+key+"|@Jay Lewis#NA1]]");
+    expect(parseBodySegments(token)).toEqual([{ type: "tag", tag: player }]);
+    expect(plainBodyText("With " + token)).toBe("With @Jay Lewis#NA1");
+    for (const invalid of ["[[p:bogus|@Jay Lewis#NA1]]", "[[p:na1|@Jay Lewis]]", "[[p:na1|Jay Lewis#NA1]]"]) {
+      expect(hasTagTokens(invalid)).toBe(false);
+      expect(plainBodyText(invalid)).toBe(invalid);
+    }
+    expect(playerTagRef("雪豹#JP1", "jp1", key)?.name).toBe("@雪豹#JP1");
+    expect(playerTagRef("Bad\u200bName#NA1", "na1", key)).toBeNull();
+    expect(playerTagRef("Jay Lewis#NA1", "na1", "forged")).toBeNull();
+    expect(playerTagRef("Bad|Name#NA1", "na1", key)).toBeNull();
+  });
+
+  it.each(["Fated Ashes", "Needlessly Large Rod"])("replaces the full typed name of %s when its last word also matches", name => {
+    const item = { id: 10, name, effect: "", gold: 0, shop: true };
+    const sentence = "Buy " + name;
+    const suggestion = pickSuggestion({ ...catalog, items: [item] }, sentence, sentence.length)!;
+    expect(suggestion.start).toBe(4);
+    expect(suggestion.phrase).toBe(name);
+    expect(plainBodyText(applyTag(sentence, suggestion, { kind: "item", name, id:"10" }).value)).toBe(sentence+" ");
   });
 });

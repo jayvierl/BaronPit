@@ -1,3 +1,4 @@
+import { plainBodyText } from "./game-tags";
 import { safeReturnTo, signInHref } from "./signin-return";
 import { clearTabDrafts, COMPOSER_SIGNOUT } from "./composer-draft";
 
@@ -45,7 +46,7 @@ export function copyableDraftText(storage: Storage, destination: string): string
   if (!key) return null;
   const saved = unpack(storage.getItem(key));
   if (!saved || saved.destination !== path || saved.expires <= Date.now()) return null;
-  return typeof saved.payload.body === "string" && saved.payload.body.trim() ? saved.payload.body : null;
+  return typeof saved.payload.body === "string" && saved.payload.body.trim() ? plainBodyText(saved.payload.body) : null;
 }
 
 export function consumeAuthDraft(storage: Storage, scope: string, location: string) {
