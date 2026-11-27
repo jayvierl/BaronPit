@@ -252,13 +252,18 @@ describe("feed and conversation read contracts", () => {
     expect(await getPost(93, viewer)).toMatchObject({pollResults: [0, 1], myVote: 1});
     expect((await getPost(94, viewer))?.data).toEqual({});
   });
-  it("holds new accounts and offers an edit before a borderline reply is queued", async () => {
+  it("publishes clean new-account replies, flags borderline established replies, and offers an edit before a borderline new-account reply is queued", async () => {
     const fresh = { ...viewer, createdAt: new Date().toISOString() };
     const result = await addComment(fresh,13,"I liked that decision.");
-    expect(result).toMatchObject({ok:true,status:"held"});
+    expect(result).toMatchObject({ok:true,status:"visible"});
     const borderline = "Check https://example.com";
-    expect(await addComment(viewer,13,borderline)).toMatchObject({ok:false,reconsider:true});
-    expect(await addComment(viewer,13,borderline,undefined,false,true)).toMatchObject({ok:true,status:"held"});
+    const flagged = await addComment(viewer,13,borderline);
+    expect(flagged).toMatchObject({ok:true,status:"visible"});
+    if (!flagged.ok) throw Error("flagged reply unavailable");
+    expect(await q`SELECT action FROM wp_mod_log WHERE target_kind='comment' AND target_id=${flagged.postId}`).toEqual([{action:"flag"}]);
+    const edged = "fuck shit, I liked that decision.";
+    expect(await addComment(fresh,13,edged)).toMatchObject({ok:false,reconsider:true});
+    expect(await addComment(fresh,13,edged,undefined,false,true)).toMatchObject({ok:true,status:"held"});
   });
   it("hides the contents of an urgent hold from its author and conversations in a held room", async () => {
     await postgres.exec(`INSERT INTO wp_safety_urgent(receipt,target_kind,target_id,rule,evidence)

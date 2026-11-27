@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scoreContent } from "./moderation";
+import { publishOutcome, scoreContent, type ModResult } from "./moderation";
 import { summarize, rotationIndex } from "./pure";
 
 describe("moderation three-band scoring", () => {
@@ -21,6 +21,41 @@ describe("moderation three-band scoring", () => {
   });
   it("does not flag normal mentions of Discord as a word", () => {
     expect(scoreContent("we talked about it on discord yesterday", {}).hasContactHandle).toBe(false);
+  });
+});
+
+describe("publish outcomes by account trust", () => {
+  const borderline = "fuck this play, see https://example.com"; // profanity + link
+  it("publishes clean posts from new and established accounts alike", () => {
+    const clean = scoreContent("gg everyone, that baron call was perfect", {});
+    expect(publishOutcome(clean, { lowTrust: true })).toBe("publish");
+    expect(publishOutcome(clean, { lowTrust: false })).toBe("publish");
+    const cleanNew = scoreContent("first post, hi everyone", { lowTrust: true });
+    expect(cleanNew.action).toBe("publish");
+    expect(publishOutcome(cleanNew, { lowTrust: true })).toBe("publish");
+  });
+  it("blocks clear violations from everyone", () => {
+    const blocked = scoreContent("you are a faggot", {});
+    expect(publishOutcome(blocked, { lowTrust: true })).toBe("block");
+    expect(publishOutcome(blocked, { lowTrust: false })).toBe("block");
+  });
+  it("holds borderline posts from low-trust accounts", () => {
+    const r = scoreContent("fuck shit, terrible game", { lowTrust: true });
+    expect(r.action).toBe("hold");
+    expect(publishOutcome(r, { lowTrust: true })).toBe("hold");
+  });
+  it("publishes borderline posts flagged from established accounts", () => {
+    const r = scoreContent(borderline, {});
+    expect(r.action).toBe("hold");
+    expect(publishOutcome(r, { lowTrust: false })).toBe("publish-flagged");
+    expect(publishOutcome(r, { lowTrust: true })).toBe("hold");
+  });
+  it("keeps a screening outage fail-closed for every account", () => {
+    const outage: ModResult = {
+      score: 30, action: "hold", hits: ["screening-unavailable"], hasContactHandle: false, linkCount: 0,
+    };
+    expect(publishOutcome(outage, { lowTrust: false })).toBe("hold");
+    expect(publishOutcome(outage, { lowTrust: true })).toBe("hold");
   });
 });
 

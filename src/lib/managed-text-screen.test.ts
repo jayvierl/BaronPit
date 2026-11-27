@@ -45,10 +45,17 @@ it("queues a post when the configured service is offline, without accusing the a
   expect(reply).toMatchObject({ok:true,status:"held"});
   expect(await q`SELECT status FROM wp_posts WHERE body='An ordinary performance question'`).toEqual([{status:"held"}]);
 });
-it("nudges a flagged response and holds it if the author still asks to submit",async()=>{
+it("publishes a flagged response from an established author as flagged, and still nudges a new account",async()=>{
   http.mockImplementation(()=>Promise.resolve(Response.json({results:[result(true)]})));
-  expect(await addComment(author,500,"A synthetic reply")).toMatchObject({ok:false,reconsider:true});
-  expect(await addComment(author,500,"A synthetic reply",undefined,false,true)).toMatchObject({ok:true,status:"held"});
+  const published = await addComment(author,500,"A synthetic reply");
+  expect(published).toMatchObject({ok:true,status:"visible"});
+  if (!published.ok) throw Error("flagged reply unavailable");
+  expect(await q`SELECT action,detail FROM wp_mod_log WHERE target_kind='comment' AND target_id=${published.postId}`)
+    .toEqual([{action:"flag",detail:"managed-review"}]);
+  await q`INSERT INTO wp_users(id,email,display_name) VALUES(3,'new@example.test','New')`;
+  const fresh: User = {...author,id:3,email:"new@example.test",createdAt:new Date().toISOString()};
+  expect(await addComment(fresh,500,"A synthetic reply")).toMatchObject({ok:false,reconsider:true});
+  expect(await addComment(fresh,500,"A synthetic reply",undefined,false,true)).toMatchObject({ok:true,status:"held"});
 });
 it("routes a synthetic child-safety signal only to the owner queue and never sanctions on a model verdict",async()=>{
   http.mockResolvedValueOnce(Response.json({results:[result(true,true)]}));

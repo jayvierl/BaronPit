@@ -1,12 +1,17 @@
 /**
  * Automated text moderation — three-band model (moderation spec §1.4/§2.1):
  *   score >= 60  -> block (never published)
- *   score >= 30  -> hold for human review (invisible until approved)
+ *   score >= 30  -> borderline band (outcome depends on account trust)
  *   else         -> publish
  * Plus the spec's cheap wins: new-account probation weighting, link friction
  * for low-trust accounts, and off-platform contact-handle detection for LFG.
  * A managed vendor (OpenAI Moderation / Azure) can slot behind scoreContent
  * later without changing callers.
+ *
+ * Publish outcomes follow the Threads-style model (moderation-automation
+ * spec): the filter is the gate, so borderline work only waits when the
+ * author is still on probation. Established accounts publish immediately and
+ * the item is flagged for the reviewer sweep instead of sitting invisible.
  */
 
 const SLURS = [
@@ -93,6 +98,26 @@ export function scoreContent(raw: string, opts: { lowTrust?: boolean } = {}): Mo
 
   const action = score >= 60 ? "block" : score >= 30 ? "hold" : "publish";
   return { score, action, hits, hasContactHandle, linkCount };
+}
+
+export type PublishOutcome = "block" | "hold" | "publish" | "publish-flagged";
+
+/**
+ * Map a scored submission to its publish outcome by account trust:
+ *   block band    -> blocked at publish, whoever wrote it
+ *   borderline    -> held for review from low-trust (probation) accounts;
+ *                    published and flagged for the reviewer sweep from
+ *                    established accounts
+ *   clean         -> published
+ * A screening outage ("screening-unavailable") stays fail-closed: the item
+ * holds for a reviewer no matter who wrote it, matching the posture callers
+ * already apply to that hit.
+ */
+export function publishOutcome(mod: ModResult, opts: { lowTrust?: boolean } = {}): PublishOutcome {
+  if (mod.action === "block") return "block";
+  if (mod.action === "publish") return "publish";
+  if (mod.hits.includes("screening-unavailable")) return "hold";
+  return opts.lowTrust ? "hold" : "publish-flagged";
 }
 
 /** Duplicate-content signal: same body posted repeatedly (spec §2.3). */
