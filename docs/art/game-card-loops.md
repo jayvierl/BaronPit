@@ -1,5 +1,12 @@
 # Game card loop provenance
 
-The victory and defeat loops in `public/game-cards` are original edits of the existing Baron Pit hero artwork. Their source is `public/baron-hero.png`, identical to the archived `docs/art/baron-pit-hero-runway.png` (SHA-256 `dc5243a903204ed10b4a0b80b85bdd1a785b3166133188185df28e7485a41bd2`). The separately proposed Runway loop masters were unavailable.
+The Victory and Defeat media in `public/game-cards/` match the approved files served by [Baron Pit](https://baronpit.com). Lyris’s November 26, 2026 deployment handoff identifies their sources as `game-card-loop-victory-runway.mp4` (Runway task `64cd3467`) and `game-card-loop-defeat-runway.mp4` (task `64378d6a`). Access to the master files requires the original exports.
 
-FFmpeg produced a six-second, silent, 1280×720 loop at 24 frames per second for each result. Victory lifts the view toward Baron as violet light and mist rise. Defeat dims and desaturates the pit while small embers rise in the foreground. The packages include VP9 WebM, H.264 MP4, and a 640×360 WebP still for each result. All videos are smaller than 535 KB.
+Each outcome has a silent, six-second 1280 × 720 loop at 24 frames per second, delivered as VP9 WebM and fast-start H.264 MP4, plus a 640 × 360 WebP still. All four videos fit within the 1.5 MB per-file budget.
+
+| Outcome | WebM | MP4 | WebP still |
+| --- | ---: | ---: | ---: |
+| Victory | 364,835 bytes | 465,354 bytes | 22,936 bytes |
+| Defeat | 243,034 bytes | 425,858 bytes | 9,296 bytes |
+
+The copies retrieved from production on November 27, 2026 decoded successfully and passed the container, resolution, duration and frame-rate checks. The [production derivative manifest](production-derivatives.json) records their SHA-256 digests and exact sizes. `node scripts/public-art.mjs` checks these values during the production build.

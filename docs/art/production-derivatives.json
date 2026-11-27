@@ -1,0 +1,86 @@
+{
+  "origin": "https://baronpit.com",
+  "verifiedOn": "2026-11-27",
+  "files": {
+    "game-cards/defeat.mp4": {
+      "bytes": 425858,
+      "sha256": "5249766508d31edae689aa3a3f43bd813fc753d6a29127fc89e669ac69c42ff6"
+    },
+    "game-cards/defeat.webm": {
+      "bytes": 243034,
+      "sha256": "53a3b41a4fb80ac025441c0ac5a1ac40b87381ce312f3acd588a4e0dafa32c21"
+    },
+    "game-cards/defeat.webp": {
+      "bytes": 9296,
+      "sha256": "716c3f943cf9cbc185c391385046f3c9f14ed6d32d91f577dd86a78143d5857b"
+    },
+    "game-cards/victory.mp4": {
+      "bytes": 465354,
+      "sha256": "0fa839809f066c120d56bb04bbb2d3099c03903cc96147545c8cbba80d41b270"
+    },
+    "game-cards/victory.webm": {
+      "bytes": 364835,
+      "sha256": "6c2c218bf44ed71ad78c87a80c5121e52ba040566ce4d534842370af84590f69"
+    },
+    "game-cards/victory.webp": {
+      "bytes": 22936,
+      "sha256": "4b45ffa1c7568121d7f64873220ae297e26336fa8065a977208cbc81caa973eb"
+    },
+    "mascot-avatar.png": {
+      "bytes": 23079,
+      "sha256": "32243ab7b56bda75f29ce96b3b702586724e8ef546c932ac60a2a90114067ce0"
+    },
+    "mascot.png": {
+      "bytes": 38225,
+      "sha256": "73044ea6f3b59c1700922b48273939ebe791af188fd96f44b795d7eaa09da031"
+    },
+    "rooms/baron-pit-winter-160.webp": {
+      "bytes": 5460,
+      "sha256": "24f7b45c5f37b6167ff23a645ef722eee5b601fbd4312bb5bf5745b05f33cbec"
+    },
+    "rooms/baron-pit-winter-480.webp": {
+      "bytes": 30710,
+      "sha256": "e44ea84544318a375fa6adf2f0b4962c544c45073336582f10f47ec420a84ea3"
+    },
+    "rooms/baron-pit-winter-960.webp": {
+      "bytes": 88894,
+      "sha256": "bcfae3c91a2da471160a97e9886191afb3da5ab9766af404af79cae74a403312"
+    },
+    "rooms/new-players-160.webp": {
+      "bytes": 4284,
+      "sha256": "1184c439c10b39ba6bac2f1e90106e3dc423ecb56a98083521e775ac885d7027"
+    },
+    "rooms/new-players-480.webp": {
+      "bytes": 21878,
+      "sha256": "a079983657ba3a82e66775ca720683951714c4feba944a471d41442a3ddb226b"
+    },
+    "rooms/new-players-960.webp": {
+      "bytes": 55798,
+      "sha256": "2b07b473feb7593271581748a9097b063dd78af606e404798a4798fc592f40f5"
+    },
+    "rooms/off-meta-lab-160.webp": {
+      "bytes": 4676,
+      "sha256": "b3ad0be12091d66da4f6d8286966ef2ff1630799b85cf95fd6cec9e8fb0a1d2c"
+    },
+    "rooms/off-meta-lab-480.webp": {
+      "bytes": 26562,
+      "sha256": "affb925b997ad914c4a631fabf1943e4d0cf9d907752a545c47c483ef03903f6"
+    },
+    "rooms/off-meta-lab-960.webp": {
+      "bytes": 70644,
+      "sha256": "7d388e7c6a18efe1f240a1f97a04c9a30410470e7a7e577040ade1f0fe10a1ff"
+    },
+    "rooms/patch-meta-160.webp": {
+      "bytes": 3140,
+      "sha256": "ac4a6ffb0bf0106d63e5418a383dc72e52b2cc4ad24b9be5303fafded466d9d7"
+    },
+    "rooms/patch-meta-480.webp": {
+      "bytes": 16404,
+      "sha256": "6eb36ce33b849c785575fc576369f4465d5cdc0a279a80a585a729a068299c55"
+    },
+    "rooms/patch-meta-960.webp": {
+      "bytes": 45860,
+      "sha256": "c5104a94301aceb65e0db77eefa058c65a1027126c7a68db7220c5348c4fd6bd"
+    }
+  }
+}
