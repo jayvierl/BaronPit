@@ -12,6 +12,12 @@
  * spec): the filter is the gate, so borderline work only waits when the
  * author is still on probation. Established accounts publish immediately and
  * the item is flagged for the reviewer sweep instead of sitting invisible.
+ *
+ * On top of the bands sits the new-account ramp (growth-push hardening):
+ * day-one accounts have everything held for review, accounts in their first
+ * week have link posts held, and a raid mode (MODERATION_RAID_MODE=on)
+ * widens both windows. Ramp holds are routine, not violations — the
+ * reviewer sweep approves them whenever the content itself is in criteria.
  */
 
 const SLURS = [
@@ -102,9 +108,59 @@ export function scoreContent(raw: string, opts: { lowTrust?: boolean; contactTex
 
 export type PublishOutcome = "block" | "hold" | "publish" | "publish-flagged";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Raid mode is an operator switch read from the environment at publish
+ * time. Only the exact value "on" enables it — a missing or invalid value
+ * is off, so a typo can never fail closed into holding everyone's posts.
+ */
+export function raidModeEnabled(env?: { MODERATION_RAID_MODE?: string }): boolean {
+  const source = env ?? (typeof process !== "undefined" ? process.env : undefined);
+  return source?.MODERATION_RAID_MODE === "on";
+}
+
+export interface PublishOptions {
+  lowTrust?: boolean;
+  contactText?: string;
+  /** Author's account creation time (ISO string). Missing or unparseable
+   *  age is treated as day-one — fail closed, like a screening outage. */
+  authorCreatedAt?: string | null;
+  /** Whether the submission contains a link, per the caller's link
+   *  detection (includesRoomLink). Falls back to the score's link count. */
+  hasLink?: boolean;
+  /** Clock override for tests; defaults to Date.now(). */
+  now?: number;
+  /** Raid-mode override for tests; defaults to raidModeEnabled(). */
+  raidMode?: boolean;
+}
+
+type RampHit = "new-account-day-one" | "new-account-link";
+
+/**
+ * The new-account ramp, applied above the score bands:
+ *   age < 1 day (or unknown)      -> hold everything ("new-account-day-one")
+ *   age < 7 days, with a link     -> hold ("new-account-link")
+ * Raid mode widens the hold-everything window to 7 days and the link
+ * window to 30 days. Returns the hit label to record, or null when the
+ * ramp does not apply and the normal bands decide.
+ */
+function newAccountRampHit(mod: ModResult, opts: PublishOptions): RampHit | null {
+  const now = opts.now ?? Date.now();
+  const raid = opts.raidMode ?? raidModeEnabled();
+  const created = opts.authorCreatedAt ? Date.parse(opts.authorCreatedAt) : NaN;
+  const age = Number.isFinite(created) ? now - created : null;
+  if (age === null || age < (raid ? 7 : 1) * DAY_MS) return "new-account-day-one";
+  if (age < (raid ? 30 : 7) * DAY_MS && (opts.hasLink ?? mod.linkCount > 0)) return "new-account-link";
+  return null;
+}
+
 /**
  * Map a scored submission to its publish outcome by account trust:
- *   block band    -> blocked at publish, whoever wrote it
+ *   block band    -> blocked at publish, whoever wrote it (deny wins over
+ *                    every ramp hold)
+ *   new-account   -> held for review under the ramp above, whatever the
+ *     ramp           score band, with the ramp label added to the hits
  *   borderline    -> held for review from low-trust (probation) accounts;
  *                    published and flagged for the reviewer sweep from
  *                    established accounts
@@ -113,10 +169,15 @@ export type PublishOutcome = "block" | "hold" | "publish" | "publish-flagged";
  * holds for a reviewer no matter who wrote it, matching the posture callers
  * already apply to that hit.
  */
-export function publishOutcome(mod: ModResult, opts: { lowTrust?: boolean; contactText?: string } = {}): PublishOutcome {
+export function publishOutcome(mod: ModResult, opts: PublishOptions = {}): PublishOutcome {
   if (mod.action === "block") return "block";
-  if (mod.action === "publish") return "publish";
   if (mod.hits.includes("screening-unavailable")) return "hold";
+  const ramp = newAccountRampHit(mod, opts);
+  if (ramp) {
+    if (!mod.hits.includes(ramp)) mod.hits.push(ramp);
+    return "hold";
+  }
+  if (mod.action === "publish") return "publish";
   return opts.lowTrust ? "hold" : "publish-flagged";
 }
 

@@ -72,7 +72,7 @@ it("rejects short, malformed and oversized prefixes before database access", () 
 
 it("checks player tags at insert and when opened, with identical treatment of absent and hidden players", async () => {
   const user: User = { id:1, email:"me@example.invalid", displayName:"Viewer", avatarHue:1, bio:"",
-    createdAt:new Date().toISOString(), bannedUntil:null, strikeCount:0, ageBand:"adult", termsCurrent:true };
+    createdAt:"2020-01-01T00:00:00.000Z", bannedUntil:null, strikeCount:0, ageBand:"adult", termsCurrent:true };
   const token = (name: string, puuid: string) => "[[p:na1."+mentionKey(puuid)+"|@"+name+"]]";
   const submit = (name: string, puuid: string) => createPost(user, {kind:"text", body:"Queue with "+token(name,puuid)});
   expect(await searchNameSuggestions("Jay Lewis#NA1","mentions",1,"na1")).toEqual([

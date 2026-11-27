@@ -63,7 +63,8 @@ export async function createPost(user: User, input: CreatePostInput, decision?: 
             VALUES ('post', ${user.id}, ${mod.score}, 'block', ${mod.hits.join(",")})`;
     return { ok: false, error: "That post can't be published — it trips our community safety filter. If you think this is a mistake, rephrase and try again." };
   }
-  const outcome = publishOutcome(mod, { lowTrust });
+  const hasLink = includesRoomLink(fields);
+  const outcome = publishOutcome(mod, { lowTrust, authorCreatedAt: user.createdAt, hasLink });
   if (outcome === "hold" && !input.submitForReview && !mod.hits.includes("screening-unavailable")) {
     return { ok: false, reconsider: true, error: "This wording may break the community guidelines. Edit your draft or submit it for a moderator to review." };
   }
@@ -104,7 +105,7 @@ export async function createPost(user: User, input: CreatePostInput, decision?: 
     INSERT INTO wp_mod_log (target_kind, target_id, author_id, score, action, detail)
     SELECT 'post',id,$1,$22,CASE WHEN $6='held' THEN 'hold' ELSE 'flag' END,$23 FROM inserted WHERE $6='held' OR $24
   ) SELECT id FROM inserted UNION ALL SELECT NULL AS id FROM mention_gate WHERE NOT allowed`, [user.id,input.kind,body,roomId,JSON.stringify(data),status,input.kind === "clip",input.kind === "card",key,hash,
-    input.kind === "clip" || includesRoomLink(fields),!!decision,decision?.champion ?? null,decision?.opponent ?? null,decision?.role ?? null,
+    input.kind === "clip" || hasLink,!!decision,decision?.champion ?? null,decision?.opponent ?? null,decision?.role ?? null,
     decision?.topic ?? null,decision?.patch ?? null,decision?.itemId ?? null,decision?.itemName ?? null,PATCH_PUBLISHER,quotedPostId ?? null,
     mod.score,mod.hits.join(","),flagged,JSON.stringify(mentions.targets)]),key,user.id);
   } catch(error) { return await priorSubmission("post",user.id,key,hash) ?? {ok:false,error:roomWriteError(error)}; }
@@ -187,7 +188,8 @@ export async function addComment(user: User, postId: number, bodyRaw: string, pa
     await q`INSERT INTO wp_mod_log (target_kind, author_id, score, action, detail) VALUES ('comment', ${user.id}, ${mod.score}, 'block', ${mod.hits.join(",")})`;
     return { ok: false, error: "That comment can't be published — it trips our community safety filter." };
   }
-  const outcome = publishOutcome(mod, { lowTrust });
+  const hasLink = includesRoomLink([mentions.text]);
+  const outcome = publishOutcome(mod, { lowTrust, authorCreatedAt: user.createdAt, hasLink });
   if (outcome === "hold" && !submitForReview && !mod.hits.includes("screening-unavailable")) {
     return { ok: false, reconsider: true, error: "This reply may break the guidelines. Edit it or submit for moderator review." };
   }
@@ -216,7 +218,7 @@ export async function addComment(user: User, postId: number, bodyRaw: string, pa
     INSERT INTO wp_mod_log (target_kind, target_id, author_id, score, action, detail)
     SELECT 'comment', id, $1, $7, CASE WHEN $5='held' THEN 'hold' ELSE 'flag' END, $8 FROM submitted WHERE $5 = 'held' OR $12
   ) SELECT id FROM submitted UNION ALL SELECT NULL AS id FROM mention_gate WHERE NOT allowed`,
-  [user.id, postId, parentId ?? null, body, status, oneFix, mod.score, mod.hits.join(","),includesRoomLink([mentions.text]),key,hash,flagged,JSON.stringify(mentions.targets),matchRef]),key,user.id);
+  [user.id, postId, parentId ?? null, body, status, oneFix, mod.score, mod.hits.join(","),hasLink,key,hash,flagged,JSON.stringify(mentions.targets),matchRef]),key,user.id);
   } catch(error) { return await priorSubmission("comment",user.id,key,hash) ?? {ok:false,error:roomWriteError(error)}; }
   if (rows[0]?.id === null) return {ok:false,error:unavailableMention};
   if (!rows.length) return await priorSubmission("comment",user.id,key,hash) ?? { ok: false, error: oneFix ? "One Fix needs an available game card." : "Replies are closed or this conversation is unavailable." };

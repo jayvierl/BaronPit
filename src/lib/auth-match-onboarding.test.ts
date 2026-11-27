@@ -51,7 +51,7 @@ beforeAll(async () => {
 
 afterAll(async () => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); await postgres.close(); });
 
-it("sends a welcome through the isolated mail boundary, signs up once, and publishes a new spectator's discussion", async () => {
+it("sends a welcome through the isolated mail boundary, signs up once, and queues a new spectator's discussion for review", async () => {
   const writer: CookieJar = {}, replayBrowser: CookieJar = {};
   let mailCount = 0;
   let welcome = false;
@@ -109,12 +109,15 @@ it("sends a welcome through the isolated mail boundary, signs up once, and publi
   const question = { action: "ask", discussionKind: "question", confirmPublicMatch: true, platform: "na1", riotId: "Fixture Target#LAB",
     matchId: "NA1_919191", champion: "Ashe", role: "Bot", topic: "Objective", body: "Should Ashe clear the wave before heading to the dragon?" };
   expect((await post(postQuestion, "/api/questions", question, replayBrowser)).status).toBe(401);
-  const receipt = await post(postQuestion, "/api/questions", question, writer);
+  // Day-one accounts are held for review under the new-account ramp: the
+  // first attempt is offered back for an edit or an explicit submit.
+  const firstTry = await post(postQuestion, "/api/questions", question, writer);
+  expect(firstTry.status).toBe(422);
+  const receipt = await post(postQuestion, "/api/questions", { ...question, submitForReview: true }, writer);
   expect(receipt.status).toBe(201);
   const { postId, status } = await receipt.json();
-  // Clean posts publish immediately now, even from a brand-new account.
-  expect(status).toBe("visible");
+  expect(status).toBe("held");
   const [published] = await q`SELECT author_id,status,data#>>'{matchContext,authorRole}' AS role FROM wp_posts WHERE id=${postId}`;
-  expect(published).toMatchObject({ author_id: user.id, status: "visible", role: "spectator" });
-  expect(await getPost(postId, null)).not.toBeNull();
+  expect(published).toMatchObject({ author_id: user.id, status: "held", role: "spectator" });
+  expect(await getPost(postId, null)).toBeNull();
 });

@@ -252,10 +252,11 @@ describe("feed and conversation read contracts", () => {
     expect(await getPost(93, viewer)).toMatchObject({pollResults: [0, 1], myVote: 1});
     expect((await getPost(94, viewer))?.data).toEqual({});
   });
-  it("publishes clean new-account replies, flags borderline established replies, and offers an edit before a borderline new-account reply is queued", async () => {
+  it("holds clean new-account replies for review, flags borderline established replies, and offers an edit before a new-account reply is queued", async () => {
     const fresh = { ...viewer, createdAt: new Date().toISOString() };
     const result = await addComment(fresh,13,"I liked that decision.");
-    expect(result).toMatchObject({ok:true,status:"visible"});
+    expect(result).toMatchObject({ok:false,reconsider:true});
+    expect(await addComment(fresh,13,"I liked that decision.",undefined,false,true)).toMatchObject({ok:true,status:"held"});
     const borderline = "Check https://example.com";
     const flagged = await addComment(viewer,13,borderline);
     expect(flagged).toMatchObject({ok:true,status:"visible"});
