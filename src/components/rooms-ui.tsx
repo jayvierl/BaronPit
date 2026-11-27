@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { Room } from "@/lib/rooms";
 import { ChampionPortrait } from "./champion-portrait";
@@ -20,8 +20,18 @@ function directoryPath(query: string, limit: number) {
 export function RoomDirectory({ rooms, patch, signedIn, initialQuery, initialLimit }: {
   rooms: (Room & { joined: boolean })[]; patch: string; signedIn: boolean; initialQuery: string; initialLimit: number;
 }) {
-  const [query, setQuery] = useState(initialQuery);
-  const [limit, setLimit] = useState(Math.max(initialLimit, initialQuery ? pageSize : 0));
+  const params = useSearchParams();
+  const query = params ? (params.get("q") || "").slice(0, 80) : initialQuery;
+  const rawLimit = params?.get("limit") || "";
+  const requestedLimit = params ? (/^\d{1,4}$/.test(rawLimit) ? Number(rawLimit) : 0) : initialLimit;
+  const limit = Math.max(Math.min(requestedLimit, rooms.length), query.trim() ? pageSize : 0);
+  function updateQuery(value: string) {
+    const url = new URL(window.location.href);
+    if (value) url.searchParams.set("q", value);
+    else url.searchParams.delete("q");
+    url.searchParams.delete("limit");
+    window.history.replaceState(null, "", url);
+  }
   const normalized = roomKey(query);
   const matches = !query.trim() ? rooms : normalized
     ? rooms.filter(room => roomKey(room.name).includes(normalized) || roomKey(room.slug).includes(normalized)) : [];
@@ -30,7 +40,7 @@ export function RoomDirectory({ rooms, patch, signedIn, initialQuery, initialLim
     <div>
       <form action="/rooms#room-directory" role="search" className={styles.searchForm}>
         <input type="search" name="q" aria-label="Find a room" placeholder="Search rooms by champion or topic" maxLength={80} enterKeyHint="search"
-          value={query} onChange={e => { setQuery(e.target.value); setLimit(e.target.value.trim() ? pageSize : 0); }}
+          defaultValue={query} onChange={e => updateQuery(e.target.value)}
           className={styles.search}/>
         <button type="submit">Search</button>
       </form>
@@ -38,8 +48,7 @@ export function RoomDirectory({ rooms, patch, signedIn, initialQuery, initialLim
         ? `Showing ${visible.length} of ${matches.length} rooms` : ""}</p>
       {visible.map(room => (
         <div key={room.id} className="list-row">
-          <Link href={`/rooms/${room.slug}`} prefetch={false} className={styles.roomLink}
-            onNavigate={() => window.history.replaceState(null, "", directoryPath(query, limit))}>
+          <Link href={`/rooms/${room.slug}`} prefetch={false} className={styles.roomLink}>
             {room.championId && <ChampionPortrait id={room.championId} patch={patch} size={28}/>}
             <strong>{room.name}</strong>
           </Link>
