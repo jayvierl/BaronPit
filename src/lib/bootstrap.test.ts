@@ -13,7 +13,7 @@ it("brings an existing install forward atomically and retains its patch state",a
   const rows = await q`SELECT key,value FROM wp_meta ORDER BY key`;
   expect(rows).toContainEqual({key:"last_patch",value:"16.23.1"});
   expect(rows).toContainEqual({key:"schema_revision", value:"baron-profile-avatar-20261126-1"});
-  expect(rows).toContainEqual({key:"schema_generation", value:"5"});
+  expect(rows).toContainEqual({key:"schema_generation", value:"6"});
   expect(await q`SELECT to_regclass('wp_mod_decisions') IS NOT NULL AS installed`).toEqual([{installed:true}]);
   expect(await q`SELECT to_regclass('wp_players_name_prefix_idx') IS NOT NULL AS players,
     to_regclass('wp_users_display_prefix_idx') IS NOT NULL AS people`).toEqual([{players:true,people:true}]);
@@ -28,9 +28,9 @@ it("brings an existing install forward atomically and retains its patch state",a
 
 it("stops a stale cold-start transaction before it can reapply incompatible DDL", async () => {
   const sql = await getSql();
-  await sql`UPDATE wp_meta SET value='6' WHERE key='schema_generation'`;
+  await sql`UPDATE wp_meta SET value='7' WHERE key='schema_generation'`;
   testQueries.length = 0;
   await expect(sql.transaction(schemaStatements(sql, true))).rejects.toMatchObject({code:"BP001"});
   expect(testQueries.some(s => s.includes("CREATE TABLE IF NOT EXISTS wp_users"))).toBe(false);
-  expect(await q`SELECT value FROM wp_meta WHERE key='schema_generation'`).toEqual([{value:"6"}]);
+  expect(await q`SELECT value FROM wp_meta WHERE key='schema_generation'`).toEqual([{value:"7"}]);
 });

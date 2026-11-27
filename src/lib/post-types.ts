@@ -30,6 +30,7 @@ export interface PostView {
 export interface CommentView {
   id: number; postId: number; authorId: number; authorName: string; authorHue: number;
   authorAvatar?: AvatarRef;
+  matchRef?: string;
   parentId: number | null; body: string; status: string; createdAt: string; oneFix: boolean;
   reactions: Record<string, number>; myReactions: string[]; replies: CommentView[];
 }

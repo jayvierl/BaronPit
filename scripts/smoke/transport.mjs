@@ -136,6 +136,13 @@ async function query(tx, statement) {
 globalThis.fetch = async function fixtureFetch(input, init) {
   const req = new Request(input, init);
   const url = new URL(req.url);
+  if (url.href === "https://api.resend.com/emails" && process.send && process.env.RESEND_API_KEY === "fixture-only") {
+    const { to, text } = await req.json();
+    const link = text.split("\n").find(line => line.startsWith(process.env.SMOKE_ORIGIN + "/signin/confirm#"));
+    if (!link || !to.endsWith("@example.invalid")) throw new Error("Unexpected fixture sign-in email");
+    process.send({ type: "fixture-mail", to, link });
+    return Response.json({ id: "local-fixture-mail" });
+  }
   if (req.url === fixturePhotoEnv.PROFILE_PHOTO_SCANNER_URL) return clearFixturePhoto(req);
   if (req.headers.get("neon-connection-string") === fixtureDsn && url.pathname === "/sql") {
     try {

@@ -279,7 +279,7 @@ export async function readHomeFeedPage(viewerId: number | null, tab: HomeFeedTab
 
 export async function readComments(postId: number, viewerId: number | null): Promise<CommentView[]> {
   const rows = await queryRows(`WITH RECURSIVE ${HIDDEN_AUTHORS}, ${visibleCommentsFor("posts")}
-    SELECT c.id, c.author_id, c.parent_id, c.body, c.status, c.created_at, c.one_fix,
+    SELECT c.id, c.author_id, c.parent_id, c.body, c.status, c.created_at, c.one_fix, c.match_ref,
       u.display_name AS author_name, u.avatar_hue AS author_hue, u.avatar_ref
     FROM thread t JOIN wp_comments c ON c.id = t.id JOIN wp_users u ON u.id = c.author_id
     ORDER BY c.created_at, c.id`, [viewerId, [postId]]);
@@ -292,6 +292,7 @@ export async function readComments(postId: number, viewerId: number | null): Pro
       id, postId, authorId: Number(r.author_id), authorName: String(r.author_name), authorHue: Number(r.author_hue),
       authorAvatar: publicAvatar(r.avatar_ref),
       parentId: r.parent_id == null ? null : Number(r.parent_id), body: String(r.body),
+      ...(typeof r.match_ref === "string" && { matchRef: r.match_ref }),
       status: String(r.status), createdAt: String(r.created_at), oneFix: Boolean(r.one_fix),
       ...(groups.get(id) ?? { reactions: {}, myReactions: [] }), replies: [],
     });

@@ -45,15 +45,19 @@ export async function startFixtureServer({ demo = false } = {}) {
         RIOT_API_KEY: "fixture-only",
         __NEXT_PROCESSED_ENV: "true",
         CRON_SECRET: "",
-        RESEND_API_KEY: "",
+        RESEND_API_KEY: demo === true ? "fixture-only" : "",
         BLOB_READ_WRITE_TOKEN: "",
         ...fixturePhotoEnv,
         VERCEL_ENV: "development",
         DUO_MATCHING_ENABLED: "false",
       },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: demo === true ? ["ignore", "pipe", "pipe", "ipc"] : ["ignore", "pipe", "pipe"],
     },
   );
+  const mailbox = new Map();
+  server.on("message", message => {
+    if (message.type === "fixture-mail") mailbox.set(message.to, message.link);
+  });
   let output = "";
   let startupError;
   server.on("error", error => { startupError = error; });
@@ -73,7 +77,7 @@ export async function startFixtureServer({ demo = false } = {}) {
       if (startupError) throw startupError;
       if (server.exitCode !== null || server.signalCode !== null) throw new Error("Local production server exited");
       if (/Ready in|Ready on/.test(output)) {
-        return { origin, port, session, helperSession, stop, output: () => output };
+        return { origin, port, session, helperSession, mailbox, stop, output: () => output };
       }
       await delay(100);
     }

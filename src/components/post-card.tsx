@@ -316,6 +316,7 @@ export function PostCard({
             viewerId={viewerId}
             viewerIdentity={viewerIdentity}
             onReplyCount={recordReplyCount}
+            matchContext={matchContext}
             decisionQuestion={post.isQuestion}
             repliesClosed={post.repliesClosed}
             allowOneFix={post.kind === "card"}

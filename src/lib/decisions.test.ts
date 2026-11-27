@@ -14,7 +14,7 @@ import {
 } from "./decisions";
 import { q } from "./db";
 import type { User } from "./auth";
-import { addComment, getPost } from "./social";
+import { addComment, getPost, listComments } from "./social";
 import { readQuestionMatch } from "./question-match";
 import { discussionMetadata } from "./discussion-library-preview";
 
@@ -222,7 +222,10 @@ describe("moderated decision questions", () => {
       }
       expect(await askDecision(reader,{body:"How can I play the next teamfight?",champion:"Ashe",role:"Team",topic:"Teamfight"})).toMatchObject({ok:false});
       expect(await decisions(null,{postId,mode:"unanswered"})).toEqual([]);
-      const reply = await addComment({...owner,id:1},postId,"That depends on how the wave pushes.");
+      const reference = (matchRef: string) => addComment(owner,postId,"That depends on how the wave pushes.",undefined,false,false,null,matchRef);
+      expect(await reference(hidden.matchId)).toMatchObject({ok:false});
+      const reply = await reference(proof.matchId);
+      expect(await listComments(postId,null)).toMatchObject([{matchRef:proof.matchId}]);
       expect(reply.ok).toBe(true);
       if (reply.ok) {
         expect(await acceptDecision(3,postId,reply.postId)).toBe(false);
@@ -232,6 +235,7 @@ describe("moderated decision questions", () => {
       await q`INSERT INTO wp_blocks(blocker_id,blocked_id) VALUES (5,2)`;
       expect(await readQuestionMatch(proof,2)).toBeNull();
       expect(await getPost(postId,{...owner,id:2})).toBeNull();
+      expect(await listComments(postId,{...owner,id:2})).toEqual([]);
       expect(await decisions(2,{postId})).toEqual([]);
       expect((await profileMatchDiscussions(3,2,null)).entries).toEqual([]);
       expect((await discussionMetadata(String(postId),2)).openGraph).toBeUndefined();

@@ -28,7 +28,7 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 type Sql = NeonQueryFunction<false, false>;
 // Keep the deployed pre-generation bundle from replaying old DDL during a rolling release.
 const LEGACY_SCHEMA_REVISION = "baron-profile-avatar-20261126-1";
-const SCHEMA_GENERATION = 5;
+const SCHEMA_GENERATION = 6;
 let client: Sql | undefined;
 let ready: Promise<void> | undefined;
 
@@ -308,6 +308,7 @@ export function schemaStatements(sql: Sql, checkAfterLock = false) {
     sql`CREATE INDEX IF NOT EXISTS wp_reports_target_idx ON wp_reports (target_kind, target_id, status)`,
     sql`CREATE INDEX IF NOT EXISTS wp_mod_log_author_idx ON wp_mod_log (author_id)`,
     sql`ALTER TABLE wp_lfg ADD COLUMN IF NOT EXISTS blocks TEXT[] NOT NULL DEFAULT '{}'`,
+    sql`ALTER TABLE wp_comments ADD COLUMN IF NOT EXISTS match_ref TEXT`,
     sql`ALTER TABLE wp_comments ADD COLUMN IF NOT EXISTS one_fix BOOLEAN NOT NULL DEFAULT false`,
     sql`CREATE TABLE IF NOT EXISTS wp_rate_events (
     id SERIAL PRIMARY KEY,

@@ -9,6 +9,8 @@ import Link from "next/link";
 import type { CommentView } from "@/lib/social";
 import type { AvatarIdentity } from "@/lib/author-identity";
 import { PostCardLoading } from "./post-card-loading";
+import { MatchDiscussionPreview } from "./match-discussion-preview";
+import type { MatchContext } from "@/lib/match-context";
 import { TaggedText } from "./game-tag";
 import { TagFieldWrap, useTagSuggest } from "./tag-suggest";
 import { WithdrawSubmission } from "./withdraw-submission";
@@ -70,6 +72,7 @@ export function CommentSection({
   repliesClosed = false,
   allowOneFix,
   decisionQuestion,
+  matchContext,
   onReplyCount,
 }: {
   postId: number;
@@ -83,6 +86,7 @@ export function CommentSection({
   repliesClosed?: boolean;
   allowOneFix?: boolean;
   decisionQuestion?: boolean;
+  matchContext?: MatchContext | null;
   onReplyCount?: (count: number) => void;
 }) {
   const router = useRouter();
@@ -91,6 +95,8 @@ export function CommentSection({
   const [revision, setRevision] = useState(0);
   const [draft, setDraft] = useState("");
   const [replyTo, setReplyTo] = useState<number | "reselect" | null>(null);
+  const [matchRef, setMatchRef] = useState<string | null>(null);
+  const attachedMatch = matchContext && matchContext.matchId === matchRef ? matchContext : null;
   const [oneFix, setOneFix] = useState(false);
   const [notice, setNotice] = useState("");
   const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
@@ -119,6 +125,7 @@ export function CommentSection({
       const hasStoredTarget = "parentId" in saved || "rootId" in saved;
       const target = validId(saved.parentId) ? saved.parentId : hasStoredTarget ? "reselect" : null;
       setReplyTo(target);
+      setMatchRef(typeof saved.matchRef === "string" ? saved.matchRef : null);
       setOneFix(saved.oneFix === true && target === null);
       setNotice("Your reply is ready to review.");
       inputRef.current?.focus();
@@ -183,10 +190,10 @@ export function CommentSection({
     // Guests can type into the first HTML before React receives input events.
     const body = signedIn ? draft : inputRef.current?.value ?? draft;
     const mode = action.authStep === "enrol" ? "enrol" : undefined;
-    if (!body.trim() && !replyTarget) { router.push(signInHref(destination, mode)); return; }
+    if (!body.trim() && !replyTarget && !attachedMatch) { router.push(signInHref(destination, mode)); return; }
     try {
       router.push(beginDraftSignIn(window.localStorage, scope, destination,
-        {body, parentId: replyTarget?.id, oneFix: oneFixRef.current?.checked === true}, mode));
+        {body, parentId: replyTarget?.id, matchRef: attachedMatch?.matchId, oneFix: oneFixRef.current?.checked === true}, mode));
     } catch { setNotice("This browser couldn’t save your reply. Copy it before signing in."); }
   }
 
@@ -216,6 +223,7 @@ export function CommentSection({
     body: draft.trim(),
     parentId: typeof replyTo === "number" ? replyTo : undefined,
     oneFix: !!allowOneFix && oneFix && replyTo === null,
+    ...(attachedMatch && { matchRef: attachedMatch.matchId }),
     expectedAuthorId: viewerId ?? undefined,
   };
   const submissionKey = JSON.stringify(payload);
@@ -233,6 +241,7 @@ export function CommentSection({
     });
     if (!result) return;
     setDraft("");
+    setMatchRef(null);
     setReplyTo(null);
     setOneFix(false);
     if (result.status === "held") setNotice("Your reply is awaiting moderator review.");
@@ -271,6 +280,9 @@ export function CommentSection({
               {c.oneFix && <span className="onefix-tag">One fix</span>}
               <TaggedText body={c.body} />
             </div>
+            {c.matchRef && (matchContext?.matchId === c.matchRef
+              ? <MatchDiscussionPreview match={matchContext} postId={postId} reply/>
+              : <p className="meta">The referenced match is unavailable.</p>)}
             {c.status === "held" && <span className="meta">Awaiting review</span>}
             <div className={threadStyles.replyActions}>
               {!repliesClosed && <button
@@ -383,6 +395,13 @@ export function CommentSection({
               <p className="meta">For example, “I’d recall after crashing the wave so we can buy together. If it’s frozen at their tower, I’d ask my duo to help push first.”</p>
             </details>
           )}
+          {matchContext && <div>
+            {attachedMatch && <MatchDiscussionPreview match={attachedMatch} postId={postId} reply/>}
+            <button type="button" className="text-btn" disabled={!hydrated || action.busy}
+              onClick={() => setMatchRef(attachedMatch ? null : matchContext.matchId)}>
+              {attachedMatch ? "Remove match" : "Reference this match"}
+            </button>
+          </div>}
           <div className="reply-composer">
             {signedIn && viewerIdentity && <Avatar {...viewerIdentity} size={32} />}
             {decisionQuestion ? (
