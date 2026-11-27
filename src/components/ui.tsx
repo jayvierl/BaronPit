@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { publicAvatar, championAvatarArt, avatarImageUrl, isOfficialRiotIcon, type AvatarRef } from "@/lib/avatar";
@@ -76,28 +75,28 @@ export function RichBody({ body, threadHref, threadLinkClassName }: { body: stri
   // Tag chips are interactive themselves, so they are never wrapped in the
   // thread link and always stay reachable.
   let proseLinked = false;
-  function renderText(text: string, keyPrefix: string) {
-    const parts = text.split(/(https?:\/\/[^\s]+|#[\p{L}\p{N}_]+)/gu);
-    return parts.map((part, i) => {
-      const key = `${keyPrefix}:${i}`;
-      if (part.startsWith("#")) return <a key={key} className="tag" href={`/search?q=${encodeURIComponent(part)}`}>{part}</a>;
-      if (officialNewsLink.test(part)) {
-        return <a key={key} href={part} rel="noopener noreferrer" target="_blank">leagueoflegends.com ↗</a>;
-      }
-      if (threadHref && part.trim()) {
+  const nodes = [];
+  for (const [index, segment] of segments.entries()) {
+    if (segment.type === "tag") {
+      nodes.push(<GameTagChip key={index} tag={segment.tag} />);
+      continue;
+    }
+    const parts = segment.text.split(/(https?:\/\/[^\s]+|#[\p{L}\p{N}_]+)/gu);
+    for (const [i, part] of parts.entries()) {
+      const key = `${index}:${i}`;
+      if (part.startsWith("#")) {
+        nodes.push(<a key={key} className="tag" href={`/search?q=${encodeURIComponent(part)}`}>{part}</a>);
+      } else if (officialNewsLink.test(part)) {
+        nodes.push(<a key={key} href={part} rel="noopener noreferrer" target="_blank">leagueoflegends.com ↗</a>);
+      } else if (threadHref && part.trim()) {
         const tabIndex = proseLinked ? -1 : undefined;
         proseLinked = true;
-        return <Link key={key} href={threadHref} prefetch={false}
-          className={threadLinkClassName} tabIndex={tabIndex}>{part}</Link>;
+        nodes.push(<Link key={key} href={threadHref} prefetch={false}
+          className={threadLinkClassName} tabIndex={tabIndex}>{part}</Link>);
+      } else {
+        nodes.push(part);
       }
-      return part;
-    });
+    }
   }
-  return (
-    <p className="post-body">
-      {segments.map((segment, i) => segment.type === "tag"
-        ? <GameTagChip key={i} tag={segment.tag} />
-        : <Fragment key={i}>{renderText(segment.text, String(i))}</Fragment>)}
-    </p>
-  );
+  return <p className="post-body">{nodes}</p>;
 }
