@@ -98,15 +98,12 @@ export function TagPickerMenu({ anchor, id, options, active, status, interacting
               press.current = null;
               interactingRef.current = false;
               if (!start || start.id !== event.pointerId || start.index !== index) return;
-              suppressClick.current = true;
-              const distance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
-              if (distance > 10) return;
-              event.preventDefault();
-              event.stopPropagation();
-              onSelect(option);
+              suppressClick.current = Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10;
+              // Keep the option mounted through the native click. Removing it on
+              // pointerup lets a mobile browser click the control underneath it.
             }}
             onClick={event => {
-              // Assistive technology activates an option without a pointer sequence.
+              event.preventDefault();
               if (event.detail === 0 || !suppressClick.current) onSelect(option);
               event.stopPropagation();
             }}>

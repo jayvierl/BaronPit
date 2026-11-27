@@ -86,8 +86,10 @@ try {
   await visible(row.locator('a[href="/champions/Ashe"]'));
   await verifyPlayerLink(row);
 
-  await row.getByRole("button", { name: /^Reply to / }).tap();
+  await reply.tap();
   if (engine === "chromium") await swipeOptions(page, reply);
+  await row.getByRole("button", { name: /^Reply to / }).tap();
+  await visible(page.getByText(/Replying to Demo River/));
   await reply.pressSequentially("Try ashe", { delay: 45 });
   await getOption(page, /Fated Ashes/i).tap();
   assert.equal((await reply.inputValue()).trimEnd(), "Try Fated Ashes");
@@ -108,7 +110,8 @@ try {
   await taggedPerson(page, post);
   const published = await submit(page, page.locator("fieldset").filter({ has: post })
     .getByRole("button", { name: "Post", exact: true }), "/api/social/post", 200);
-  await load(page, fixture.origin, "/post/" + published.postId);
+  await page.getByRole("link", { name: "View thread", exact: true }).tap();
+  await page.waitForURL(url => url.pathname === "/post/" + published.postId);
   await page.reload();
   const body = page.locator("article p.post-body").first();
   await visible(body.locator('a[href="/items/1058"]'));
