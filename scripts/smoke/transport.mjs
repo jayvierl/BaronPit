@@ -168,6 +168,11 @@ globalThis.fetch = async function fixtureFetch(input, init) {
   }
   if (url.hostname === "ddragon.leagueoflegends.com") {
     if (url.pathname === "/api/versions.json") return Response.json(["16.23.1"]);
+    if (url.pathname === "/cdn/16.23.1/data/en_US/champion/Ashe.json")
+      return Response.json({ version: "16.23.1", data: { Ashe: {
+        id: "Ashe", passive: { name: "Frost Shot", description: "A fixture slow." },
+        spells: ["Ranger’s Focus", "Volley", "Hawkshot", "Enchanted Crystal Arrow"].map(name => ({ name, description: "Fixture ability description." })),
+      } } });
     if (url.pathname === "/cdn/16.23.1/data/en_US/champion.json")
       return Response.json({
         data: {

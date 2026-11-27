@@ -26,7 +26,8 @@ import { validId } from "@/lib/ids";
 import { signInHref } from "@/lib/signin-return";
 import { Avatar } from "@/components/ui";
 import { PlayerStats } from "@/components/player-stats";
-import { PlayerOverview } from "@/components/player-overview";
+import { playerDisplayTime } from "@/lib/player-display-time";
+import { PlayerOverview, RecentResults } from "@/components/player-overview";
 import { EndorseRow, FollowButton, UserSafetyMenu } from "@/components/social-ui";
 import { DuoPinButton } from "@/components/duo-shortlist";
 import { pinnedDuoIds } from "@/lib/duo-shortlist";
@@ -70,7 +71,7 @@ export default async function ProfilePage({ params, searchParams }: {
   if (profile === undefined) return <ProfileUnavailable retryHref={retryHref} />;
   if (!profile) notFound();
   const content = await Promise.all([
-    activeTab === "posts" ? currentPatch() : "", followCounts(userId), endorsementCounts(userId), readLinkedPlayers(userId, viewer?.id ?? null),
+    activeTab === "posts" ? currentPatch() : "", followCounts(userId), endorsementCounts(userId), readLinkedPlayers(userId, viewer?.id ?? null, activeTab === "stats"),
     viewer && viewer.id !== userId ? isFollowing(viewer.id,userId) : false,
     activeTab === "posts" ? feedByAuthor(userId,viewer,20).catch(() => null) : [],
     profile.link ? readProfileLink(profile.link, viewer?.id ?? null) : null,
@@ -157,10 +158,15 @@ export default async function ProfilePage({ params, searchParams }: {
       {activeTab === "stats" && (
         linkedPlayers.length ? linkedPlayers.map(p => {
           const href = withSearchReturn(playerStatsHref(p.platform, `${p.gameName}#${p.tagLine}`), searchReturn);
+          const updated = playerDisplayTime(p.fetchedAt);
           return <section className={styles.account} key={p.puuid} aria-label={`${p.gameName}#${p.tagLine}`}>
             <h2>{p.gameName}#{p.tagLine}</h2>
             <p className="meta">{p.platform.toUpperCase()} · {p.verified ? "Verified Riot link" : "Unverified Riot link"}</p>
-            <PlayerStats player={p} lookupHref={`${href}#match-history`}/>
+            {updated && <p className="meta">Last updated <time dateTime={updated.dateTime}>{updated.label}</time></p>}
+            <PlayerStats player={p} variant="profile"/>
+            <RecentResults matches={p.snapshot.matches} historyPath={href}/>
+            {!p.snapshot.matches.length && <p className="meta">No recent public games available.</p>}
+            <Link className={styles.link} href={`${href}#match-history`}>View match history →</Link>
           </section>;
         }) : <div className={styles.empty}>
           <h2>{isSelf ? "Link your Riot ID to show player stats" : "No Riot account linked"}</h2>
