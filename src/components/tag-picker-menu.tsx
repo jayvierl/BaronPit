@@ -25,6 +25,7 @@ export function TagPickerMenu({ anchor, id, options, active, status, interacting
   const press = useRef<{ id: number; index: number; x: number; y: number } | null>(null);
 
   const suppressClick = useRef(false);
+  const touchChoice = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     const popup = menu.current;
@@ -79,7 +80,7 @@ export function TagPickerMenu({ anchor, id, options, active, status, interacting
   return createPortal(
     <div ref={menu} className={styles.menu}
       onPointerDownCapture={() => { interactingRef.current = true; }}
-      onPointerCancel={() => { suppressClick.current = true; press.current = null; interactingRef.current = false; if (document.activeElement !== anchor) onDismiss(); }}
+      onPointerCancel={() => { touchChoice.current = null; suppressClick.current = true; press.current = null; interactingRef.current = false; if (document.activeElement !== anchor) onDismiss(); }}
       onPointerUp={() => { interactingRef.current = false; }}>
       <ul id={id} role="listbox" aria-label="Tag suggestions">
         {options.map((option, index) => (
@@ -88,9 +89,10 @@ export function TagPickerMenu({ anchor, id, options, active, status, interacting
             onPointerMove={event => { if (event.pointerType === "mouse" && !event.buttons) onActive(index); }}
             onPointerDown={event => {
               if (!event.isPrimary || event.button !== 0) return;
+              touchChoice.current = null;
               suppressClick.current = false;
               press.current = { id: event.pointerId, index, x: event.clientX, y: event.clientY };
-              event.preventDefault(); // Keep the keyboard and original edit selection.
+              if (event.pointerType === "mouse") event.preventDefault(); // Preserve text focus during a mouse click.
               event.currentTarget.setPointerCapture(event.pointerId);
             }}
             onPointerUp={event => {
@@ -99,8 +101,16 @@ export function TagPickerMenu({ anchor, id, options, active, status, interacting
               interactingRef.current = false;
               if (!start || start.id !== event.pointerId || start.index !== index) return;
               suppressClick.current = Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10;
-              // Keep the option mounted through the native click. Removing it on
-              // pointerup lets a mobile browser click the control underneath it.
+              if (event.pointerType === "touch" && !suppressClick.current) touchChoice.current = index;
+            }}
+            onTouchEnd={event => {
+              if (event.touches.length || touchChoice.current !== index || !event.cancelable) return;
+              touchChoice.current = null;
+              // Cancel the browser's compatibility click before removing the row;
+              // Chromium would otherwise hit the element revealed under the finger.
+              event.preventDefault();
+              event.stopPropagation();
+              onSelect(option);
             }}
             onClick={event => {
               event.preventDefault();
