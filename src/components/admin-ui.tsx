@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { decisions, reportRules, type TargetKind, type Rule } from "@/lib/safety-policy";
 import { postJson } from "@/lib/client";
+import { useHydrated } from "./use-hydrated";
 
 export function ReviewForm({
   kind,
@@ -15,12 +16,13 @@ export function ReviewForm({
   rule: Rule;
   releasable?: boolean;
 }) {
+  const hydrated = useHydrated();
   const router = useRouter(),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function decide(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (!hydrated || busy) return;
     const f = new FormData(event.currentTarget);
     if (f.get("action") === "ban" && !confirm("Permanently restrict this account?")) return;
     setBusy(true);
@@ -40,7 +42,7 @@ export function ReviewForm({
     setBusy(false);
   }
   return (
-    <form onSubmit={decide} style={{ display: "grid", gap: 8 }}>
+    <form method="post" onSubmit={decide} style={{ display: "grid", gap: 8 }}>
       {kind !== "appeal" && (
         <label>
           Applicable rule{" "}
@@ -80,21 +82,23 @@ export function ReviewForm({
           Reason sent to the appellant <textarea name="reason" maxLength={400} required />
         </label>
       )}
-      <button type="submit" className="btn small" disabled={busy}>
+      <button type="submit" className="btn small" disabled={!hydrated || busy}>
         {busy ? "Saving…" : "Record decision"}
       </button>
       {error && <p role="alert">{error}</p>}
+      <noscript><p>Enable JavaScript to record a moderation decision.</p></noscript>
     </form>
   );
 }
 export function AppealForm({ id }: { id: number }) {
+  const hydrated = useHydrated();
   const router = useRouter(),
     [busy, setBusy] = useState(false),
     [msg, setMsg] = useState(""),
     [done, setDone] = useState(false);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (busy || done) return;
+    if (!hydrated || busy || done) return;
     const f = new FormData(e.currentTarget);
     setBusy(true);
     const r = await postJson("/api/social/appeal", { id, message: f.get("message") });
@@ -106,26 +110,28 @@ export function AppealForm({ id }: { id: number }) {
     }
   }
   return (
-    <form onSubmit={submit}>
+    <form method="post" onSubmit={submit}>
       <label>
         What should a second reviewer consider?
         <textarea disabled={done} required maxLength={600} name="message" />
       </label>
-      <button className="btn small" type="submit" disabled={busy || done}>
+      <button className="btn small" type="submit" disabled={!hydrated || busy || done}>
         Submit appeal
       </button>
       <p role="status">{msg}</p>
+      <noscript><p>Enable JavaScript to submit your appeal.</p></noscript>
     </form>
   );
 }
 
 export function RoomProtectionForm() {
+  const hydrated = useHydrated();
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
   const router = useRouter();
   async function update(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (busy) return;
+    if (!hydrated || busy) return;
     const fields = new FormData(e.currentTarget);
     setBusy(true);
     const active = fields.get("action") === "start";
@@ -140,7 +146,7 @@ export function RoomProtectionForm() {
     if (res.ok) router.refresh();
   }
   return (
-    <form onSubmit={update} style={{ display: "grid", gap: 8 }}>
+    <form method="post" onSubmit={update} style={{ display: "grid", gap: 8 }}>
       <label>
         Room slug <input required name="slug" placeholder="e.g. off-meta-lab" maxLength={90} />
       </label>
@@ -151,10 +157,11 @@ export function RoomProtectionForm() {
           <option value="stop">End protection early</option>
         </select>
       </label>
-      <button type="submit" disabled={busy} className="btn small">
+      <button type="submit" disabled={!hydrated || busy} className="btn small">
         Update room
       </button>
       {message && <p role="status">{message}</p>}
+      <noscript><p>Enable JavaScript to update room protection.</p></noscript>
     </form>
   );
 }

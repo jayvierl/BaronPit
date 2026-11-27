@@ -118,6 +118,8 @@ async function seed(tx) {
   await seedPlayerDepth(tx);
   if (process.env.SMOKE_WORKFLOWS === "1") {
     await tx.exec("INSERT INTO wp_links(user_id,puuid,is_primary,verified) VALUES(551,'fixture-profile-depth',true,true)");
+    await tx.exec(`INSERT INTO wp_players(puuid,platform,game_name,tag_line) VALUES
+      ('fixture-jade-na','na1','Jade Lantern','TEST'), ('fixture-jade-eu','euw1','Jade Lantern','WEST')`);
   }
 }
 

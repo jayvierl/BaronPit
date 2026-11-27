@@ -350,8 +350,8 @@ export function Composer({
       <div className={`composer-foot ${composerStyles.footer}`}>
         <span className="meta">
           <a href="/guidelines">Community guidelines</a>
-          <span id={countId} className={body.length ? undefined : composerStyles.srOnly}>
-            {body.length > 0 ? ` · ${2000 - body.length} characters left` : "2,000 character limit."}
+          <span id={countId} className={body.length >= 1900 ? undefined : composerStyles.srOnly}>
+            {body.length >= 1900 ? ` · ${2000 - body.length} characters left` : "2,000 character limit."}
           </span>
           <span aria-live="polite" className={composerStyles.srOnly}>
             {body.length === 2000 ? "Character limit reached." : body.length >= 1980 ? "20 characters or fewer remaining." : ""}

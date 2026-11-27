@@ -26,7 +26,6 @@ export function objectiveEvents(raw: unknown, matchId: string): Moment[] | null 
     if (!Array.isArray(events)) return null;
     for (const rawEvent of events) {
       const event = object(rawEvent);
-      if (typeof event.timestamp !== "number" || !Number.isSafeInteger(event.timestamp) || event.timestamp < 0) continue;
       let objective: string | undefined;
       let team = event.killerTeamId;
       if (event.type === "ELITE_MONSTER_KILL") objective = monsters.get(String(event.monsterType));
@@ -36,7 +35,9 @@ export function objectiveEvents(raw: unknown, matchId: string): Moment[] | null 
         // On a building event teamId is the owner of the destroyed structure.
         if (team !== 100 && team !== 200) team = event.teamId === 100 ? 200 : event.teamId === 200 ? 100 : undefined;
       }
-      if (objective) moments.push({ seconds: Math.floor(event.timestamp / 1000), objective,
+      if (!objective) continue;
+      if (typeof event.timestamp !== "number" || !Number.isSafeInteger(event.timestamp) || event.timestamp < 0) return null;
+      moments.push({ seconds: Math.floor(event.timestamp / 1000), objective,
         ...(team === 100 ? { side: "Blue" as const } : team === 200 ? { side: "Red" as const } : {}) });
     }
   }

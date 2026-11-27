@@ -4,6 +4,7 @@ import { PlayerRankHistory } from "../components/player-rank-history";
 import { postgres } from "../../test/postgres";
 import { getSql, q } from "./db";
 import { readPlayerRankHistory } from "./rank-history-store";
+import { readQuestionMatch } from "./question-match";
 import { rankHistoryPosition, type RankHistoryPoint } from "./rank-history";
 import { lookupPlayer } from "./riot";
 
@@ -183,6 +184,51 @@ describe("daily ranked observations", () => {
     }
     await q`DELETE FROM wp_players WHERE puuid=${puuid}`;
     expect(await q`SELECT queue FROM wp_rank_history`).toEqual([]);
+  });
+
+  it("keeps the latest queue observation on a UTC day after a shard transfer", async () => {
+    vi.stubEnv("RIOT_API_KEY", "dev-shard-transfer");
+    let rank = solo;
+    riotFixture(() => Response.json([rank]));
+    setTime("2026-11-23T13:00:00Z");
+    await expect(lookup()).resolves.toMatchObject({ok:true,source:"live"});
+    setTime("2026-11-24T13:00:00Z");
+    await expect(lookup()).resolves.toMatchObject({ok:true,source:"live"});
+    rank = {...solo,leaguePoints:71};
+    setTime("2026-11-24T23:15:00Z");
+    await expect(lookupPlayer("euw1","Fixture","NA1")).resolves.toMatchObject({ok:true,source:"live"});
+    expect((await readPlayerRankHistory(puuid,"na1"))[0].recent).toMatchObject([{day:"2026-11-23",lp:30}]);
+    expect((await readPlayerRankHistory(puuid,"euw1"))[0].recent).toMatchObject([{day:"2026-11-24",lp:71}]);
+    const html = renderToStaticMarkup(await PlayerRankHistory({puuid,platform:"euw1"}));
+    expect(html).toContain("Showing EU West ranked observations");
+    expect(html).toContain("including when a player changes regions that day");
+  });
+
+  it("keeps lookup start time for ordering and uses the later match observation for public evidence", async () => {
+    vi.stubEnv("RIOT_API_KEY", "dev-match-clock");
+    const started = Math.floor((Date.now() - 10_000) / 1000) * 1000;
+    vi.setSystemTime(started);
+    const id = "NA1_90";
+    const playedAt = started + 1_000;
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (url.includes("/riot/account/")) return Response.json(riotBody.account);
+      if (url.includes("/lol/summoner/")) return Response.json(riotBody.summoner);
+      if (url.includes("/lol/league/")) return Response.json([solo]);
+      if (url.includes("/ids?")) {
+        vi.setSystemTime(started + 2_000);
+        return Response.json([id]);
+      }
+      return Response.json({metadata:{matchId:id},info:{gameDuration:1500,gameEndTimestamp:playedAt,queueId:420,participants:[
+        {puuid,championName:"Ashe",win:true,kills:3,deaths:2,assists:6,totalMinionsKilled:100,neutralMinionsKilled:10},
+      ]}});
+    });
+    const result = await lookup();
+    expect(result).toMatchObject({ok:true,source:"live",player:{snapshot:{games:1}}});
+    expect(result.ok && new Date(result.player.fetchedAt).getTime()).toBe(started);
+    const reference = {platform:"na1",riotId:"Fixture#NA1",matchId:id};
+    expect(await readQuestionMatch(reference,null)).toMatchObject({playedAt,sourceUpdatedAt:new Date(started + 2_000).toISOString()});
+    await q`UPDATE wp_players SET snapshot=jsonb_set(snapshot,'{matchObservedAt}',to_jsonb(${Date.now()+86_400_000}::bigint)) WHERE puuid=${puuid}`;
+    expect(await readQuestionMatch(reference,null)).toBeNull();
   });
 });
 

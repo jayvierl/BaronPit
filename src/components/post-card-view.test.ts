@@ -161,6 +161,23 @@ describe("thread controls", () => {
     expect(html).not.toContain("Loading replies");
   });
 
+  it("keeps the five primary actions together and moves quote and extra reactions into post options", () => {
+    const html = renderToStaticMarkup(createElement(PostCard, {
+      post: { ...base, kind: "text", data: {}, canRepost: true, canQuote: true },
+      patch: "16.23.1", signedIn: true, viewerId: 2,
+    }));
+    const [content, actions] = html.split('aria-label="Post actions"');
+    const options = content.slice(content.indexOf('aria-label="Post options"'), content.indexOf("</header>"));
+    expect(options).toContain('aria-label="Quote post"');
+    expect(options).toContain('aria-label="More reactions, 0 total"');
+    expect(options).toContain(">Report</button>");
+    expect(actions).not.toContain('aria-label="Quote post"');
+    expect(actions).not.toContain("More reactions");
+    for (const label of ["Like, 0 likes", "Show replies, 0 replies", "Repost", "Share thread", "Save and manage thread notifications"]) {
+      expect(actions).toContain(`aria-label="${label}"`);
+    }
+  });
+
   it("uses stored engagement counts and keeps report and withdrawal scoped to the viewer", () => {
     const post: PostView = { ...base, kind: "text", data: {}, reactions: { "❤️": 2, "🔥": 1, GG: 2 }, commentCount: 4 };
     const props = { post, patch: "16.23.1", signedIn: true };
@@ -193,6 +210,16 @@ describe("Baron call ballots", () => {
     expect(settled).toContain("Final tally");
     expect(settled).toContain("Reset — 2 votes (67%)");
     expect(settled).not.toMatch(/<button[^>]*class="poll-option"/);
+  });
+
+  it("renders unvoted ballot choices as plain labels and shows an empty tally only once", () => {
+    const post: PostView = { ...base, kind:"poll", data:{ options:["Dragon","Baron"] }, pollResults:[0,0] };
+    const html = renderToStaticMarkup(createElement(PostCard, { post, patch:"16.23.1", signedIn:true, viewerId:2 }));
+    expect(html.match(/No votes yet/g)).toHaveLength(1);
+    expect(html).not.toContain("0 votes");
+    expect(html).not.toContain("0%");
+    expect(html).toContain(">Dragon</span></button>");
+    expect(html).toContain(">Baron</span></button>");
   });
 
   it("shows the call badge and its four answers only on a call poll", () => {

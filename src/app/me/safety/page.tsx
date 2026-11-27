@@ -6,6 +6,7 @@ import { ownDecisions } from "@/lib/safety-cases";
 import { myReports } from "@/lib/social";
 import { AppealForm } from "@/components/admin-ui";
 import { PersonalSafetyControls } from "@/components/personal-safety-controls";
+import { ProfilePhotoRemoval } from "@/components/profile-photo-removal";
 import { personalSafetyLists } from "@/lib/personal-safety";
 import { decisions, isDecision, isRule, reportRules } from "@/lib/safety-policy";
 
@@ -32,6 +33,7 @@ export default async function SafetyInbox() {
           </>
         ) : <p role="alert">Your block and mute lists are unavailable. Reload the page to try again.</p>}
       </section>
+      <ProfilePhotoRemoval key={user.id} accountId={user.id} />
       {!inbox ? (
         <p role="alert">Your private inbox is unavailable. Try again or use the contact in the guidelines.</p>
       ) : (

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { postJson } from "@/lib/client";
 import { type AvatarRef } from "@/lib/avatar";
@@ -236,6 +237,7 @@ export function ProfileEditor({ name, bio, initialLink, hue, initialAvatar, vers
             {(review?.status === "pending" || review?.status === "held") && <p role="status">Your photo is awaiting review. <button type="button" className={styles.link} onClick={checkReview}>Check review</button></p>}
             {review?.status === "rejected" && <p className={styles.hint}>Your previous photo was declined.</p>}
             {staged && avatarKey(staged) !== avatarKey(avatar) && <button type="button" className={styles.link} onClick={() => select(staged)}>Use reviewed photo</button>}
+            <p><Link href="/me/safety#uploaded-photos" className={styles.link}>Manage uploaded photos</Link></p>
           </div>
         </div>}
         {photo && <div className={styles.crop}>

@@ -6,10 +6,16 @@ import { q } from "@/lib/db";
 export async function POST(req: Request) {
   const access = await requireUser(req, "protect");
   if (!access.ok) return access.response;
-  const band = acceptedBand(await readObject(req));
+  const input = await readObject(req);
+  if (input.accountId !== access.user.id) return authError("Reload this page to confirm eligibility for your current account.",409);
+  const band = acceptedBand(input);
   if (!band) return authError("Confirm eligibility and accept the current terms.",400);
-  const rows = await q`UPDATE wp_users SET age_band=${band}, terms_version=${TERMS_VERSION}, terms_accepted_at=now()
-    WHERE id=${access.user.id} AND (age_band IS NULL OR age_band=${band}) RETURNING id`;
-  if (!rows.length) return authError("Contact support to correct the age group on your account.",409);
-  return NextResponse.json({ok:true});
+  try {
+    const rows = await q`UPDATE wp_users SET age_band=${band}, terms_version=${TERMS_VERSION}, terms_accepted_at=now()
+      WHERE id=${access.user.id} AND (age_band IS NULL OR age_band=${band}) RETURNING id`;
+    if (!rows.length) return authError("Contact support to correct the age group on your account.",409);
+    return NextResponse.json({ok:true},{headers:{"Cache-Control":"private, no-store"}});
+  } catch {
+    return authError("Couldn’t record your consent. Try again.",503);
+  }
 }

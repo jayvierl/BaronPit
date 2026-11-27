@@ -1,6 +1,7 @@
 import { HIDDEN_AUTHORS } from "./community-queries";
 import { dbAvailable, queryRows } from "./db";
 import { parseMatchSelection, projectMatchContext, type MatchContext, type MatchSelection } from "./match-context";
+import { matchObservedMs } from "./match-observation";
 import { publicPatch } from "./patch-notes";
 import { splitRiotId } from "./platforms";
 import { teamBaronFields, type MatchSummary } from "./pure";
@@ -24,7 +25,7 @@ export async function resolveQuestionMatch(input: Record<string, unknown>, viewe
     SELECT c.* FROM candidates c WHERE (SELECT count(*) FROM candidates)=1
       AND c.fetched_at<=now() AND c.fetched_at>now()-($7::bigint * interval '1 millisecond')
       AND NOT EXISTS (SELECT 1 FROM wp_links l WHERE l.puuid=c.puuid AND l.verified AND l.user_id IN (SELECT id FROM hidden))
-  ) SELECT s.puuid,s.platform,s.game_name,s.tag_line,s.fetched_at,m.game,
+  ) SELECT s.puuid,s.platform,s.game_name,s.tag_line,${matchObservedMs("s.snapshot", "s.fetched_at")} AS observed_ms,m.game,
     EXISTS(SELECT 1 FROM wp_links l WHERE l.puuid=s.puuid AND l.verified AND l.user_id=$1
       AND NOT EXISTS(SELECT 1 FROM wp_links other WHERE other.puuid=s.puuid AND other.verified AND other.user_id<>l.user_id)) AS own_game
   FROM source s CROSS JOIN LATERAL jsonb_array_elements(
@@ -38,7 +39,9 @@ export async function resolveQuestionMatch(input: Record<string, unknown>, viewe
   const row = rows[0];
   const match = row.game as Partial<MatchSummary> | null;
   if (!match) return null;
-  const sourceUpdatedAt = new Date(String(row.fetched_at)).toISOString();
+  const observed = new Date(Number(row.observed_ms));
+  if (!Number.isFinite(observed.getTime())) return null;
+  const sourceUpdatedAt = observed.toISOString();
   const preview = projectMatchContext({ ...match, opponent: match.opponentChampion, patch: publicPatch(match.gamePatch),
     platform: row.platform, riotId: `${row.game_name}#${row.tag_line}`, sourceUpdatedAt,
     authorRole: row.own_game === true ? "player" : "spectator" });

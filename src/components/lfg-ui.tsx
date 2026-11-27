@@ -59,13 +59,12 @@ function DuoButton({ action, id, children }: { action: string; id: number; child
     </span>
   );
 }
-export function LfgForm({ fit, asOf, rankedPilot }: { fit: DuoFit | null; asOf: number; rankedPilot: boolean }) {
+function LfgForm({ fit, now, rankedPilot }: { fit: DuoFit | null; now: number; rankedPilot: boolean }) {
   const router = useRouter();
   const browserZone = useBrowserTimeZone();
   const [queue, setQueue] = useState<SessionQueue>(rankedPilot ? RANKED_QUEUE : NORMAL_QUEUE);
   const [partnerRole, setPartnerRole] = useState<string>(fit?.partnerRole ?? "Any");
   const timeZone = fit?.timeZone ?? browserZone;
-  const now = useSessionClock(asOf);
   const starts = sessionOptions(now);
   const [chosenStart, setStart] = useState<number | null>(null);
   const start = chosenStart !== null && starts.includes(chosenStart) ? chosenStart : 0;
@@ -159,14 +158,15 @@ export function LfgForm({ fit, asOf, rankedPilot }: { fit: DuoFit | null; asOf: 
     </form>
   );
 }
-export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly = false, pinnedIds = null }: {
+export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly = false, pinnedIds = null, hosting }: {
   listings: DuoListing[]; requests: DuoRequest[]; fit: DuoFit | null; onlyFit: boolean; asOf:number; requestsOnly?: boolean; pinnedIds?: number[] | null;
+  hosting?: { riotId: string; rankedPilot: boolean };
 }) {
   const now = useSessionClock(asOf);
   const browserZone = useBrowserTimeZone();
   const viewZone = timeZoneName(fit?.timeZone) ?? browserZone;
   const preferred = useMemo(() => scheduleWindows(fit?.blocks ?? [], fit?.timeZone, asOf, 1), [fit, asOf]);
-  const displayed = listings.filter(l => l.own || (l.start !== null && l.start > now));
+  const displayed = listings.filter(l => Date.parse(l.expiresAt) > now && (l.own || (l.start !== null && l.start > now)));
   const pinRequests = new Map<number, number>();
   if (pinnedIds) for (const request of requests) {
     const peer = request.socialProfileId;
@@ -280,6 +280,7 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly 
         <Link href="#duo-plan">{fit ? "Edit my plan" : "Set my preferences"}</Link>
       </nav>
       <p className="meta">Ranked sessions appear first. Times shown in {viewZone}.</p>
+      {onlyFit && fit?.blocks.length && !fit.timeZone ? <p className="meta">Save a time zone in <Link href="#duo-plan">your duo plan</Link> to match your play times.</p> : null}
       {!displayed.some(listing => !listing.own) && (
         <p className="empty">
           {fit && onlyFit ? "No upcoming sessions match your plan. Browse all sessions or choose a time to host."
@@ -311,8 +312,8 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly 
               </DuoButton>
             ) : (
               <div className="duo-controls">
-                {l.requested ? (
-                  <span className="meta">Request already sent</span>
+                {l.requestState ? (
+                  <span className="meta">{l.requestState === "pending" ? "Request already sent" : "Your request is closed"}</span>
                 ) : (
                   <SessionRequest listing={l} fit={fit} zone={viewZone} />
                 )}
@@ -325,6 +326,8 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly 
           </article>
         );
       })}
+      {hosting && !displayed.some(listing => listing.own) &&
+        <LfgForm key={JSON.stringify([fit, hosting.riotId, hosting.rankedPilot])} fit={fit} now={now} rankedPilot={hosting.rankedPilot}/>}
       </>}
     </>
   );

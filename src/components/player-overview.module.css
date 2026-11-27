@@ -22,15 +22,15 @@
 .meta, .label { margin: 0; }
 .meta, .sample dt { color: var(--ink-soft); font-size: .78rem; }
 .label { font-size: .87rem; font-weight: 650; }
-.form { padding-block: 8px; border-block: 1px solid var(--border); }
+.form { padding-block: 9px; }
 .results { display: flex; flex-wrap: wrap; gap: 5px; margin: 0; padding: 0; list-style: none; }
 .result {
   display: grid;
   place-items: center;
-  inline-size: 40px;
-  block-size: 36px;
-  border: 1px solid var(--win-edge);
-  border-radius: 8px;
+  inline-size: 31px;
+  block-size: 31px;
+  border: 0;
+  border-radius: 50%;
   background: var(--win-tint);
   color: var(--accent-ink);
   font-size: .88rem;
@@ -38,11 +38,11 @@
 }
 
 .result[data-result="L"] { border-color: var(--loss-edge); background: var(--loss-tint); color: var(--loss-ink); }
-a.result:is(:hover, :focus-visible) { border-color: currentColor; text-decoration: none; }
+a.result:is(:hover, :focus-visible) { box-shadow: inset 0 0 0 1px currentColor; text-decoration: none; }
 .sample dl { gap: 3px 14px; margin: 5px 0 0; }
 .sample dl > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 6px; }
 .sample dd { margin: 0; overflow-wrap: anywhere; font-size: .84rem; font-weight: 630; }
 
 @media (max-width: 420px) {
-  .result { inline-size: 36px; }
+  .result { inline-size: 29px; block-size: 29px; }
 }

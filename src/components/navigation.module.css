@@ -1,120 +1,48 @@
-.link { position: relative; }
-.link:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
-.pending { position: absolute; inset: auto auto 1px; width: 1.25rem; border-bottom: 2px dotted currentColor; }
-.mobileCompose:global(.primary-nav-link) { gap: 1px; }
-.mobileCompose:global(.primary-nav-link) svg { width: 22px; height: 22px; }
-.mobileComposeText { max-inline-size: 100%; padding-inline: 2px; text-align: center; text-wrap: balance; font-size: .69rem; line-height: 1.2; }
+.link, .railLink { position: relative; }
+.pending { position: absolute; inset: auto auto 2px; width: 16px; border-bottom: 2px dotted currentColor; }
 
+.exploreTrigger, .profileShortcut {
+  display: inline-grid; place-items: center;
+  width: 44px; height: 44px; border: 0; border-radius: 12px;
+  background: transparent; color: var(--ink-mid);
+}
+.exploreTrigger:hover, .profileShortcut:hover { background: var(--hover); color: var(--ink); }
+.exploreTrigger { cursor: pointer; list-style: none; }
+.exploreTrigger::-webkit-details-marker { display: none; }
+.explore[open] > summary { color: var(--ink); background: var(--field); }
+.mobileCompose svg { padding: 1px; }
+
+.destinations {
+  position: fixed; z-index: 65; inset: calc(54px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) auto auto;
+  max-height: calc(100dvh - 78px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  width: min(236px, 90vw); margin: 0; padding: 5px;
+  overflow-y: auto; overscroll-behavior: contain;
+  color: var(--ink); background: var(--bg);
+  border: 1px solid var(--border-strong); border-radius: 16px;
+  box-shadow: 0 6px 28px rgb(0 0 0 / .12);
+}
+.destinations > div + div { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+.destinations a { display: block; padding: 10px 12px; border-radius: 9px; font-size: .91rem; font-weight: 550; }
+.destinations a:is(:hover, :focus-visible) { background: var(--hover); text-decoration: none; }
 .rail { display: none; }
 
 @media (min-width: 900px) {
-  .mobileNav:global(.primary-nav) { display: none; }
-  .mobileWordmark:global(.wordmark), .mobileProfile:global(.btn) { display: none; }
-  .topbar { margin-inline-start: 72px; }
-  .topbar :global(.topbar-inner) { justify-content: flex-end; }
-
+  .mobileNav:global(.primary-nav), .topbar:global(.topbar) { display: none; }
   .rail {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    position: fixed;
-    inset: 0 auto 0 0;
-    z-index: 58;
-    width: 72px;
-    padding: max(16px, env(safe-area-inset-top)) 10px max(16px, env(safe-area-inset-bottom));
-    border-inline-end: 1px solid var(--border);
-    background: var(--bg);
-    overflow-y: auto;
-    overscroll-behavior-y: contain;
-    scrollbar-width: thin;
+    position: fixed; z-index: 58; inset: 0 auto 0 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+    width: 76px; padding: 22px 8px; gap: 22px;
+    background: var(--canvas); overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin;
   }
-
-  .brand {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 44px;
-    margin-block-end: 6px;
-    color: var(--ink);
-    font-family: var(--font-display), var(--font-body), system-ui, sans-serif;
-    font-size: 1.33rem;
-    font-weight: 700;
-    letter-spacing: -.04em;
-  }
-  .brand img { flex: none; border-radius: 8px; }
-  .brand:hover { text-decoration: none; }
-  .brand:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 1px; border-radius: 9px; }
-  .railGroup { display: grid; gap: 3px; }
-
-  .railLink {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 0;
-    min-height: 44px;
-    border-radius: 10px;
-    color: var(--ink-mid);
-    font-size: .94rem;
-    font-weight: 550;
-  }
-  .railLink svg { width: 21px; height: 21px; flex: none; }
-  .railLink:hover { color: var(--ink); background: var(--hover); text-decoration: none; }
-  .railLink:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
-  .railLink[aria-current] { color: var(--accent-ink); background: var(--win-tint); font-weight: 700; }
+  .brand, .railLink { display: grid; place-items: center; flex: none; width: 52px; height: 48px; border-radius: 14px; }
+  .brand img { border-radius: 11px; }
+  .railGroup, .railActions { display: grid; justify-items: center; gap: 8px; }
+  .railLink { color: var(--ink-soft); }
+  .railLink svg { width: 25px; height: 25px; }
+  .railLink:is(:hover, :focus-visible), .brand:hover { color: var(--ink); background: var(--field); }
+  .railLink[aria-current] { color: var(--ink); background: var(--fill); }
   .railLink[aria-current] svg { stroke-width: 2.15; }
-  .railLink .pending { inset-inline-start: calc(50% - .625rem); }
-
-  .newThread, .newThread:hover {
-    color: var(--bg);
-    background: var(--ink);
-    font-weight: 700;
-    margin-block: 2px;
-  }
-  .newThread:hover { opacity: .9; }
-  .newThread:focus-visible { outline-offset: 2px; }
-
-  .railText { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .roomLink, .railHeading, .railExplore { display: none; }
-}
-
-@media (min-width: 1200px) {
-  .topbar:global(.topbar) { display: none; }
-
-  .rail { width: 228px; gap: 12px; padding-inline: 18px; }
-  .brand { justify-content: flex-start; gap: 10px; padding-inline: 8px; margin-block-end: 8px; }
-  .railText { position: static; inline-size: auto; block-size: auto; clip-path: none; overflow: hidden; text-overflow: ellipsis; }
-  .railLink { justify-content: flex-start; gap: 11px; min-height: 39px; padding-inline: 12px; }
-  .railLink .pending { inset-inline-start: auto; inset-inline-end: 12px; }
-  .newThread { justify-content: center; min-height: 44px; border-radius: 999px; }
-  .railHeading {
-    display: block;
-    margin: 0 0 3px;
-    padding-inline: 12px;
-    color: var(--ink-soft);
-    font-size: .77rem;
-    font-weight: 700;
-  }
-  .roomLink { display: flex; min-height: 34px; }
-  .roomLink svg { width: 17px; height: 17px; }
-
-  .railActions { display: grid; gap: 8px; margin-top: auto; }
-  .railExplore { display: block; }
-  .railExplore button { display: flex; justify-content: space-between; min-height: 44px; width: 100%; }
-  .railExplore nav {
-    position: fixed;
-    inset: auto auto max(16px, env(safe-area-inset-bottom)) 236px;
-    margin: 0;
-    padding: 5px;
-    max-height: calc(100dvh - 32px);
-    overflow-y: auto;
-    min-width: 216px;
-    color: var(--ink);
-    background: var(--bg);
-    border: 1px solid var(--border-strong);
-    border-radius: 14px;
-    box-shadow: 0 5px 24px rgb(0 0 0 / .14);
-  }
-  .railExplore nav a { display: block; padding: 11px 12px; border-radius: 8px; font-weight: 500; }
-  .railExplore nav a:is(:hover, :focus-visible) { background: var(--hover); }
+  .railLink .pending { inset-inline-start: calc(50% - 8px); }
+  .newThread { background: var(--field); color: var(--ink); border: 1px solid var(--border-strong); }
+  .railExplore .destinations { inset: auto auto 22px 70px; max-height: calc(100dvh - 44px); }
 }

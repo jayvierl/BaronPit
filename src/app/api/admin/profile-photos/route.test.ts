@@ -42,7 +42,7 @@ beforeEach(async () => {
 afterAll(async () => {vi.unstubAllEnvs();await postgres.close();});
 
 it("reveals no preview to signed-out, ordinary, or suspended reviewers and restricts write access", async () => {
-  for (const [actor,status] of [[null,401],[author,403],[{...staff,bannedUntil:"2099-01-01"},403]] as const) {
+  for (const [actor,status] of [[null,401],[author,403],[{...staff,bannedUntil:"2099-01-01"},403],[{...staff,safetyStatus:"held"},403]] as const) {
     session.mockResolvedValue(actor);
     const preview = await get();
     expect(preview.status).toBe(404);
@@ -50,6 +50,15 @@ it("reveals no preview to signed-out, ordinary, or suspended reviewers and restr
     expectPrivate(preview);
     expect((await decide(decision)).status).toBe(status);
   }
+});
+
+it("returns a retryable private response when session storage is unavailable", async () => {
+  session.mockRejectedValue(new Error("fixture unavailable"));
+  const preview = await get();
+  expect(preview.status).toBe(503);
+  expectPrivate(preview);
+  expect(await preview.text()).toBe("");
+  expect((await decide(decision)).status).toBe(503);
 });
 
 it("serves a staff-only WebP with private headers after validating the complete id and digest", async () => {

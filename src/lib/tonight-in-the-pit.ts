@@ -1,6 +1,7 @@
 import { publicQueueSql } from "./public-match-queues";
 import { HIDDEN_AUTHORS } from "./community-queries";
 import { queryRows } from "./db";
+import { matchObservedMs } from "./match-observation";
 
 const day = 86_400_000;
 
@@ -8,7 +9,8 @@ export async function tonightInThePit(viewerId: number | null, now: number) {
   const todayStart = Math.floor(now / day) * day;
   const weekStart = now - 7 * day;
   const [row] = await queryRows(`WITH ${HIDDEN_AUTHORS}, sample AS MATERIALIZED (
-    SELECT p.puuid, p.snapshot->'matches' AS matches, extract(epoch FROM p.fetched_at)*1000 AS fetched_ms
+    SELECT p.puuid, p.snapshot->'matches' AS matches,
+      ${matchObservedMs("p.snapshot", "p.fetched_at", "to_timestamp($3::double precision / 1000)")} AS fetched_ms
     FROM wp_players p WHERE p.fetched_at BETWEEN to_timestamp($2::double precision / 1000) AND to_timestamp($3::double precision / 1000)
       AND NOT EXISTS (SELECT 1 FROM wp_links l WHERE l.puuid=p.puuid AND l.user_id IN (SELECT id FROM hidden))
   ), raw AS (

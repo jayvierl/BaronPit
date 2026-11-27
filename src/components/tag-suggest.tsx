@@ -46,16 +46,15 @@ export function useTagSuggest({
   enabled?: boolean;
 }) {
   const [catalog, setCatalog] = useState<TagCatalog | null>(null);
-  const [pick, setPick] = useState<Suggestion | null>(null);
+  const [candidate, setPick] = useState<Suggestion | null>(null);
   const [active, setActive] = useState(0);
   const suppressedFor = useRef<string | null>(null);
   const pendingCaret = useRef<number | null>(null);
 
   // External value changes (draft restore, clear after posting) invalidate
   // a pick that no longer matches the text at its position.
-  useEffect(() => {
-    if (pick && value.slice(pick.start, pick.start + pick.phrase.length) !== pick.phrase) setPick(null);
-  }, [value, pick]);
+  const pick = enabled && candidate && value.slice(candidate.start, candidate.start + candidate.phrase.length) === candidate.phrase
+    ? candidate : null;
 
   useEffect(() => {
     if (pendingCaret.current === null) return;
@@ -74,14 +73,14 @@ export function useTagSuggest({
 
   function update(field: Field) {
     if (!enabled) {
-      if (pick) setPick(null);
+      setPick(null);
       return;
     }
     if (suppressedFor.current !== null && field.value !== suppressedFor.current) {
       suppressedFor.current = null;
     }
     if (!catalog || suppressedFor.current !== null) {
-      if (pick) setPick(null);
+      setPick(null);
       return;
     }
     const next = pickSuggestion(catalog, field.value, field.selectionStart ?? field.value.length);

@@ -4,3 +4,8 @@
 .message { min-width: 0; color: var(--ink-soft); font-size: .78rem; overflow-wrap: anywhere; }
 .message p { margin: 0; }
 .message time { color: var(--ink-mid); font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) {
+  .update { gap: .65rem; }
+  .update button { min-width: 0; min-height: 40px; padding-inline: .75rem; }
+  .message { flex: 1; font-size: .75rem; }
+}

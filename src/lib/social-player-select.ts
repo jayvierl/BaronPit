@@ -7,7 +7,7 @@ export const SOCIAL_PLAYER_SELECT = `p.puuid, p.platform, p.game_name, p.tag_lin
     jsonb_set(p.snapshot - ARRAY['olderMatches','historyComplete','championMastery'], '{matches}',
       CASE WHEN jsonb_typeof(p.snapshot->'matches') = 'array' THEN coalesce((
         SELECT jsonb_agg(CASE WHEN jsonb_typeof(m) = 'object' THEN
-          m - ARRAY['teams','teamKills','killParticipation','championLevel','spellIds','runes','detailsVersion'] ELSE m END ORDER BY pos)
+          m - ARRAY['teams','teamKills','killParticipation','championLevel','spellIds','runes','detailsVersion','performanceRating'] ELSE m END ORDER BY pos)
         FROM jsonb_array_elements(p.snapshot->'matches') WITH ORDINALITY AS games(m,pos) WHERE pos <= 20 AND ${publicQueueSql("m")}
       ), '[]'::jsonb) ELSE coalesce(p.snapshot->'matches', 'null'::jsonb) END, false)
     ELSE '{}'::jsonb END AS snapshot`;

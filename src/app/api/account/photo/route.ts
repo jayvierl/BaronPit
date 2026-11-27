@@ -1,5 +1,5 @@
 import { getCurrentUser, rateLimit } from "@/lib/auth";
-import { requireUser } from "@/lib/auth-http";
+import { readObject, requireUser } from "@/lib/auth-http";
 import { photoScanningEnabled } from "@/lib/profile-photo-scanner";
 import { normalizePhoto, photoMimeTypes, readPhotoBody } from "@/lib/profile-photo-image";
 import { photoStatus, removePhotos, stagePhoto } from "@/lib/profile-photo";
@@ -34,6 +34,8 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const auth=await requireUser(request,"protect");
   if (!auth.ok) return auth.response;
+  const {accountId}=await readObject(request);
+  if (accountId!==auth.user.id) return error("Reload this page to manage photos for your current account.",409);
   try { await removePhotos(auth.user.id); return respond(await photoStatus(auth.user.id)); }
   catch { return error("Couldn’t confirm photo removal. Please try again.",503); }
 }

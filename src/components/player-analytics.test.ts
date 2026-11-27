@@ -13,7 +13,7 @@ it("labels partial results, fractional class tags and UTC activity without claim
   const analytics = buildPlayerAnalytics([example], now);
   const props = {analytics,partial:true};
   const style = renderToStaticMarkup(createElement(PlayerPlayStyle,props));
-  expect(style).toContain("1 game available");
+  expect(style).toContain("1 public game available");
   expect(style).toContain("Each game is split evenly across the champion’s Data Dragon classes.");
   expect(style).toMatch(/Assassin<\/span>[\s\S]*?50%/);
   const performance = renderToStaticMarkup(createElement(PlayerPerformance,props));
@@ -29,6 +29,7 @@ it("labels partial results, fractional class tags and UTC activity without claim
 it("keeps champion room and build links working without presenting the seven-day list as complete history", () => {
   const analytics = buildPlayerAnalytics([example,{...example,matchId:"NA1_2",champion:"Ashe",win:false}],now);
   const result = renderToStaticMarkup(createElement(PlayerChampionAnalytics,{analytics,patch:"16.23.1",visibleRooms:new Set(["champ-ahri"])}));
+  expect(result).toContain("Latest 2 public games");
   expect(result).toContain('href="/rooms/champ-ahri"');
   expect(result).toContain('href="/builds?champ=Ashe"');
   expect(result).toContain("Solo/Duo and Flex games in this snapshot");

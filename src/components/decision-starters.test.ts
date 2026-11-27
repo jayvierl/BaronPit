@@ -63,7 +63,7 @@ describe("match decision starters", () => {
       expect(rendered).toContain("<summary>Match source details</summary>");
       expect(rendered).toContain("<dt>Match region</dt><dd>North America (NA1)</dd>");
       expect(rendered).toMatch(/<dt>Played<\/dt><dd><time dateTime="2026-11-25T00:00:00\.000Z">Nov 25, 2026, 12:00 AM UTC/);
-      expect(rendered).toMatch(/<dt>Riot record retrieved<\/dt><dd><time dateTime="2026-11-26T00:00:00\.000Z">Nov 26, 2026, 12:00 AM UTC/);
+      expect(rendered).toMatch(/<dt>Match snapshot as of<\/dt><dd><time dateTime="2026-11-26T00:00:00\.000Z">Nov 26, 2026, 12:00 AM UTC/);
     }
   });
   it("brings an ARAM team discussion to the editor without asking the visitor to invent a lane", () => {

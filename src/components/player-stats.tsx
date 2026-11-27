@@ -17,12 +17,11 @@ export function PlayerStats({ player, source = "cache", lookupHref, variant = "s
 }) {
   const stats = publicPlayerSummary(player);
   if (variant === "profile") {
+    const ratings = player.snapshot.matches.flatMap(match => match.performanceRating === undefined ? [] : [match.performanceRating]);
+    const average = ratings.length >= 3 ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length : null;
     return (
       <section className={styles.profilePanel} aria-label="League stats">
-        <header className={styles.header}>
-          <h2>League stats</h2>
-          {lookupHref && <Link href={lookupHref}>View match history <span aria-hidden="true">→</span></Link>}
-        </header>
+        <h2 className="sr-only">League stats</h2>
         <div className={styles.profileCards}>
           {queues.map(queue => {
             const record = stats.rankedRecords.find(entry => entry.queue === queue);
@@ -45,6 +44,16 @@ export function PlayerStats({ player, source = "cache", lookupHref, variant = "s
             </section>;
           })}
         </div>
+        {stats.sampleGames > 0 && <div className={styles.snapshotSummary}>
+          <p>{source === "partial" ? `${gameCount(stats.sampleGames, "public")} available` : `Latest ${gameCount(stats.sampleGames, "public")}`}</p>
+          <dl>
+            {stats.topRole && <div><dt>Main role</dt><dd>{stats.topRole.name}</dd></div>}
+            {stats.champions.length > 0 && <div><dt>Most played</dt><dd>{stats.champions.slice(0,3).map(entry => entry.name).join(", ")}</dd></div>}
+            {average !== null && <div><dt>Avg. match rating</dt>
+              <dd>{average.toFixed(1)}<small>/10</small> <small className={styles.ratingCoverage}>{ratings.length} rated games</small></dd>
+            </div>}
+          </dl>
+        </div>}
       </section>
     );
   }
@@ -96,7 +105,7 @@ export function PlayerStats({ player, source = "cache", lookupHref, variant = "s
       )}
       {stats.sampleGames > 0 ? (
         <div className={styles.recent}>
-          <h3>{source === "partial" ? `${gameCount(stats.sampleGames)} available` : `Last ${gameCount(stats.sampleGames)}`} · supported public queues</h3>
+          <h3>{source === "partial" ? `${gameCount(stats.sampleGames, "public")} available` : `Latest ${gameCount(stats.sampleGames, "public")}`}</h3>
           <dl>
             {stats.sampleRecord && <div>
               <dt>Recent win rate</dt>
@@ -114,7 +123,7 @@ export function PlayerStats({ player, source = "cache", lookupHref, variant = "s
             </div>
           </dl>
         </div>
-      ) : <p className={styles.note}>No recent games are available for a role or champion breakdown.</p>}
+      ) : <p className={styles.note}>No recent public games are available for a role or champion breakdown.</p>}
     </section>
   );
 }

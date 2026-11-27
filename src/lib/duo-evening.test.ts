@@ -52,7 +52,7 @@ it("counts zero fits and available fits once per day, only after separate curren
   vi.mocked(readDuoBoard).mockResolvedValue({listings:[],requests:[]});
   await recordFitBoardDay(1);
   expect(await arrivalConsent(1,true)).toBe(false);
-  vi.mocked(readDuoBoard).mockResolvedValue({listings:[{own:false,held:false,requested:false} as Awaited<ReturnType<typeof readDuoBoard>>["listings"][number]],requests:[]});
+  vi.mocked(readDuoBoard).mockResolvedValue({listings:[{own:false,held:false,requestState:null} as Awaited<ReturnType<typeof readDuoBoard>>["listings"][number]],requests:[]});
   await recordFitBoardDay(1);
   await recordFitBoardDay(2);
   expect(await eveningTotals(start)).toMatchObject({days:2,available:1});

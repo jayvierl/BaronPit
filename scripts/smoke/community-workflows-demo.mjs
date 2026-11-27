@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { account, capture, fixtureContext, load, localPost, openFixtureBrowser, submit, visible } from "./browser-helpers.mjs";
 import { startFixtureServer } from "./fixture-server.mjs";
+import { verifyPlayerSuggestions } from "./player-search-suggestions.mjs";
 import { depthMatchId, depthName, depthTag } from "./profile-depth-fixture.mjs";
 
 const output = process.env.SMOKE_SCREENSHOTS ? resolve(process.env.SMOKE_SCREENSHOTS)
@@ -48,7 +49,7 @@ function postBody(post, body) {
 }
 
 function searchBox(page) {
-  return page.getByRole("main").getByRole("searchbox", { name: "Search the community" });
+  return page.getByRole("main").getByLabel("Search the community", { exact: true });
 }
 
 async function search(page, term) {
@@ -89,6 +90,38 @@ try {
   let quotePath;
   let discussionPath;
 
+  await check("Partial names open the right player with keyboard and touch, while ordinary search still works", () =>
+    verifyPlayerSuggestions(browser, origin));
+
+  await check("Keyboard and native Explore reach the room shortcuts", async () => {
+    for (const page of [visitor, lane]) {
+      await load(page, origin, "/");
+      await page.waitForLoadState("load");
+      const trigger = page.locator('summary[aria-label="Explore"]:visible');
+      await trigger.focus();
+      await page.keyboard.press("Enter");
+      const menu = await visible(page.getByRole("navigation", { name: "Explore destinations" }));
+      await page.keyboard.press("Tab");
+      assert.equal(await menu.getByRole("link", { name: "Following", exact: true }).evaluate(el => el === document.activeElement), true);
+      await page.keyboard.press("Escape");
+      await menu.waitFor({ state: "hidden" });
+      assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
+    }
+    const native = await fixtureContext(browser, origin, 390, false);
+    try {
+      const page = await native.newPage();
+      await load(page, origin, "/");
+      await page.waitForLoadState("load");
+      await page.locator('summary[aria-label="Explore"]:visible').click();
+      const rooms = page.getByRole("navigation", { name: "Explore destinations" }).getByRole("link", { name: "General", exact: true });
+      await (await visible(rooms)).click();
+      await page.waitForURL(url => url.pathname === "/rooms/general");
+      await visible(page.getByRole("heading", { name: /The Baron Pit|General/ }).first());
+    } finally {
+      await native.close();
+    }
+  });
+
   await check("Visitor discovers a champion through mobile search and navigates the champion hub", async () => {
     await load(visitor, origin, "/");
     await (await visible(visitor.getByRole("link", { name: "Search", exact: true }).last())).click();
@@ -110,6 +143,31 @@ try {
     await visitor.waitForURL(url => url.searchParams.get("feed") === "builds");
     await visible(visitor.getByRole("heading", { name: "Community builds", exact: true }));
     assert.equal(await hub.getByRole("link", { name: "Builds", exact: true }).getAttribute("aria-current"), "page");
+    const compose = visitor.getByRole("navigation", { name: "Primary", exact: true })
+      .getByRole("link", { name: "Post to the Pit", exact: true });
+    await compose.focus();
+    await visitor.keyboard.press("Enter");
+    await visitor.waitForURL(url => url.pathname === "/builds" && url.searchParams.get("champ") === "Nami" &&
+      url.searchParams.get("room") === "1" && url.searchParams.get("compose") === "1");
+    await visible(visitor.locator("#compose textarea"));
+
+    const native = await fixtureContext(browser, origin, 390, false);
+    try {
+      const page = await native.newPage();
+      for (const path of ["/", "/rooms/general"]) {
+        await load(page, origin, path);
+        const draft = page.locator("#compose textarea");
+        assert.equal(await draft.count(), 1);
+        assert.equal(await draft.isVisible(), false);
+        await page.getByRole("navigation", { name: "Primary", exact: true })
+          .getByRole("link", { name: "Post to the Pit", exact: true }).focus();
+        await page.keyboard.press("Enter");
+        await visible(draft);
+        await visible(page.locator("#compose").getByRole("link", { name: "Open sign-in", exact: true }));
+      }
+    } finally {
+      await native.close();
+    }
   });
 
   await check("League search opens canonical item details and passes the item into the build composer", async () => {
@@ -196,6 +254,7 @@ try {
     await load(lane, origin, "/playbook?tab=posts");
     await visible(lane.getByRole("main").locator(`a[href="${buildPath}"]`).first());
     await load(lane, origin, buildPath);
+    await (await visible(build.locator('summary[aria-label="Post options"]'))).click();
     await (await visible(build.locator('summary[aria-label="Quote post"]'))).click();
     await lane.getByRole("textbox", { name: "Your comment", exact: true }).fill(quoteBody);
     const quote = await submit(lane, lane.getByRole("button", { name: "Publish quote", exact: true }), "/api/social/quote", 201);

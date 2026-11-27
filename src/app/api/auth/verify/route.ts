@@ -23,7 +23,12 @@ export async function POST(req: Request) {
     }
     if (body.action !== "confirm") return authError("Confirm sign-in to continue.",400);
     const result = await redeemMagicLink(body.token,acceptedBand(body));
-    if (!result) return authError("This link is no longer valid or your age and terms must be confirmed.",410);
+    if (!result) {
+      const active = await inspectMagicLink(body.token);
+      return active
+        ? authError("Confirm your current age group and community terms. Recheck the link to continue.",409)
+        : authError("That link expired or was already used.",410);
+    }
     const res = NextResponse.json({ok:true,returnTo:result.returnTo},{headers});
     res.cookies.set(SESSION_COOKIE,result.sessionToken,{
       httpOnly:true, secure:!!process.env.VERCEL || new URL(req.headers.get("origin") || req.url).protocol === "https:", sameSite:"lax",path:"/",maxAge:30*24*60*60,

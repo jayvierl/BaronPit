@@ -14,6 +14,7 @@ import { POST as requestLink } from "../app/api/auth/request-link/route";
 import { GET as visitLegacyLink, POST as confirm } from "../app/api/auth/verify/route";
 import { POST as vote } from "../app/api/social/vote/route";
 import { POST as block } from "../app/api/social/block/route";
+import { DELETE as removeUploadedPhotos } from "../app/api/account/photo/route";
 
 vi.mock("@neondatabase/serverless",async()=>({neon:(await import("../../test/postgres")).neonForTests}));
 const fakes=vi.hoisted(()=>({email:vi.fn(), cookie:{value:""}}));
@@ -80,8 +81,8 @@ describe("passwordless account lifecycle",()=>{
     expect(legacy.headers.get("location")).toBe(emailed.pathname + emailed.hash);
     expect(legacy.headers.get("set-cookie")).toBeNull();
     const verify=(input:unknown)=>confirm(request("/api/auth/verify",input));
-    expect(await (await verify({token,action:"inspect"})).json()).toMatchObject({needsConsent:true});
-    expect((await verify({token,action:"confirm"})).status).toBe(410);
+    expect(await (await verify({token,action:"inspect"})).json()).toMatchObject({needsConsent:true,returnTo:"/rooms/champ-ashe#compose"});
+    expect((await verify({token,action:"confirm"})).status).toBe(409);
     expect(await q`SELECT id FROM wp_sessions`).toHaveLength(0);
     const body={token,action:"confirm",ageBand:"teen",termsVersion:TERMS_VERSION,accepted:true};
     const results=await Promise.all([verify({...body,next:"/lfg"}),verify(body)]);
@@ -107,9 +108,9 @@ describe("passwordless account lifecycle",()=>{
     fakes.cookie.value=token;
     const mutation=request("/api/social/follow",{});
     expect((await requireUser(mutation)).ok).toBe(false);
-    expect((await acceptTerms(request("/api/account/eligibility",{ageBand:"teen",accepted:true,termsVersion:TERMS_VERSION}))).status).toBe(200);
+    expect((await acceptTerms(request("/api/account/eligibility",{accountId:u.id,ageBand:"teen",accepted:true,termsVersion:TERMS_VERSION}))).status).toBe(200);
     expect((await requireUser(mutation)).ok).toBe(true);
-    expect((await acceptTerms(request("/api/account/eligibility",{ageBand:"adult",accepted:true,termsVersion:TERMS_VERSION}))).status).toBe(409);
+    expect((await acceptTerms(request("/api/account/eligibility",{accountId:u.id,ageBand:"adult",accepted:true,termsVersion:TERMS_VERSION}))).status).toBe(409);
     vi.stubEnv("SAFETY_PAUSE_PUBLICATION","true");
     try {
       const paused=await requireUser(mutation);
@@ -141,7 +142,7 @@ describe("passwordless account lifecycle",()=>{
     const verify = (body: object) => confirm(request("/api/auth/verify", { token, ...body }));
 
     expect(await (await verify({ action: "inspect" })).json()).toMatchObject({ needsConsent: true, ageBand: "adult" });
-    expect((await verify({ action: "confirm" })).status).toBe(410);
+    expect((await verify({ action: "confirm" })).status).toBe(409);
     const accepted = await verify({ action: "confirm", ageBand: "adult", termsVersion: TERMS_VERSION, accepted: true });
     expect(await accepted.json()).toMatchObject({ ok: true, returnTo: "/review-hour" });
     const [user] = await q`SELECT terms_accepted_at FROM wp_users WHERE email=${email}`;
@@ -197,5 +198,83 @@ describe("passwordless account lifecycle",()=>{
   });
   it("rejects signed-out contributions before validating the post body",async()=>{
     expect((await vote(request("/api/social/vote",null))).status).toBe(401);
+  });
+  it("keeps staff and participation unavailable for held accounts while preserving safety and photo withdrawal", async () => {
+    const email = "held-staff@example.test", token = "1".repeat(64);
+    const [actor] = await q`INSERT INTO wp_users (email,display_name,age_band,terms_version,terms_accepted_at,safety_status)
+      VALUES (${email},'Fixture moderator','adult',${TERMS_VERSION},now(),'held') RETURNING id`;
+    const [other] = await q`INSERT INTO wp_users (email,display_name) VALUES ('other-photo@example.test','Other profile') RETURNING id`;
+    await q`INSERT INTO wp_sessions (user_id,token_hash,expires_at)
+      VALUES (${actor.id},${createHash("sha256").update(token).digest("hex")},now()+interval '1 day')`;
+    const ownPhoto = "6839b498-9a8f-4c62-934b-ac5af732fe53";
+    const otherPhoto = "6839b498-9a8f-4c62-934b-ac5af732fe54";
+    const digest = "a0".repeat(32);
+    await q`INSERT INTO wp_profile_photos(id,user_id,uploader_id,original_hash,content_hash,status,automated_clear,needs_human,image)
+      VALUES (${ownPhoto},${actor.id},${actor.id},${digest},${digest},'approved',true,false,decode('52494646','hex')),
+             (${otherPhoto},${other.id},${other.id},${digest},${digest},'approved',true,false,decode('52494646','hex'))`;
+    await q`UPDATE wp_users SET avatar_ref=jsonb_build_object('kind','upload','id',${ownPhoto}::text,'hash',${digest}::text)
+      WHERE id=${actor.id}`;
+    fakes.cookie.value=token;
+    const admins = process.env.ADMIN_EMAILS;
+    process.env.ADMIN_EMAILS = email;
+    try {
+      for (const mode of ["staff","participate"] as const) {
+        const access = await requireUser(request("/action",{}),mode);
+        expect(!access.ok && access.response.status).toBe(403);
+      }
+      const removeFor = (accountId?: number) => removeUploadedPhotos(new Request("https://app.test/api/account/photo",{
+        method:"DELETE",headers:{"Content-Type":"application/json",origin:"https://app.test"},body:JSON.stringify({accountId}),
+      }));
+      const otherToken = "2".repeat(64);
+      await q`INSERT INTO wp_sessions (user_id,token_hash,expires_at)
+        VALUES (${other.id},${createHash("sha256").update(otherToken).digest("hex")},now()+interval '1 day')`;
+      fakes.cookie.value = otherToken;
+      expect((await removeFor(Number(actor.id))).status).toBe(409);
+      expect((await removeFor()).status).toBe(409);
+      expect((await acceptTerms(request("/api/account/eligibility",{accountId:actor.id,ageBand:"adult",accepted:true,termsVersion:TERMS_VERSION}))).status).toBe(409);
+      expect(await q`SELECT age_band,terms_accepted_at FROM wp_users WHERE id=${other.id}`).toEqual([{age_band:null,terms_accepted_at:null}]);
+      expect(await q`SELECT id FROM wp_profile_photos WHERE user_id=${other.id}`).toEqual([{id:otherPhoto}]);
+      fakes.cookie.value = token;
+      const remove = await removeFor(Number(actor.id));
+      expect(remove.status).toBe(200);
+      expect(await remove.json()).toMatchObject({ok:true,status:"none",photoId:null});
+      expect(await q`SELECT id FROM wp_profile_photos WHERE id IN (${ownPhoto}::uuid,${otherPhoto}::uuid)`).toEqual([{id:otherPhoto}]);
+      expect(await q`SELECT avatar_ref,profile_version FROM wp_users WHERE id=${actor.id}`).toEqual([{avatar_ref:null,profile_version:1}]);
+      await q`UPDATE wp_users SET safety_status='visible' WHERE id=${actor.id}`;
+      expect((await requireUser(request("/action",{}),"staff")).ok).toBe(true);
+    } finally {
+      if (admins === undefined) delete process.env.ADMIN_EMAILS;
+      else process.env.ADMIN_EMAILS = admins;
+    }
+  });
+  it("dismisses an expired link without creating a session or disclosing its old destination",async()=>{
+    const email = "expired@example.test";
+    expect((await signup(email,"/post/42")).status).toBe(200);
+    const token = new URL(fakes.email.mock.calls[0][1]).hash.slice(1);
+    await q`UPDATE wp_magic_links SET expires_at=now()-interval '1 minute' WHERE email=${email}`;
+    for (const action of ["inspect","confirm"]) {
+      const response = await confirm(request("/api/auth/verify",{token,action,ageBand:"teen",accepted:true,termsVersion:TERMS_VERSION}));
+      expect(response.status).toBe(410);
+      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(await response.json()).not.toHaveProperty("returnTo");
+    }
+    expect(await q`SELECT id FROM wp_users WHERE email=${email}`).toEqual([]);
+  });
+  it("keeps an active link retryable when eligibility changes after inspection", async () => {
+    const email = "changed-terms@example.test";
+    const [user] = await q`INSERT INTO wp_users (email,display_name,age_band,terms_version,terms_accepted_at)
+      VALUES (${email},'Returning player','adult',${TERMS_VERSION},now()) RETURNING id`;
+    await requestLink(request("/api/auth/request-link",{email,mode:"signin",next:"/profile/edit?from=account"}));
+    const token = new URL(fakes.email.mock.calls[0][1]).hash.slice(1);
+    const verify = (data: object) => confirm(request("/api/auth/verify",{token,...data}));
+    expect(await (await verify({action:"inspect"})).json()).toMatchObject({needsConsent:false});
+    await q`UPDATE wp_users SET terms_version=NULL WHERE id=${user.id}`;
+    const rejected = await verify({action:"confirm"});
+    expect(rejected.status).toBe(409);
+    expect(rejected.headers.get("set-cookie")).toBeNull();
+    expect(await (await verify({action:"inspect"})).json()).toMatchObject({needsConsent:true,ageBand:"adult"});
+    const retried = await verify({action:"confirm",ageBand:"adult",accepted:true,termsVersion:TERMS_VERSION});
+    expect(retried.status).toBe(200);
+    expect(await retried.json()).toMatchObject({returnTo:"/profile/edit?from=account"});
   });
 });

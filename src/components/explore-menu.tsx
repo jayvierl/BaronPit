@@ -1,25 +1,44 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import styles from "./navigation.module.css";
 
-export function ExploreMenu({ children, menuId = "explore-destinations" }: { children: React.ReactNode; menuId?: string }) {
-  const menu = useRef<HTMLElement>(null);
+export function ExploreMenu({ children, menuId = "explore-destinations" }: { children: ReactNode; menuId?: string }) {
+  const details = useRef<HTMLDetailsElement>(null);
+  const trigger = useRef<HTMLElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const menu = details.current;
+    if (!open || !menu) return;
+    const closeOutside = (event: Event) => {
+      if (event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      menu.open = false;
+      trigger.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("focusin", closeOutside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("focusin", closeOutside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+
   return (
-    <div className="explore-menu">
-      <button type="button" className="btn small secondary" popoverTarget={menuId}>
-        Explore <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-      </button>
-      <nav
-        ref={menu}
-        id={menuId}
-        popover="auto"
-        aria-label="Explore destinations"
-        onClick={(e) => {
-          if (e.target instanceof Element && e.target.closest("a")) menu.current?.hidePopover();
-        }}
-      >
+    <details className={styles.explore} ref={details} onToggle={event => setOpen(event.currentTarget.open)}>
+      <summary ref={trigger} aria-label="Explore" aria-controls={menuId} title="Explore" className={styles.exploreTrigger}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 8h16M4 15h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+      </summary>
+      <nav id={menuId} className={styles.destinations} aria-label="Explore destinations" onClick={event => {
+        if (event.target instanceof Element && event.target.closest("a") && details.current) details.current.open = false;
+      }}>
         {children}
       </nav>
-    </div>
+    </details>
   );
 }

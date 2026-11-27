@@ -1,6 +1,17 @@
-.featuredRoom { display: flex; align-items: center; gap: .7rem; }
+.featuredRoom { display: flex; align-items: center; gap: .8rem; padding: .85rem .1rem; border-bottom: 1px solid var(--border); }
 .details { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.details p { margin: .2rem 0 .25rem; }
+.details h3 { margin: 0 0 .18rem; font-size: 1rem; line-height: 1.3; }
 .details small { display: block; }
 .details small a:hover { text-decoration: underline; }
-.directoryAnchor { scroll-margin-top: calc(76px + env(safe-area-inset-top)); }
+.directory { scroll-margin-top: calc(76px + env(safe-area-inset-top)); }
+.searchForm { display: flex; align-items: center; gap: .25rem; border-radius: 14px; background: var(--field); }
+.search { flex: 1; min-width: 0; width: 100%; min-height: 46px; border: 0; border-radius: 14px; background: transparent; color: var(--ink); padding: .65rem .9rem; font: inherit; }
+.searchForm button { min-height: 44px; border: 0; background: transparent; padding: .5rem .9rem; color: var(--ink); font-size: .86rem; font-weight: 600; }
+.resultStatus { margin: .6rem 0; color: var(--ink-mid); font-size: .85rem; }
+.resultStatus:empty { margin: 0; }
+.roomLink, .browse { display: inline-flex; align-items: center; gap: .5rem; min-height: 44px; }
+.browse { border: 0; background: transparent; color: var(--ink-mid); padding-inline: .15rem; font: inherit; font-size: .85rem; }
+.browse:is(:hover,:focus-visible), .related a:is(:hover,:focus-visible) { color: var(--ink); text-decoration: underline; }
+.heading { margin: .8rem 0 0; font-size: 1rem; letter-spacing: -.02em; }
+.related { display: flex; flex-wrap: wrap; gap: 0 1rem; margin-block: .55rem; }
+.related a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink-mid); font-size: .84rem; }

@@ -2,6 +2,8 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { postgres } from "../../../test/postgres";
 import type { ChampionInfo } from "@/lib/riot";
+import { readChampionDirectoryReturn } from "@/lib/champion-navigation";
+import { searchHref } from "@/lib/search-scopes";
 import { q } from "@/lib/db";
 import { ensureRooms, getRoom, visibleChampionRoomSlugs } from "@/lib/rooms";
 import ChampionsPage from "./page";
@@ -67,4 +69,18 @@ it("renders the name and class filters from the URL and gives the room an exact 
   expect(html).toContain('href="/rooms/champ-ashe?from=%2Fchampions%3Fq%3DAs%26class%3DMage"');
   expect(html).not.toContain('href="/builds?champ=Ahri"');
   expect(html).toContain('action="/champions"');
+});
+
+it("keeps the game search origin through catalog fallback, native filters, and room links", async () => {
+  state.list = [champion("Ashe"), champion("Ahri")];
+  const from = searchHref("league", "Ahri");
+  const html = renderToStaticMarkup(await ChampionsPage({ searchParams: Promise.resolve({ q: "As", from }) }));
+  const directory = `/champions?${new URLSearchParams({ q: "As", from })}`;
+  expect(html).toContain('href="/search?scope=league&amp;q=Ahri"');
+  expect(html).toContain('name="from" value="/search?scope=league&amp;q=Ahri"');
+  expect(html).toContain(`href="/champions?${new URLSearchParams({ from })}"`);
+  expect(html).toContain(`href="/rooms/champ-ashe?${new URLSearchParams({ from: directory })}"`);
+  expect(readChampionDirectoryReturn(directory)).toBe(directory);
+  const spoof = `/champions?${new URLSearchParams({ q: "As", from: "//outside.invalid/search" })}`;
+  expect(readChampionDirectoryReturn(spoof)).toBe("/champions?q=As");
 });

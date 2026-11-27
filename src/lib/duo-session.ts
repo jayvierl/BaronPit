@@ -1,5 +1,5 @@
 import { DUO_ROLES } from "./pure";
-import { SLOT_MS, type PlayWindow } from "./duo-schedule";
+import { scheduleRange, SLOT_MS, type PlayWindow } from "./duo-schedule";
 
 export const RANKED_QUEUE = "ranked-solo-duo";
 export const NORMAL_QUEUE = "normal-draft";
@@ -29,8 +29,7 @@ export function coversSession(windows: PlayWindow[], session: PlayWindow) {
   return windows.some(([from,to]) => from <= session[0] && to >= session[1]);
 }
 export function sessionTime(start: number, zone: string) {
-  const format = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "short", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
-  return format.formatRange(start, start + SESSION_MINUTES * 60_000);
+  return scheduleRange(start, start + SESSION_MINUTES * 60_000, zone);
 }
 export type SessionOffer = { queue: SessionQueue; start: number; role: string; voice: boolean; vibe: "chill" | "tryhard" | "both" };
 export function parseSessionOffer(value: unknown): SessionOffer | null {
