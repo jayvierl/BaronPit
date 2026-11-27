@@ -64,7 +64,7 @@ try {
     await visible(first.getByLabel("Baron Match Rating 8.3 out of 10", { exact: true }).first());
     await visible(first.getByText("MVP", { exact: true }).first());
     await visible(first.getByText("65% KP", { exact: true }));
-    await visible(first.getByText("58 vision", { exact: true }));
+    await visible(first.getByText("58 vision", { exact: true }).first());
     await visible(match(1).getByText("Duration 17m 31s", { exact: true }));
     await visible(match(1).getByText("Played 7h ago", { exact: true }));
     await visible(unrated.getByText("Not rated", { exact: true }).first());
@@ -110,7 +110,7 @@ try {
     await activate(quick.getByRole("link", { name: "All", exact: true }));
     await page.waitForURL(url => !url.searchParams.has("queue"));
     await activate(page.locator("#older-games > summary"));
-    await visible(match(3).getByText("Not rated", { exact: true }));
+    await visible(match(3).getByText("Not rated", { exact: true }).first());
     await visible(match(3).getByText(/Only ranked Solo\/Duo and Flex games are rated/));
     assert.ok(await match(3).getByText(/Normal Draft/).isVisible());
     await checkCatalog(page, fixture.origin, activate);
