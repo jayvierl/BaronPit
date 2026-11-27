@@ -149,7 +149,11 @@ it("lets the author close and reopen replies while preserving existing replies a
   expect((await policy(true)).status).toBe(401);
   expect((await policy(true, reader)).status).toBe(404);
   expect((await policy(true, writer, "https://elsewhere.example.test")).status).toBe(403);
-  const draft = { body: "I would check the wave first.", submissionId: randomUUID() };
+  const draft = { body: "I would check the wave first.", submissionId: randomUUID(), expectedAuthorId: 3 };
+  const stale = await send(submitComment, "/api/social/comments", draft, writer);
+  expect(stale.status).toBe(409);
+  expect(await stale.json()).toMatchObject({ ok: false, error: expect.stringMatching(/signed-in account changed/i) });
+  expect(await q`SELECT id FROM wp_comments WHERE submission_id=${draft.submissionId}`).toEqual([]);
   const first = await (await reply(draft)).json();
   expect(first).toMatchObject({ ok: true, status: "visible" });
   expect(await (await policy(true, writer)).json()).toEqual({ ok: true, closed: true });

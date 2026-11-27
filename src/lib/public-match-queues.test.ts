@@ -14,3 +14,15 @@ it("excludes custom and unknown games from both history windows, totals, highlig
   expect(p.snapshot.games).toBe(1);
   expect(p.matchHistory?.complete).toBe(false);
 });
+
+it("preserves full retrieval coverage while excluding unsupported games from the visible sample", () => {
+  const base = {queueId:420,matchId:"EUW1_123",champion:"Nami",win:true,kills:1,deaths:2,assists:9,cs:20,
+    durationSec:1250,playedAt:45000};
+  const matches = [{...base,queueId:0,matchId:"EUW1_42"},base];
+  const olderMatches = [{...base,queueId:9999,matchId:"EUW1_32"}];
+  const p = playerFromRow({snapshot:{matches,olderMatches,historyComplete:true}});
+  expect(p.matchHistory?.matches).toMatchObject([{matchId:base.matchId}]);
+  expect(p.matchHistory?.complete).toBe(true);
+  expect(playerFromRow({snapshot:{matches,olderMatches:[{...olderMatches[0],queueId:"invalid"}],historyComplete:true}})
+    .matchHistory?.complete).toBe(false);
+});

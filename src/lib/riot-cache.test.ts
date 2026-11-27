@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { lookupPlayer, playerFromRow, type PlayerSnapshot } from "./riot";
+import { rankedMatchFixture } from "../../test/ranked-match";
 
 const mocked = vi.hoisted(() => ({ q: vi.fn() }));
 vi.mock("./db", () => ({ ...mocked, dbAvailable: () => true }));
@@ -61,6 +62,34 @@ describe("recent-form refresh", () => {
     vi.stubEnv("RIOT_API_KEY", "");
     mocked.q.mockResolvedValue([row(new Date())]);
     expect(await lookup()).toMatchObject({ ok: true, source: "cache" });
+  });
+  it("reports unavailable saved records during a storage outage with no Riot call", async () => {
+    mocked.q.mockRejectedValue(new Error("fixture storage outage"));
+    const transport = vi.fn();
+    vi.stubGlobal("fetch",transport);
+    expect(await lookup()).toEqual({ok:false,code:"unavailable"});
+    expect(transport).not.toHaveBeenCalled();
+  });
+  it("uses each match's own routing cluster for a player's cross-region history", async () => {
+    mocked.q.mockResolvedValueOnce([]).mockImplementationOnce(async (_sql, ...args) => [{
+      ...row(new Date()), snapshot: JSON.parse(args[11]),
+    }]);
+    const ids = ["EUW1_11","NA1_12","OC1_13"];
+    const detailRegions: string[] = [];
+    const transport = vi.fn(async (url: string) => {
+      if (url.includes("/riot/account/")) return Response.json({puuid:"ref",gameName:"Fixture",tagLine:"NA1"});
+      if (url.includes("/summoner/")) return Response.json({summonerLevel:32,profileIconId:1});
+      if (url.includes("/league/")) return Response.json([]);
+      if (url.includes("/ids?")) return Response.json(ids);
+      const path = new URL(url);
+      const matchId = path.pathname.split("/").at(-1)!;
+      detailRegions.push(`${matchId}:${path.hostname.split(".")[0]}`);
+      return Response.json({metadata:{matchId},info:{gameDuration:1800,gameEndTimestamp:Date.now(),queueId:420,
+        participants:[{puuid:"ref",championName:"Ashe",win:true,kills:2,deaths:1,assists:4,totalMinionsKilled:100,neutralMinionsKilled:0}]}});
+    });
+    vi.stubGlobal("fetch",transport);
+    expect(await lookup()).toMatchObject({ok:true,source:"live",player:{snapshot:{matches:ids.map(matchId=>({matchId}))}}});
+    expect(detailRegions).toEqual(["EUW1_11:europe","NA1_12:americas","OC1_13:sea"]);
   });
   it("coalesces lookups and preserves a stale row after a failed rank response", async () => {
     mocked.q.mockResolvedValue([row(new Date(0))]);
@@ -138,8 +167,9 @@ describe("recent-form refresh", () => {
   });
   it("preserves known good games if a successful ID-list response unexpectedly comes back empty", async () => {
     const previous = row(new Date(0));
+    const played = {matchId:"NA1_1",champion:"Ashe",win:true,kills:5,deaths:1,assists:4,cs:20,durationSec:900,playedAt:100};
     mocked.q.mockResolvedValue([
-      { ...previous, snapshot: { ...previous.snapshot, matches:[{matchId:"NA1_1",queueId:420,champion:"Ashe",win:true,kills:5,deaths:1,assists:4,cs:20,durationSec:900,playedAt:100}] } },
+      { ...previous, snapshot: { ...previous.snapshot, matches:[{...played,queueId:420}] } },
     ]);
     vi.stubGlobal("fetch", async (url: string) => {
       if (url.includes("/riot/account/"))
@@ -148,6 +178,9 @@ describe("recent-form refresh", () => {
     });
     expect(await lookup()).toMatchObject({ ok: true, source: "stale", player: { snapshot: { games: 1 } } });
     expect(mocked.q).toHaveBeenCalledTimes(1);
+    mocked.q.mockResolvedValue([{...previous,snapshot:{...previous.snapshot,matches:[{...played,queueId:0}]}}]);
+    expect(await lookup()).toMatchObject({ok:true,source:"stale",player:{snapshot:{games:0}}});
+    expect(mocked.q).toHaveBeenCalledTimes(2);
   });
   it("uses a supported account cluster and the Oceania match cluster separately", async () => {
     mocked.q.mockResolvedValue([]);
@@ -317,5 +350,56 @@ describe("recent-form refresh", () => {
     vi.stubGlobal("fetch",transport);
     expect(await profile(true)).toEqual({ok:false,code:"rate_limited",retryAt:until});
     expect(transport).not.toHaveBeenCalled();
+  });
+
+  it("upgrades four recent saved ranked games per stale profile refresh without retrying unscorable evidence", async () => {
+    vi.useFakeTimers({toFake:["Date","setTimeout","clearTimeout"]});
+    const ids = Array.from({length:8}, (_, i) => `NA1_${100 - i}`);
+    const cached = row(new Date(0));
+    let stored: Record<string, unknown> = { ...cached, snapshot: { ...cached.snapshot, matches: ids.map((matchId, i) => ({
+      matchId, champion:"Nami", win:true, kills:2, deaths:4, assists:1, cs:10, durationSec:1800, playedAt:2_000_000,
+      role:"UTILITY", queueId:i === 0 ? 450 : 420, items:[], detailsVersion:1,
+    })) } };
+    mocked.q.mockImplementation(async (strings: TemplateStringsArray, ...args) => {
+      const sql = strings.join(" ");
+      if (sql.includes("AS riot_retry_at")) return [stored];
+      if (sql.includes("INSERT INTO wp_action_windows")) return [{bucket:args[0]}];
+      stored = { ...cached, fetched_at:new Date(args[12]), snapshot:JSON.parse(args[11]) };
+      return [stored];
+    });
+    const details: string[] = [];
+    let failOne = true;
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (url.includes("/riot/account/")) return Response.json({puuid:"ref",gameName:"Fixture",tagLine:"NA1"});
+      if (url.includes("/summoner/")) return Response.json({summonerLevel:32,profileIconId:1});
+      if (url.includes("/league/") || url.includes("/champion-mastery/")) return Response.json([]);
+      if (url.includes("/ids?")) return Response.json(ids);
+      const matchId = url.split("/").at(-1)!;
+      details.push(matchId);
+      if (failOne && matchId === ids[3]) return new Response(null,{status:503});
+      const game = rankedMatchFixture(matchId,"ref");
+      if (matchId === ids[2]) game.info.participants[9].gameEndedInEarlySurrender = true;
+      return Response.json(game);
+    });
+    const first = await profile(true);
+    if (!first.ok) throw new Error(first.code);
+    const matches = first.player.snapshot.matches;
+    expect(details).toEqual(ids.slice(1,5));
+    expect(matches[1]).toMatchObject({performanceRating:5.5,detailsVersion:2});
+    expect(matches[2]).toMatchObject({performanceRating:undefined,detailsVersion:2});
+    expect(matches[3]).toMatchObject({matchId:ids[3],detailsVersion:1,kills:2});
+    expect(await profile(true)).toMatchObject({source:"cache"});
+    expect(details).toHaveLength(4);
+    failOne = false;
+    // The pre-existing Update button can refresh rank early. Rating upgrades wait for a stale window.
+    vi.advanceTimersByTime(3 * 60_000);
+    expect(await profile(true)).toMatchObject({source:"live"});
+    expect(details).toHaveLength(4);
+    vi.advanceTimersByTime(11 * 60_000);
+    expect(await profile(true)).toMatchObject({source:"live"});
+    expect(details.slice(4)).toEqual([ids[3],...ids.slice(5)]);
+    vi.advanceTimersByTime(11 * 60_000);
+    expect(await profile(true)).toMatchObject({source:"live"});
+    expect(details).toHaveLength(8);
   });
 });

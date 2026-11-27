@@ -7,6 +7,7 @@ import { playerStatsHref, splitRiotId } from "@/lib/platforms";
 import { withSearchReturn } from "@/lib/search-scopes";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SafetyReport } from "./safety-report";
+import { PlayerNameInput } from "./player-name-input";
 
 export { Composer } from "./composer";
 export { CommentSection } from "./comment-section";
@@ -130,6 +131,13 @@ export function LookupForm({
   const [error, setError] = useState("");
   const [lookingUp, startLookup] = useTransition();
   const router = useRouter();
+
+  function openPlayer(id: string, server: string) {
+    setError("");
+    const path = withSearchReturn(playerStatsHref(server, id), searchReturn);
+    startLookup(() => router.push(playerReturn ? `${path}&fromPlayer=${encodeURIComponent(playerReturn)}` : path));
+  }
+
   return (
     <form
       className="lookup-form"
@@ -142,24 +150,22 @@ export function LookupForm({
           setError("Enter the player’s Riot ID with its #tag.");
           return;
         }
-        setError("");
-        const lookupPath = withSearchReturn(playerStatsHref(platform, gameName + "#" + tagLine), searchReturn);
-        startLookup(() => router.push(playerReturn ? `${lookupPath}&fromPlayer=${encodeURIComponent(playerReturn)}` : lookupPath));
+        openPlayer(gameName + "#" + tagLine, platform);
       }}
     >
       {searchReturn && <input type="hidden" name="from" value={searchReturn} />}
       {playerReturn && <input type="hidden" name="fromPlayer" value={playerReturn} />}
-      <input
-        value={riotId}
-        onChange={(e) => {
-          setRiotId(e.target.value);
+      <PlayerNameInput
+        name="riotId" label="Riot ID" scope="players" region={platform} value={riotId}
+        onChange={value => {
+          setRiotId(value);
           setError("");
         }}
-        name="riotId"
+        onSelect={suggestion => {
+          if (suggestion.kind === "player") openPlayer(suggestion.riotId, suggestion.platform);
+        }}
         placeholder={platform === "na1" ? "Player name or Name#TAG" : "Name#TAG"}
-        aria-label="Riot ID"
-        required
-        maxLength={50}
+        required maxLength={50}
       />
       <select name="platform" value={platform} onChange={(e) => setPlatform(e.target.value)} aria-label="Server">
         {platforms.map((p) => (

@@ -8,6 +8,7 @@ import { ThreadIcon } from "@/components/thread-icon";
 import { returnToMatch } from "@/lib/decisions-input";
 import { buildThreadReturn, buildsHref } from "@/lib/build-sharing";
 import { projectMatchContext } from "@/lib/match-context";
+import { readSearchReturn } from "@/lib/search-scopes";
 import styles from "@/components/thread.module.css";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -58,7 +59,9 @@ export default async function PostPage({ params, searchParams }: { params: Promi
   const buildSource = post.kind === "build" ? buildThreadReturn(source.fromBuild, post.data.champion, post.data.items, post.roomSlug) : null;
   const fromBuild = buildSource?.roomSlug && buildSource.roomSlug !== post.roomSlug &&
     !await getRoom(buildSource.roomSlug, user?.id).catch(() => null) ? null : buildSource;
-  const back = fromMatch ? { href: fromMatch, label: "Back to match" } : fromBuild;
+  const fromSearch = readSearchReturn(source.from);
+  const back = fromMatch ? { href: fromMatch, label: "Back to match" }
+    : fromBuild ?? (fromSearch ? { href: fromSearch, label: "Back to search" } : null);
   return (
     <div className={styles.threadPage}>
       {user?.pilotActive && <PilotVisit kind="social" />}
@@ -77,6 +80,8 @@ export default async function PostPage({ params, searchParams }: { params: Promi
         threadPage
         initialComments={initialComments}
         fromMatch={fromMatch}
+        fromBuild={fromBuild?.href}
+        fromSearch={fromSearch}
       />
       {post.isQuestion && post.status === "visible" && <DecisionThread postId={postId} user={user} />}
       {user?.pilotActive && !isPilotHost(user) && post.status === "visible" && <FeaturedSample userId={user.id} postId={postId} source={source.from === "weekly-matchup" && post.isQuestion === true}/>}

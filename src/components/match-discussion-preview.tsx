@@ -17,7 +17,7 @@ export function MatchDiscussionPreview({ match, fromMatch, postId, composing = f
   const title = composing ? "Public match preview" : "Public match";
   const region = PLATFORMS.find(platform => platform.id === match.region)?.label;
   const played = new Date(match.playedAt);
-  const retrieved = new Date(match.sourceUpdatedAt);
+  const observed = new Date(match.sourceUpdatedAt);
   return <section className={styles.preview} aria-label={title}>
     <div>
       <div className={styles.byline}>
@@ -44,7 +44,7 @@ export function MatchDiscussionPreview({ match, fromMatch, postId, composing = f
         <dl>
           <div><dt>Match region</dt><dd>{region ? `${region} (${match.region.toUpperCase()})` : match.region.toUpperCase()}</dd></div>
           <div><dt>Played</dt><dd><time dateTime={played.toISOString()}>{riotTime.format(played)} UTC</time></dd></div>
-          <div><dt>Riot record retrieved</dt><dd><time dateTime={retrieved.toISOString()}>{riotTime.format(retrieved)} UTC</time></dd></div>
+          <div><dt>Match snapshot as of</dt><dd><time dateTime={observed.toISOString()}>{riotTime.format(observed)} UTC</time></dd></div>
         </dl>
       </details>
     </div>

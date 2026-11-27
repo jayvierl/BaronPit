@@ -109,6 +109,15 @@ it("separates independent, hosted, immature, stats-only and actual week-four exc
     writers: 1,
     statsOnly: 0,
   });
+  await q`UPDATE wp_users SET safety_status='held' WHERE id=3`;
+  expect((await pilotDashboard()).scores[0]).toMatchObject({ timely: 0, outsider: 0, hosted: 1 });
+  await q`UPDATE wp_users SET safety_status='visible' WHERE id=3`;
+  await q`INSERT INTO wp_comments(id,post_id,author_id,body,parent_id,status,created_at) VALUES
+    (302,101,3,'Hidden root answer',NULL,'held',now()-interval '5 days'),
+    (303,101,3,'Reply to hidden answer',302,'visible',now()-interval '5 days')`;
+  await q`UPDATE wp_comments SET parent_id=303 WHERE id=301`;
+  expect((await pilotDashboard()).scores[0]).toMatchObject({ writers: 0, returns: 1 });
+  await q`UPDATE wp_comments SET parent_id=NULL WHERE id=301`;
   await q`UPDATE wp_comments SET status='held' WHERE id=301`;
   expect((await pilotDashboard()).scores[0]).toMatchObject({
     mature: 2,

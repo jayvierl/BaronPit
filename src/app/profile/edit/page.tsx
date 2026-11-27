@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import type { Metadata } from "next";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, isBanned } from "@/lib/auth";
 import { signInHref } from "@/lib/signin-return";
 import { linkedPlayerIdentities } from "@/lib/player-insights";
 import { ProfileEditor } from "@/components/profile-editor";
@@ -16,7 +17,17 @@ const portraits = catalog.list.filter(champion => available.has(champion.id)).ma
 export default async function EditProfile({ searchParams }: { searchParams: Promise<{ from?: string }> }) {
   const [user, params] = await Promise.all([getCurrentUser(), searchParams]);
   const fromAccount = params.from === "account";
-  if (!user) redirect(signInHref(fromAccount ? "/profile/edit?from=account" : "/profile/edit"));
+  const destination = fromAccount ? "/profile/edit?from=account" : "/profile/edit";
+  if (!user) redirect(signInHref(destination));
+  const restricted = isBanned(user);
+  if (restricted || process.env.SAFETY_PAUSE_PUBLICATION === "true") return (
+    <section>
+      <h1 className="page-title">Edit profile</h1>
+      <p role="status">{restricted ? "Your account is temporarily restricted." : "Publishing profile changes is temporarily paused."}</p>
+      <Link href="/me/safety#uploaded-photos">Manage uploaded photos</Link>
+    </section>
+  );
+  if (!user.termsCurrent) redirect(signInHref(destination, "enrol"));
   const players = await linkedPlayerIdentities(user.id);
   const icons = players.filter((player, index) => Number.isInteger(player.profileIcon) && player.profileIcon >= 0 &&
     players.findIndex(other => other.profileIcon === player.profileIcon) === index)

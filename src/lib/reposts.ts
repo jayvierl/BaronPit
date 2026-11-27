@@ -31,5 +31,8 @@ export function followedReposts(anchored = false) { return `, shared AS (
     AND NOT EXISTS (SELECT 1 FROM wp_blocks b WHERE
       (b.blocker_id,b.blocked_id) IN ((r.user_id,source.author_id),(source.author_id,r.user_id)))
     AND NOT EXISTS (SELECT 1 FROM wp_mutes m WHERE m.muter_id=r.user_id AND m.muted_id=source.author_id)
+    AND NOT EXISTS (SELECT 1 FROM wp_quote_posts q JOIN wp_blocks b ON
+      (b.blocker_id,b.blocked_id) IN ((r.user_id,q.original_author_id),(q.original_author_id,r.user_id))
+      WHERE q.post_id=source.id)
   ORDER BY r.post_id,r.first_shared_at DESC,r.user_id
  )`; }

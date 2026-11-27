@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BuildsLink } from "@/components/builds-link";
 import { ChampionPortrait } from "@/components/champion-portrait";
 import { Composer } from "@/components/composer";
 import { GuestPostDraft } from "@/components/guest-draft";
@@ -30,17 +31,34 @@ export default async function RoomPage({ params, searchParams }: {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ feed?: string | string[]; view?: string | string[]; from?: string | string[]; compose?: string | string[] }>;
 }) {
-  const [{slug}, search, user] = await Promise.all([params, searchParams, getCurrentUser()]);
+  const [{ slug }, search] = await Promise.all([params, searchParams]);
+  const view = roomFeedFromParam(search.feed);
+  const searchReturn = readSearchReturn(search.from);
+  const directoryReturn = readChampionDirectoryReturn(search.from);
+  const context = await getCurrentUser().then(async user => ({ user, room: await getRoom(slug, user?.id) })).catch(() => null);
+  if (!context) {
+    const championRoute = slug.startsWith("champ-");
+    const from = searchReturn ?? (championRoute ? directoryReturn : undefined);
+    const retry = new URL(withSearchReturn(roomFeedHref(slug, view.key), from), "https://room.invalid");
+    if (search.view === "discussions") retry.searchParams.set("view", "discussions");
+    if (search.compose === "1") retry.searchParams.set("compose", "1");
+    return <section className="card" data-page-unavailable>
+      <h1 className="page-title">Room temporarily unavailable</h1>
+      <p role="status">The community room couldn’t load.</p>
+      <div className={styles.actions}>
+        <a className="btn small" href={`${retry.pathname}${retry.search}`}>Try again</a>
+        <Link className="btn small secondary" href={from ?? (championRoute ? "/champions" : "/rooms")} prefetch={false}>
+          {searchReturn ? "Back to search" : championRoute ? "Back to champions" : "Back to rooms"}
+        </Link>
+      </div>
+    </section>;
+  }
+  const { user, room } = context;
+  if (!room) notFound();
   const viewerId = user?.id ?? null;
   const viewerIdentity = publicAvatarIdentity(user);
-  const view = roomFeedFromParam(search.feed);
-  const [room, patch, champions] = await Promise.all([getRoom(slug, user?.id), currentPatch(), championList()]);
-  if (!room) notFound();
   const championSection = room.championId ? championRoomSection(search.view, view.key) : null;
-  const searchReturn = readSearchReturn(search.from);
-  const from = searchReturn ?? (room.championId ? readChampionDirectoryReturn(search.from) : undefined);
-  const champInfo = room.championId ? champions.find(c => c.id === room.championId) : null;
-  const roomTitle = champInfo ? `${champInfo.name} Mains` : room.name;
+  const from = searchReturn ?? (room.championId ? directoryReturn : undefined);
   const destination = championSection ? championRoomHref(room.slug, championSection, from, view.key)
     : withSearchReturn(roomFeedHref(room.slug, view.key), from);
   const shareDestination = championSection ? championRoomHref(room.slug, championSection, undefined, view.key)
@@ -51,11 +69,14 @@ export default async function RoomPage({ params, searchParams }: {
   const allThreads = championSection ? championRoomHref(room.slug, "discussions", from)
     : withSearchReturn(roomFeedHref(room.slug, "all"), from);
   const roomBuilds = championSection === "builds" && room.championId ? room.championId : null;
-  const [posts, sample] = await Promise.all([
+  const [patch, champions, posts, sample] = await Promise.all([
+    currentPatch(), championList(),
     (roomBuilds ? buildFeed(user, { champion: roomBuilds }, 12)
       : readRoomFeed(room.id, viewerId, view, championSection === "overview" ? 4 : undefined)).catch(() => null),
     room.championId && championSection === "overview" ? championRoomPulse(room.championId, viewerId).catch(() => null) : null,
   ]);
+  const champInfo = room.championId ? champions.find(c => c.id === room.championId) : null;
+  const roomTitle = champInfo ? `${champInfo.name} Mains` : room.name;
 
   return (
     <div>
@@ -100,14 +121,14 @@ export default async function RoomPage({ params, searchParams }: {
       {roomBuilds ? <>
         <p className="meta">Recent {champInfo?.name ?? roomBuilds} builds from across the community.</p>
         <div className={styles.hubLinks}>
-          <Link id="compose" className="btn small" href={buildsHref({ champion: roomBuilds, compose: true, room: true })} prefetch={false}>Share a build</Link>
-          <Link href={buildsHref({ champion: roomBuilds })} prefetch={false}>Explore all {champInfo?.name ?? roomBuilds} builds</Link>
+          <BuildsLink id="compose" className="btn small" href={buildsHref({ champion: roomBuilds, compose: true, room: true, from })}>Share a build</BuildsLink>
+          <BuildsLink href={buildsHref({ champion: roomBuilds })}>Explore all {champInfo?.name ?? roomBuilds} builds</BuildsLink>
         </div>
-      </> : <details id="compose" className={styles.compose} open={search.compose === "1"}>
+      </> : <details className={styles.compose} open={search.compose === "1"}>
         <summary>Post in {roomTitle}<span aria-hidden="true">＋</span></summary>
         {user
-          ? <Composer key={user.id + ":" + room.id} viewerId={user.id} roomId={room.id} patch={patch} champions={champions.map(c => c.id)} viewerIdentity={viewerIdentity} anchorId={null} />
-          : <GuestPostDraft roomId={room.id} destination={composeHref} label={`Post in ${roomTitle}`} anchorId={null}/>}
+          ? <Composer key={user.id + ":" + room.id} viewerId={user.id} roomId={room.id} patch={patch} champions={champions.map(c => c.id)} viewerIdentity={viewerIdentity} />
+          : <GuestPostDraft roomId={room.id} destination={composeHref} label={`Post in ${roomTitle}`}/>}
       </details>}
       {(!championSection || championSection === "discussions") && <nav className={styles.roomTabs} aria-label="Room feed filters">
         {roomFeeds.filter(({ key }) => !championSection || key !== "builds").map(({key, label}) => <Link key={key}
@@ -116,11 +137,11 @@ export default async function RoomPage({ params, searchParams }: {
       </nav>}
       {posts === null ? <p className="empty" role="status">{roomBuilds ? "Community builds" : "Room posts"} are temporarily unavailable. Refresh to try again.</p> : posts.length === 0
         ? <WardEmptyState text={roomBuilds ? "No community builds for this champion yet." : view.key === "all" ? "No threads in this room yet." : `No ${view.label.toLowerCase()} in this room yet.`}
-            action={roomBuilds ? <Link href={buildsHref({ champion: roomBuilds, compose: true, room: true })}>Share the first build</Link>
+            action={roomBuilds ? <BuildsLink href={buildsHref({ champion: roomBuilds, compose: true, room: true, from })}>Share the first build</BuildsLink>
               : view.key === "all" ? <Link href={composeHref} prefetch={false}>Start the first thread</Link>
               : <Link href={allThreads} scroll={false}>See all threads</Link>}/>
         : posts.map(p => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} viewerId={viewerId} viewerIdentity={viewerIdentity}
-          fromBuild={roomBuilds ? shareDestination : undefined} />)}
+          fromBuild={roomBuilds ? destination : undefined} />)}
     </div>
   );
 }

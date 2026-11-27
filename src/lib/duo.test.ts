@@ -104,8 +104,10 @@ describe("verified duo and relationship controls", () => {
       soloRecord: "42W · 37L",
     });
     expect(l.partnerRole).toBe("ADC");
-    expect(l.playWindows.length).toBeGreaterThan(0);
-    expect(JSON.stringify(listings)).not.toMatch(/PRIVATE-|private-puuid|America\/Chicago/);
+    expect(await q`SELECT blocks FROM wp_lfg WHERE id=${l.id}`).toEqual([{blocks:[]}]);
+    // Earlier listings may still have a recurring schedule in the database.
+    await q`UPDATE wp_lfg SET blocks=ARRAY['Weekend mornings'] WHERE id=${l.id}`;
+    expect(JSON.stringify((await readDuoBoard(2)).listings)).not.toMatch(/PRIVATE-|private-puuid|America\/Chicago|Weekend mornings|playWindows|"blocks"/);
     for (const id of [3, 4, 5, 6]) {
       expect((await readDuoBoard(id)).listings).toHaveLength(0);
       expect(await duoAction(user(id), l.id, "request", offer)).toMatchObject({ ok: false });
@@ -115,10 +117,20 @@ describe("verified duo and relationship controls", () => {
     expect(await duoAction(user(2), l.id, "request", {...offer, role:"Top"})).toMatchObject({ ok: false });
     expect(await duoAction(user(2), l.id, "request", {...offer, start:sessionOptions(Date.now())[3]})).toMatchObject({ ok: false });
     expect(await duoAction(user(2), l.id, "request", offer)).toMatchObject({ ok: true });
+    expect(await duoAction(user(2), l.id, "request", offer)).toEqual({ ok: true });
+    expect(await duoAction(user(2), l.id, "request", { ...offer, voice: true })).toMatchObject({ ok: false });
+    expect((await readDuoBoard(2)).listings[0]).toMatchObject({ requestState: "pending" });
+    expect(await duoAction(user(9), l.id, "request", offer)).toEqual({ ok: true });
+    const withdrawn = (await readDuoBoard(9)).requests[0];
+    expect(await duoAction(user(9), withdrawn.id, "decline")).toEqual({ ok: true });
+    expect((await readDuoBoard(9)).listings[0]).toMatchObject({ requestState: "closed" });
+    expect(await duoAction(user(9), l.id, "request", offer)).toMatchObject({ ok: false });
     const req = (await readDuoBoard(1)).requests[0];
     expect(req).toMatchObject({ incoming: true, riotId: null, socialProfileId: null, session:{roles:["ADC"],vibe:"chill",voice:false,start} });
     expect(await duoAction(user(2), req.id, "accept")).toMatchObject({ ok: false });
     expect(await duoAction(user(1), req.id, "accept")).toMatchObject({ ok: true });
+    expect(await duoAction(user(1), req.id, "accept")).toEqual({ ok: true });
+    expect(await duoAction(user(2), req.id, "accept")).toMatchObject({ ok: false });
     expect((await readDuoBoard(2)).requests[0]).toMatchObject({riotId:"PRIVATE-RIOT-1#TEST", socialProfileId:1});
     expect(await canReportDuo(7, "duo_request", req.id)).toBe(false);
     await setBlock(2, 1, true);
@@ -231,7 +243,9 @@ describe("verified duo and relationship controls", () => {
     expect(await peerView()).toMatchObject({ requeue: "available", riotId: null });
     expect(await setRequeue(7, request.id, true)).toMatchObject({ ok: false });
     expect(await setRequeue(9, request.id, true)).toMatchObject({ ok: true });
-    expect(await peerView()).toMatchObject({ requeue: "mutual", riotId: "PRIVATE-RIOT-8#TEST" });
+    const mutual = await peerView();
+    expect(mutual).toMatchObject({ requeue: "mutual", riotId: "PRIVATE-RIOT-8#TEST" });
+    expect(mutual.contactEndsAt).toBe(Date.parse(mutual.matchedAt!) + 30 * 24 * 60 * 60_000);
     await setRequeue(8, request.id, false);
     expect(await peerView()).toMatchObject({ requeue: "waiting", riotId: null });
     await q`UPDATE wp_users SET age_band='teen' WHERE id=9`;

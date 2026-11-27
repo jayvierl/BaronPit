@@ -31,7 +31,7 @@ export default async function ReviewHourPage() {
           </strong>
         </p>
         <p className="meta">Every Saturday at 21:00 UTC for one hour. Open to support and bot carry players.</p>
-        {hosts && <p>{reviewHostStatus(hosts)}</p>}
+        <p className="meta">{reviewHostStatus(hosts)}</p>
         <div className={styles.links}>
           <a className="btn small" href={`/review-hour/calendar?day=${session.start.slice(0, 10)}`}>
             Add this hour to calendar

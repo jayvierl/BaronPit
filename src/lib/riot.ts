@@ -19,6 +19,7 @@ export type { PlatformId };
 import { summarize, EMPTY_SNAPSHOT, type MatchSummary, type PlayerSnapshot } from "./pure";
 import { isPublicMatchQueue } from "./public-match-queues";
 import { matchFromRiot, readStoredMatches } from "./riot-match";
+import { eligibleForMatchRating } from "./match-performance";
 export { summarize, EMPTY_SNAPSHOT };
 export type { MatchSummary, PlayerSnapshot };
 
@@ -171,23 +172,19 @@ function storedMastery(raw: unknown): ChampionMastery | undefined {
   return stored ? normalizedMastery(stored.champions, stored.fetchedAt) : undefined;
 }
 
-/** Recompute display totals from the bounded match sample, including older rows without champion KDA. */
-function readSnapshot(raw: unknown): PlayerSnapshot {
-  if (!raw || typeof raw !== "object") return EMPTY_SNAPSHOT;
-  const stored = raw as Partial<PlayerSnapshot>;
-  // Aggregate-only legacy rows cannot establish which games were public.
-  if (!Array.isArray(stored.matches)) return EMPTY_SNAPSHOT;
-  const matches = readStoredMatches(stored.matches, COMMUNITY_MATCH_LIMIT).filter(m => isPublicMatchQueue(m.queueId));
-  return { ...summarize(matches), coverageFrom: stored.coverageFrom, coverageThrough: stored.coverageThrough };
-}
-
 export function playerFromRow(r: Record<string, unknown>): Player {
   const stored = r.snapshot as Partial<PlayerSnapshot> & { olderMatches?: unknown; historyComplete?: unknown; rankedEntries?: unknown; championMastery?: unknown } | null;
-  const snapshot = readSnapshot(stored);
-  const older = readStoredMatches(stored?.olderMatches, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT, snapshot.matches)
-    .filter(match => isPublicMatchQueue(match.queueId));
+  const recent = readStoredMatches(stored?.matches, COMMUNITY_MATCH_LIMIT);
+  const older = readStoredMatches(stored?.olderMatches, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT, recent);
+  // Aggregate-only rows cannot establish which games were public. Valid excluded
+  // queues still count toward source completeness, as their details were retrieved.
+  const snapshot = Array.isArray(stored?.matches)
+    ? { ...summarize(recent.filter(match => isPublicMatchQueue(match.queueId))),
+        coverageFrom: stored.coverageFrom, coverageThrough: stored.coverageThrough }
+    : EMPTY_SNAPSHOT;
   const complete = stored?.historyComplete === true && older.length === (Array.isArray(stored.olderMatches) ? stored.olderMatches.length : 0) &&
-    snapshot.matches.length === stored.matches?.length;
+    recent.length === stored.matches?.length && [...recent, ...older].every(match => Number.isSafeInteger(match.queueId) && match.queueId >= 0);
+  const publicOlder = older.filter(match => isPublicMatchQueue(match.queueId));
   return {
     puuid: String(r.puuid),
     platform: String(r.platform),
@@ -202,7 +199,8 @@ export function playerFromRow(r: Record<string, unknown>): Player {
     rankLosses: r.rank_losses == null ? null : Number(r.rank_losses),
     rankedEntries: readRankedEntries(stored?.rankedEntries),
     championMastery: storedMastery(stored?.championMastery),
-    matchHistory: typeof stored?.historyComplete === "boolean" || older.length ? { matches: [...snapshot.matches, ...older], complete } : undefined,
+    matchHistory: typeof stored?.historyComplete === "boolean" || publicOlder.length
+      ? { matches: [...snapshot.matches, ...publicOlder], complete } : undefined,
     snapshot,
     fetchedAt: String(r.fetched_at),
   };
@@ -258,8 +256,11 @@ function validMatchId(value: unknown): value is string {
 async function collectMatchDetails(ids: readonly string[], region: string, puuid: string, known: Map<string, MatchSummary>, deadline: number, core: ReadonlySet<string>) {
   for (let index = 0; index < ids.length && Date.now() < deadline; index += 4) {
     const batch = ids.slice(index, index + 4);
-    const results = await Promise.all(batch.map(id =>
-      riotJson(`https://${region}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(id)}`, deadline)));
+    const results = await Promise.all(batch.map(id => {
+      const matchPlatform = matchRegion(id);
+      const matchRoute = matchPlatform ? regionFor(matchPlatform) : region;
+      return riotJson(`https://${matchRoute}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(id)}`, deadline);
+    }));
     for (const [offset, response] of results.entries()) {
       if (response.status !== 200) continue;
       const detail = matchFromRiot(response.body, batch[offset], puuid, core.has(batch[offset]));
@@ -280,11 +281,13 @@ async function loadChampionMastery(platform: string, puuid: string) {
 
 async function loadPlayer(platform: string, gameName: string, tagLine: string, scope: LookupScope): Promise<LookupResult> {
   const k = key();
-  const [observed] = await q`WITH profile AS (
+  const cacheRows = await q`WITH profile AS (
     SELECT * FROM wp_players WHERE platform = ${platform} AND lower(game_name) = lower(${gameName})
       AND lower(tag_line) = lower(${tagLine}) ORDER BY fetched_at DESC,puuid LIMIT 1
   ) SELECT profile.*, throttle.expires_at AS riot_retry_at FROM (SELECT 1) seed LEFT JOIN profile ON true
-    LEFT JOIN wp_action_windows throttle ON throttle.bucket=${throttleBucket(k)} AND throttle.expires_at>now()`;
+    LEFT JOIN wp_action_windows throttle ON throttle.bucket=${throttleBucket(k)} AND throttle.expires_at>now()`.catch(() => null);
+  if (!cacheRows) return { ok: false, code: "unavailable" };
+  const [observed] = cacheRows;
   const cached = observed?.puuid ? playerFromRow(observed) : null;
   const force = scope.force;
   if (k) {
@@ -351,19 +354,21 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string, s
   const olderIds = allIds.filter(id => !coreIds.includes(id)).slice(0, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT);
   const coreSet = new Set(coreIds);
   const known = new Map((fallback?.matchHistory?.matches ?? fallback?.snapshot.matches ?? []).map(match => [match.matchId, match]));
+  const storedHistory = fallback ? observed.snapshot as { matches?: unknown; olderMatches?: unknown } | null : null;
+  const priorCore = readStoredMatches(storedHistory?.matches, COMMUNITY_MATCH_LIMIT, [], true);
+  const priorOlder = readStoredMatches(storedHistory?.olderMatches, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT, priorCore);
   if (fallback) {
-    const raw = observed.snapshot as { matches?: unknown; olderMatches?: unknown } | null;
-    for (const match of readStoredMatches(raw?.olderMatches, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT)) {
+    for (const match of priorOlder) {
       if (allIds.includes(match.matchId)) known.set(match.matchId, match);
     }
-    for (const match of readStoredMatches(raw?.matches, COMMUNITY_MATCH_LIMIT, [], true)) {
+    for (const match of priorCore) {
       if (coreSet.has(match.matchId)) known.set(match.matchId, match);
     }
   }
   await collectMatchDetails(coreIds.filter(id => !known.has(id)), region, puuid, known, Date.now() + 12_000, coreSet);
   const matches = coreIds.flatMap(id => known.get(id) ?? []);
   const coreComplete = rankedEntries !== undefined && matchList !== undefined && matches.length === rawCore.length &&
-    (matches.length > 0 || (fallback?.snapshot.games ?? 0) === 0);
+    (matches.length > 0 || priorCore.length === 0);
 
   // Mastery is optional and comes after core details so it cannot consume a
   // quota slot needed for the most recent matches. An old result retains its own date.
@@ -383,8 +388,15 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string, s
 
   if (profile && !retryAt()) {
     const deadline = Date.now() + 9_000;
-    // Reproject a few legacy rows per refresh, even when no new match has landed.
-    const legacy = coreIds.filter(id => known.get(id)?.detailsVersion !== 1).slice(0, 4);
+    // Use one existing optional four-match batch. Prioritize the most recent
+    // ranked games from a stale window, then older records without rich details.
+    const staleProfile = fallback && !playerSnapshotTiming(fallback.fetchedAt).fresh;
+    const rankedLegacy = staleProfile ? allIds.filter(id => {
+      const prior = known.get(id);
+      return prior && prior.detailsVersion !== 2 && eligibleForMatchRating(prior.queueId, prior.durationSec);
+    }) : [];
+    const missingDetails = allIds.filter(id => known.has(id) && !known.get(id)?.detailsVersion);
+    const legacy = [...new Set([...rankedLegacy, ...missingDetails])].slice(0, 4);
     const accepting = await collectMatchDetails(legacy, region, puuid, known, deadline, coreSet);
     const missing = olderIds.filter(id => !known.has(id));
     // Coordinate large cold backfills across function instances. Ordinary
@@ -392,11 +404,7 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string, s
     const bulkAllowed = missing.length <= 8 || (accepting && !retryAt() &&
       await claimRiotWindow("riot:profile-deep").catch(() => false));
     if (accepting && bulkAllowed) {
-      const available = await collectMatchDetails(missing, region, puuid, known, deadline, coreSet);
-      if (available && allIds.every(id => known.has(id))) {
-        const remainingLegacy = allIds.filter(id => known.get(id)?.detailsVersion !== 1 && !legacy.includes(id));
-        await collectMatchDetails(remainingLegacy, region, puuid, known, deadline, coreSet);
-      }
+      await collectMatchDetails(missing, region, puuid, known, deadline, coreSet);
     }
   }
 
@@ -406,9 +414,9 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string, s
     const olderMatches = olderIds.flatMap(id => known.get(id) ?? []);
     history = { olderMatches, historyComplete: matchList?.length === allIds.length && recentMatches.length + olderMatches.length === allIds.length };
   } else if (fallback?.matchHistory && rawCore.length === COMMUNITY_MATCH_LIMIT) {
-    const retained = fallback.matchHistory;
-    const olderMatches = retained.matches.filter(match => !coreIds.includes(match.matchId)).slice(0, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT);
-    history = { olderMatches, historyComplete: retained.complete && coreIds.every((id, index) => id === retained.matches[index]?.matchId) };
+    const olderMatches = [...priorCore.filter(match => !coreSet.has(match.matchId)), ...priorOlder.filter(match => !coreSet.has(match.matchId))]
+      .slice(0, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT);
+    history = { olderMatches, historyComplete: fallback.matchHistory.complete && coreIds.every((id, index) => id === priorCore[index]?.matchId) };
   }
   // Retain the bounded source rows for private duo checks and incremental reuse.
   // Denormalized fields used by social surfaces contain public observations only.
@@ -419,7 +427,7 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string, s
     snapshot.coverageFrom = recentMatches.length < COMMUNITY_MATCH_LIMIT ? 0 : Math.min(...recentMatches.map(m => m.startedAt!));
   }
   if (history) history.olderMatches = readStoredMatches(history.olderMatches, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT, recentMatches);
-  const stored = { ...snapshot, rankedEntries, rankObservedAt, championMastery, ...history };
+  const stored = { ...snapshot, rankedEntries, rankObservedAt, matchObservedAt: Date.now(), championMastery, ...history };
   const rows = await q`WITH accepted_snapshot AS (
     INSERT INTO wp_players
       (puuid, platform, game_name, tag_line, summoner_level, profile_icon,

@@ -35,8 +35,9 @@ export function HomeComposer({ viewerId, patch, champions, viewerIdentity }: {
     }
   }
 
+  // The editor keeps the fragment target so native navigation can reveal the disclosure.
   return (
-    <details id="compose" ref={details} className={styles.panel}
+    <details ref={details} className={styles.panel}
       onKeyDown={event => {
         if (event.key === "Escape" && !event.nativeEvent.isComposing && details.current?.open &&
             (event.target === trigger.current || event.target === details.current.querySelector("textarea"))) {
@@ -67,8 +68,8 @@ export function HomeComposer({ viewerId, patch, champions, viewerIdentity }: {
         <span className={`${styles.open} ${styles.close}`}>Close editor</span>
       </summary>
       {viewerId === null
-        ? <GuestPostDraft key="guest" anchorId={null} destination="/#compose" label="Your post" onDraftChange={onDraftChange}/>
-        : <Composer key={viewerId} anchorId={null} viewerId={viewerId} patch={patch} champions={champions} viewerIdentity={viewerIdentity}
+        ? <GuestPostDraft key="guest" destination="/#compose" label="Your post" onDraftChange={onDraftChange}/>
+        : <Composer key={viewerId} viewerId={viewerId} patch={patch} champions={champions} viewerIdentity={viewerIdentity}
             onDraftChange={onDraftChange}/>}
     </details>
   );

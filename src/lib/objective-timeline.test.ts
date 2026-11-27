@@ -21,6 +21,7 @@ it("projects chronological objective times and team attribution without particip
   ]);
   expect(objectiveEvents(raw,"NA1_1")).toBeNull();
   expect(objectiveEvents({...raw,info:{frames:[{}]}},"NA1_50")).toBeNull();
+  expect(objectiveEvents({...raw,info:{frames:[{events:[{type:"ELITE_MONSTER_KILL",monsterType:"DRAGON",timestamp:"451790"}]}]}},"NA1_50")).toBeNull();
   expect(objectiveEvents({...raw,info:{frames:[{events:[]}]}},"NA1_50")).toEqual([]);
 });
 

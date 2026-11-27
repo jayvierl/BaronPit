@@ -86,7 +86,7 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
         {receipts.entries.length === 0 && <p className="meta">Your post and reply receipts appear here.</p>}
         {receipts.entries.map(entry=><article className="match-row" key={entry.kind+entry.id}>
           <div style={{flex:1}}>
-            <strong>{entry.kind==="post"?"Post":"Reply"} #{entry.id}</strong>
+            <strong>{entry.kind==="post"?"Post":"Reply"}</strong>{" "}
             <span className="chip">{({visible:entry.canOpen ? "Published" : "Thread unavailable",held:"Awaiting review",removed:"Removed",withdrawn:"Withdrawn"})[entry.status]}</span>
             {entry.excerpt && <p>{entry.excerpt}</p>}
             <div className="meta">Submitted <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString("en-US",{timeZone:"UTC"})} UTC</time></div>

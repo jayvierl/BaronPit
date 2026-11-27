@@ -31,7 +31,7 @@ function htmlText(html) {
   return decode(html.replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
 }
 
-function documentMarkup(html) {
+export function documentMarkup(html) {
   // Exclude hydration payloads and CSS so only rendered markup participates in the graph.
   return html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>|<!--[\s\S]*?-->/gi, "");
 }

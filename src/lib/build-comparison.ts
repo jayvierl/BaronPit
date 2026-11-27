@@ -12,7 +12,19 @@ export interface BuildPath {
   secondaryTree: string;
   patch?: string;
   post?: number;
+  unavailableKeystone?: string;
 }
+
+export function comparisonItemOptions(items: ShopItem[]) {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const name = item.name.toLowerCase();
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return items.map(item => ({ item, label: (counts.get(item.name.toLowerCase()) ?? 0) > 1
+    ? `${item.name} (${item.gold.toLocaleString("en-US")}g, #${item.id})` : item.name }));
+}
+
 export function examplePaths(items: ShopItem[], runes: RuneChoice[]): BuildPath[] {
   const available = new Set(items.filter((i) => i.shop).map((i) => i.id));
   const availableRunes = new Set(runes.map((r) => r.id));
@@ -33,10 +45,8 @@ export function examplePaths(items: ShopItem[], runes: RuneChoice[]): BuildPath[
       rationale:
         "An example for extended fights. Lucidity helps cycle utility spells. Redemption trades an immediate shield for a delayed area heal.",
     },
-  ].map((p) => ({
+  ].filter(p => p.items.every(id => available.has(id)) && p.runes.every(id => availableRunes.has(id))).map((p) => ({
     ...p,
-    items: p.items.filter((id) => available.has(id)),
-    runes: p.runes.filter((id) => availableRunes.has(id)),
     runeNotes: "",
     secondaryTree: "",
   }));
@@ -57,13 +67,15 @@ export function pathFromPost(
   )
     return null;
   const keystone = buildKeystone(post.data.keystone);
+  const availableKeystone = keystone && keystoneIds?.has(keystone.id);
   return {
     key: String(post.id),
     post: post.id,
     title: `${post.data.champion || "Community"} · ${post.authorName}`,
     rationale: post.body,
     items,
-    runes: keystone && keystoneIds?.has(keystone.id) ? [keystone.id] : [],
+    runes: availableKeystone ? [keystone.id] : [],
+    unavailableKeystone: keystone && !availableKeystone ? keystone.name : undefined,
     runeNotes: typeof post.data.runes === "string" ? post.data.runes : "",
     patch: typeof post.data.patch === "string" ? post.data.patch : undefined,
     secondaryTree: "",

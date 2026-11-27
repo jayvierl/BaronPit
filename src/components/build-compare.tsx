@@ -3,7 +3,7 @@ import { publicPatch } from "@/lib/patch-notes";
 import { useId, useState } from "react";
 import Link from "next/link";
 import type { RuneChoice, ShopItem } from "@/lib/build-catalog";
-import { pathCost, type BuildPath } from "@/lib/build-comparison";
+import { comparisonItemOptions, pathCost, type BuildPath } from "@/lib/build-comparison";
 import styles from "./build-compare.module.css";
 
 function RuneEditor({
@@ -38,6 +38,7 @@ function RuneEditor({
           {path.runeNotes}
         </p>
       )}
+      {path.unavailableKeystone && <p className="meta">The author chose {path.unavailableKeystone}, which is unavailable in this comparison catalog.</p>}
       <label className="field">
         Keystone
         <select value={keystone?.id ?? ""} onChange={(e) => setKeystone(Number(e.target.value))}>
@@ -142,7 +143,7 @@ function PathEditor({
   label,
   path,
   choices,
-  items,
+  itemOptions,
   runes,
   catalog,
   change,
@@ -151,7 +152,7 @@ function PathEditor({
   label: string;
   path: BuildPath;
   choices: BuildPath[];
-  items: ShopItem[];
+  itemOptions: ReturnType<typeof comparisonItemOptions>;
   runes: RuneChoice[];
   catalog: Map<number, ShopItem>;
   change: (p: BuildPath) => void;
@@ -159,7 +160,7 @@ function PathEditor({
 }) {
   const [query, setQuery] = useState("");
   const [customized, setCustomized] = useState(false);
-  const candidate = items.find((i) => i.name.toLowerCase() === query.trim().toLowerCase());
+  const candidate = itemOptions.find(({ label }) => label.toLowerCase() === query.trim().toLowerCase())?.item;
   function edit(patch: Partial<BuildPath>) {
     setCustomized(true);
     change({ ...path, ...patch });
@@ -264,15 +265,16 @@ export function BuildCompare({
 }) {
   const initialA = choices.find((c) => c.key === initial) ?? choices[0];
   const [left, setLeft] = useState<BuildPath>(initialA);
-  const [right, setRight] = useState<BuildPath>(choices.find((c) => c.key !== initialA.key) ?? choices[1]);
+  const [right, setRight] = useState<BuildPath>(choices.find((c) => c.key !== initialA.key) ?? initialA);
   const [matchup, setMatchup] = useState("");
   const listId = useId();
   const catalog = new Map(items.map((i) => [i.id, i]));
+  const itemOptions = comparisonItemOptions(items);
   const difference = pathCost(left.items, catalog) - pathCost(right.items, catalog);
   return (
     <>
       <label className="field">
-        Enemy composition or matchup
+        Matchup note (optional)
         <input
           maxLength={160}
           placeholder="e.g. Leona and Kai’Sa"
@@ -292,11 +294,11 @@ export function BuildCompare({
         {difference === 0
           ? "Both paths cost the same."
           : `Path ${difference > 0 ? "A" : "B"} costs ${Math.abs(difference).toLocaleString("en-US")}g more.`}
-        {matchup.trim() && ` Comparing into ${matchup.trim()}.`}
+        {matchup.trim() && ` Matchup note: ${matchup.trim()}.`}
       </p>
       <datalist id={listId}>
-        {Array.from(new Set(items.map((i) => i.name))).map((name) => (
-          <option key={name} value={name} />
+        {itemOptions.map(({ item, label }) => (
+          <option key={item.id} value={label} />
         ))}
       </datalist>
       <div className={styles.grid}>
@@ -305,7 +307,7 @@ export function BuildCompare({
           path={left}
           change={setLeft}
           choices={choices}
-          items={items}
+          itemOptions={itemOptions}
           runes={runes}
           catalog={catalog}
           listId={listId}
@@ -315,7 +317,7 @@ export function BuildCompare({
           path={right}
           change={setRight}
           choices={choices}
-          items={items}
+          itemOptions={itemOptions}
           runes={runes}
           catalog={catalog}
           listId={listId}

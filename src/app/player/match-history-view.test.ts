@@ -35,7 +35,7 @@ it("renders actual match metrics, Data Dragon builds and both public teams", asy
       opponents: [{ champion: "Vi", name: "Rival", tag: "NA1" }, { champion: "Jinx", name: "Withheld" }] },
   };
   const html = await render(createElement(LatestGames, {
-    ...base, matches: [match], communityMatchIds: new Set([match.matchId]),
+    ...base, matches: [match],
   }));
   for (const value of ["Ranked Solo/Duo", "Level 16", "30m 0s", "7/2/6", "6.50 KDA", "180 CS (6.0 CS/m)", "65% P/Kill",
     "Flash", "SummonerFlash.png", "Teleport", "Keystone: Press the Attack", "Primary: Precision", "Secondary: Resolve",
@@ -50,7 +50,7 @@ it("preserves legacy rows without guessing unknown metrics or displaying private
   const match = { ...game(1), queueId: 0, durationSec: 0, spellIds: [4,99999] as [number, number],
     teammates: [{ champion: "Vi", name: "Private", tag: "OWN" }] };
   const html = await render(createElement(LatestGames, {
-    ...base, matches: [match], communityMatchIds: new Set<string>(),
+    ...base, matches: [match],
   }));
   for (const value of ["Custom", "Unlisted spell 99999", "Runes unavailable", "Full team details unavailable", "Champion level unavailable", "Duration and CS/m unavailable"]) {
     expect(html).toContain(value);
@@ -67,7 +67,7 @@ it("paginates a hundred matches on the server and expands exactly the selected o
   expect(returnHref).toContain("&queue=420&champion=Ashe&older=9&match=NA1_86#match-NA1_86");
   const html = await render(createElement(OlderGames, { ...base, matches, rawMatch: "NA1_86" }));
   expect(html.match(/\bid="match-NA1_\d+"/g)).toHaveLength(10);
-  expect(html.match(/\bclass="game-row/g)).toHaveLength(1);
+  expect(html.match(/<summary>Match details/g)).toHaveLength(1);
   expect(html.match(/data-motion=/g)).toBeNull();
   expect(html).toContain("Older games 81–90 of 97");
   expect(html).toContain("&amp;older=10#older-games");
@@ -79,4 +79,15 @@ it("paginates a hundred matches on the server and expands exactly the selected o
   expect(departed).toContain("This match is unavailable in the current recent-match window or filters.");
   expect(departed).not.toContain('id="match-NA1_101"');
   expect(departed).not.toContain("Discuss this match");
+});
+
+it("keeps the prior player, active filters and older page when opening an objective timeline", async () => {
+  const source = "/player?platform=na1&riotId=Previous%23NA1#match-NA1_82";
+  const lookupHref = base.lookupHref + "&fromPlayer=" + encodeURIComponent(source);
+  const matches = Array.from({length:25},(_,index)=>game(index+1));
+  const html = await render(createElement(OlderGames,{...base,lookupHref,matches,rawMatch:"NA1_16"}));
+  const link = html.match(/href="([^"<>]+)"[^>]*>View objective timeline<\/a>/)?.[1];
+  const url = new URL(link!.replaceAll("&amp;","&"),"https://fixture.invalid");
+  expect(Object.fromEntries(url.searchParams)).toMatchObject({fromPlayer:source,queue:"420",champion:"Ashe",older:"2",match:"NA1_16",timeline:"objectives"});
+  expect(url.hash).toBe("#match-NA1_16");
 });

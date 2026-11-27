@@ -72,15 +72,18 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               ? <h1 key={value}><Link aria-current="page" href={href}>{label}</Link></h1>
               : <Link key={value} href={href}>{label}</Link>)}
           </nav>
-          <div className={styles.utilities}>
-            <a className={styles.discoverLink} href="#home-discover">Discover</a>
-            {!user && <Link className={styles.signUp} href={signInHref("/#compose", "signup")}>Create account</Link>}
-          </div>
+          {!user && <Link className={styles.signUp} href={signInHref("/#compose", "signup")}>Create account</Link>}
+          <details className={styles.discover}>
+            <summary aria-label="Discover"><span className={styles.magnifier} aria-hidden="true" /><span>Discover</span></summary>
+            <div className={styles.discoverContent} id="home-discover" tabIndex={-1}>
+              <form action="/search" method="get" role="search" aria-label="Community search" className={styles.search}>
+                <input type="search" name="q" enterKeyHint="search" aria-label="Search the community" placeholder="Search players, champions or posts" maxLength={80} required />
+                <button type="submit" aria-label="Search"><span className={styles.magnifier} aria-hidden="true" /></button>
+              </form>
+              <HomeDiscoveryRail asOf={now.getTime()} activeTab={activeTab} posts={page?.posts ?? []} roomsRead={rooms} interestsRead={interests} patch={patch} viewerId={user?.id ?? null}/>
+            </div>
+          </details>
         </header>
-        <form action="/search" method="get" role="search" aria-label="Community search" className={styles.search}>
-          <input type="search" name="q" enterKeyHint="search" aria-label="Search the community" placeholder="Search players, champions, items or posts" maxLength={80} required />
-          <button type="submit" aria-label="Search"><span aria-hidden="true" /></button>
-        </form>
         <section id="home-feed" tabIndex={-1} className={styles.feed} aria-label="Conversations">
           <HomeComposer viewerId={user?.id ?? null} patch={patch} champions={champions.map(c => c.id)} viewerIdentity={viewerIdentity}/>
           {(unread || duoInvite) && <nav className={styles.activity} aria-label="New activity">
@@ -89,10 +92,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </nav>}
           <HomeTimeline user={user} activeTab={activeTab} patch={patch} rooms={rooms} page={page} older={!!before} />
         </section>
-      </div>
-
-      <div className={styles.discovery} id="home-discover" tabIndex={-1}>
-        <HomeDiscoveryRail asOf={now.getTime()} activeTab={activeTab} posts={page?.posts ?? []} roomsRead={rooms} interestsRead={interests} patch={patch} viewerId={user?.id ?? null}/>
       </div>
 
       <div className={styles.community}>

@@ -254,6 +254,32 @@ describe("bounded player and community data queries", () => {
     await q`UPDATE wp_comments SET status='held' WHERE id=${self.id}`;
     expect((await readPosts(null,{activeReplies:true},1))[0].id).not.toBe(question.id);
   });
+  it("defers a patch briefing during a safety pause or publisher restriction and publishes it once on recovery", async () => {
+    const initialPatch = patch;
+    const [prior] = await q`SELECT value FROM wp_meta WHERE key='last_patch'`;
+    const wasPaused = process.env.SAFETY_PAUSE_PUBLICATION;
+    try {
+      patch = "16.29.1";
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status:404 })));
+      vi.stubEnv("SAFETY_PAUSE_PUBLICATION", "true");
+      expect((await runPatchWatch()).briefings).toBe(0);
+      vi.stubEnv("SAFETY_PAUSE_PUBLICATION", "false");
+      await q`UPDATE wp_users SET banned_until=now()+interval '1 hour' WHERE email=${PATCH_PUBLISHER}`;
+      expect((await runPatchWatch()).briefings).toBe(0);
+      await q`UPDATE wp_users SET banned_until=NULL, safety_status='held' WHERE email=${PATCH_PUBLISHER}`;
+      expect((await runPatchWatch()).briefings).toBe(0);
+      await q`UPDATE wp_users SET safety_status='visible' WHERE email=${PATCH_PUBLISHER}`;
+      expect((await runPatchWatch()).briefings).toBe(1);
+      expect((await runPatchWatch()).briefings).toBe(0);
+    } finally {
+      patch = initialPatch;
+      if (wasPaused === undefined) delete process.env.SAFETY_PAUSE_PUBLICATION;
+      else process.env.SAFETY_PAUSE_PUBLICATION = wasPaused;
+      await q`UPDATE wp_users SET banned_until=NULL, safety_status='visible' WHERE email=${PATCH_PUBLISHER}`;
+      await q`DELETE FROM wp_posts WHERE data->>'patch'='16.29.1'`;
+      await q`UPDATE wp_meta SET value=${prior.value} WHERE key='last_patch'`;
+    }
+  });
   it("publishes one briefing atomically, retries, and ignores new rooms, data hotfixes and stale versions", async () => {
     vi.stubGlobal("fetch",vi.fn(async () => new Response("not found", {status:404})));
     patch = "16.24.1";

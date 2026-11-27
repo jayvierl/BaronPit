@@ -13,7 +13,7 @@ export async function checkMatchFilters(journey, playerUrl) {
   assert.ok(playerIcon?.includes("/_next/image?") && /\bfetchpriority="high"/i.test(playerIcon), "The player icon should be resized and discoverable in the initial HTML");
   const summary = html => html.match(/<p[^>]*aria-live="polite"[^>]*>([\s\S]*?)<\/p>/)?.[1].replace(/<[^>]+>/g,"") ?? "";
   const record = summary(loss);
-  for (const sample of ["3 games", "0W–1L", "0% win rate"]) assert.ok(record.includes(sample), record);
+  for (const sample of ["3 public games", "0W–1L", "0% win rate"]) assert.ok(record.includes(sample), record);
   assert.deepEqual(matchRows(loss), ["NA1_777002"], "normal Nami match appears without ranked Nami or Flex Vi");
   const formLink = loss.match(/<a\b[^>]*\bhref="([^"#]+#match-NA1_999999)"/);
   const unfiltered = new URL(formLink?.[1].replaceAll("&amp;", "&") ?? "/", filter);

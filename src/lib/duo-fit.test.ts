@@ -6,7 +6,7 @@ import { loadDuoFit, saveDuoFit } from "./duo-fit-store";
 import { q } from "./db";
 import { getCurrentUser, type User } from "./auth";
 import { readDuoBoard } from "./duo";
-import { sessionOptions, sessionWindow, RANKED_QUEUE } from "./duo-session";
+import { sessionOptions, sessionTime, sessionWindow, RANKED_QUEUE } from "./duo-session";
 import { SCHEDULE_BLOCKS } from "./pure";
 import { TERMS_VERSION } from "./account-policy";
 import { POST } from "../app/api/lfg/preferences/route";
@@ -60,6 +60,12 @@ it("compares real instants across DST gaps, folds, fractional offsets and day bo
   expect(timeZoneName("Not/AZone")).toBeNull();
   expect(timeZoneName("CST")).toBeNull();
   expect(parseDuoFit({...fit,timeZone:"Invalid/Zone"})).toBeNull();
+});
+it("labels both distinct wall-clock endpoints when a one-hour session crosses a clock change", () => {
+  const label = (start: string) => sessionTime(Date.parse(start), "America/Los_Angeles");
+  expect(label("2026-11-01T08:15:00Z")).toMatch(/1:15 AM PDT.*1:15 AM PST/);
+  expect(label("2026-03-08T09:15:00Z")).toMatch(/1:15 AM PST.*3:15 AM PDT/);
+  expect(label("2026-11-01T09:15:00Z")).toMatch(/1:15.*2:15.*PST/);
 });
 it("saves private intent during a matching pause, scopes writes to the session, and supports private deletion", async () => {
   vi.stubEnv("DUO_MATCHING_ENABLED", "false");

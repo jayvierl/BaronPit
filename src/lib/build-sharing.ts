@@ -1,17 +1,24 @@
 import { validId } from "./ids";
+import { readChampionDirectoryReturn } from "./champion-navigation";
+import { readSearchReturn, withSearchReturn } from "./search-scopes";
 import type { BuildCatalog } from "./build-catalog";
 
-type BuildsFilter = { champion?: string; item?: number; offMeta?: boolean; compose?: boolean; room?: boolean };
+type BuildsFilter = { champion?: string; item?: number; offMeta?: boolean; compose?: boolean; room?: boolean; from?: string };
 export type BuildKeystone = { id: number; name: string };
 
-export function buildsHref({ champion, item, offMeta, compose, room }: BuildsFilter = {}) {
+export function buildsHref({ champion, item, offMeta, compose, room, from }: BuildsFilter = {}) {
   const query = new URLSearchParams();
   if (champion) query.set("champ", champion);
   if (validId(item)) query.set("item", String(item));
   if (offMeta) query.set("offmeta", "1");
   if (compose) query.set("compose", "1");
   if (room && champion && compose) query.set("room", "1");
+  if (from) query.set("from", from);
   return `/builds${query.size ? `?${query}` : ""}${compose ? "#compose" : ""}`;
+}
+
+export function readBuildBrowseReturn(value: unknown) {
+  return readSearchReturn(value) ?? readChampionDirectoryReturn(value);
 }
 
 export function buildItemId(value: unknown) {
@@ -40,20 +47,22 @@ export function verifyBuildLoadout(catalog: BuildCatalog, items: unknown, keysto
 
 /** Only the build's own room, selected item, or a matching filtered build collection may be a thread return. */
 export function buildThreadReturn(value: unknown, champion: unknown, items: unknown, room?: string | null) {
-  if (typeof value !== "string" || value.length > 240 || !value.startsWith("/") || value.startsWith("//") || /[\\\p{Cc}]/u.test(value)) return null;
+  if (typeof value !== "string" || value.length > 1500 || !value.startsWith("/") || value.startsWith("//") || /[\\\p{Cc}]/u.test(value)) return null;
   const url = new URL(value, "https://build.invalid");
   if (url.origin !== "https://build.invalid" || url.hash) return null;
   const roomSlug = /^\/rooms\/(champ-[a-z0-9]+)$/.exec(url.pathname)?.[1];
   const championRoom = typeof champion === "string" && `champ-${champion.toLowerCase()}`;
+  const browseReturn = readBuildBrowseReturn(url.searchParams.get("from"));
   if (roomSlug && (roomSlug === room || roomSlug === championRoom) && url.searchParams.get("feed") === "builds") {
-    return { href: `${url.pathname}?feed=builds`, label: "Back to champion room", roomSlug };
+    return { href: withSearchReturn(`${url.pathname}?feed=builds`, browseReturn), label: "Back to champion room", roomSlug };
   }
   const item = buildItemId(/^\/items\/(\d+)$/.exec(url.pathname)?.[1]);
-  if (item && Array.isArray(items) && items.includes(item)) return { href: `/items/${item}`, label: "Back to item" };
+  if (item && Array.isArray(items) && items.includes(item)) return { href: withSearchReturn(`/items/${item}`, readSearchReturn(browseReturn)), label: "Back to item" };
   if (url.pathname !== "/builds") return null;
   const chosen = url.searchParams.get("champ");
   if (chosen && (typeof champion !== "string" || chosen !== champion)) return null;
-  const filteredItem = buildItemId(url.searchParams.get("item"));
-  if (filteredItem && (!Array.isArray(items) || !items.includes(filteredItem))) return null;
-  return { href: buildsHref({ champion: chosen ?? undefined, item: filteredItem, offMeta: url.searchParams.get("offmeta") === "1" }), label: "Back to builds" };
+  const itemFilter = url.searchParams.get("item");
+  const filteredItem = buildItemId(itemFilter);
+  if (itemFilter !== null && (!filteredItem || !Array.isArray(items) || !items.includes(filteredItem))) return null;
+  return { href: buildsHref({ champion: chosen || undefined, item: filteredItem, offMeta: url.searchParams.get("offmeta") === "1", from: browseReturn }), label: "Back to builds" };
 }

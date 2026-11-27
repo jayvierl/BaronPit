@@ -35,11 +35,6 @@ export function encodeWindows(windows: PlayWindow[]): string {
   return "{" + windows.map(([start,end]) => `[${start},${end})`).join(",") + "}";
 }
 
-export function decodeWindows(raw: unknown): PlayWindow[] {
-  if (typeof raw !== "string") return [];
-  return [...raw.matchAll(/\[(\d+),(\d+)\)/g)].map(m => [Number(m[1]), Number(m[2])]);
-}
-
 export function sharedWindows(a: PlayWindow[], b: PlayWindow[]): PlayWindow[] {
   const shared: PlayWindow[] = [];
   for (const [start,end] of a) {
@@ -56,9 +51,14 @@ export function overlaps(a: PlayWindow[], b: PlayWindow[]): boolean {
   return a.some(([start,end]) => b.some(([otherStart,otherEnd]) => start < otherEnd && otherStart < end));
 }
 
+export function scheduleRange(start: number, end: number, zone: string) {
+  const format = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "short", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+  const zoneAt = (instant: number) => format.formatToParts(instant).find(part => part.type === "timeZoneName")?.value;
+  return zoneAt(start) !== zoneAt(end) ? `${format.format(start)} – ${format.format(end)}` : format.formatRange(start, end);
+}
+
 export function nextWindowLabel(windows: PlayWindow[], zone: string, since: number): string | null {
   const next = windows.find(([,end]) => end * SLOT_MS > since);
   if (!next) return null;
-  const time = new Intl.DateTimeFormat("en-US", {timeZone:zone, weekday:"short", hour:"numeric", minute:"2-digit", timeZoneName:"short"});
-  return time.formatRange(new Date(next[0] * SLOT_MS), new Date(next[1] * SLOT_MS));
+  return scheduleRange(next[0] * SLOT_MS, next[1] * SLOT_MS, zone);
 }

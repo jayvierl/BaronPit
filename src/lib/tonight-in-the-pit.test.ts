@@ -62,3 +62,14 @@ it("omits an entire match when two visible perspectives disagree on its timestam
   await snapshot("clock-2", [game(999,"Nami",false,1)]);
   expect(await tonightInThePit(1, now)).toEqual(prior);
 });
+
+it("counts games captured after lookup start only when the match observation is trustworthy", async () => {
+  const before = await tonightInThePit(1,now);
+  const matches = [{...game(1000,"Ashe",true),playedAt:now-500}];
+  await q`INSERT INTO wp_players(puuid,platform,game_name,tag_line,fetched_at,snapshot)
+    VALUES ('clock-capture','na1','Clock Capture','NA1',${fetched}::timestamptz,
+      ${JSON.stringify({matches,matchObservedAt:now+5_000})}::jsonb)`;
+  expect((await tonightInThePit(1,now)).matches).toBe(before.matches);
+  await q`UPDATE wp_players SET snapshot=${JSON.stringify({matches,matchObservedAt:now-100})}::jsonb WHERE puuid='clock-capture'`;
+  expect((await tonightInThePit(1,now)).matches).toBe(before.matches+1);
+});
