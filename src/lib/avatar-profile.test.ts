@@ -91,7 +91,7 @@ it("imports only an icon from the member's linked Riot accounts and prevents con
   const actions = await Promise.all([save({avatar:champ,profileVersion:1}),save({bio:"New bio",profileVersion:1})]);
   expect(actions.map(r => r.status).sort()).toEqual([200,409]);
   await q`UPDATE wp_users SET safety_status='held' WHERE id=1`;
-  expect((await save({avatar:champ})).status).toBe(409);
+  expect((await save({avatar:champ})).status).toBe(403);
 });
 
 it("commits an available featured destination with the profile and rejects hidden or non-app destinations without partial writes", async () => {

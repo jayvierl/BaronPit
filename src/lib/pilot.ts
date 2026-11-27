@@ -1,7 +1,7 @@
 import { questionDecisionPost } from "./match-card-projection";
 import { q, getSql, queryRows } from "./db";
 import type { User } from "./auth";
-import { HIDDEN_AUTHORS, visibleContentKind, visiblePostForInteraction } from "./community-queries";
+import { HIDDEN_AUTHORS, visibleCommentsFor, visiblePostForInteraction } from "./community-queries";
 import { validId } from "./ids";
 import { PATCH_PUBLISHER } from "./patch-notes";
 
@@ -88,7 +88,8 @@ export async function recordPilotVisit(id: number, kind: PilotPage, postId?: unk
       ? `AND EXISTS (
     SELECT 1 FROM wp_decisions d JOIN wp_posts p ON p.id=d.post_id
     JOIN wp_comments c ON c.post_id=d.post_id AND c.id=d.accepted_comment_id
-    WHERE p.id=$5 AND ${questionDecisionPost} AND ${visiblePostForInteraction} AND c.status='visible' AND c.parent_id IS NULL
+    WHERE p.id=$5 AND ${questionDecisionPost} AND ${visiblePostForInteraction}
+      AND c.status='visible' AND c.withdrawn_at IS NULL AND c.parent_id IS NULL
       AND c.author_id<>p.author_id AND c.author_id<>$1 AND c.author_id NOT IN (SELECT id FROM hidden)
   )`
       : "";
@@ -192,39 +193,37 @@ type Score = {
 export async function pilotDashboard() {
   const [scores, staffing, interest, reviews] = await Promise.all([
     queryRows(
-      `WITH participants AS (
+      `WITH RECURSIVE ${HIDDEN_AUTHORS}, participants AS (
       SELECT m.* FROM wp_pilot_members m JOIN wp_users u ON u.id=m.user_id
-      WHERE m.kind='participant' AND m.joined_at>now()-interval '56 days' AND NOT(lower(u.email)=ANY($1::text[]))
+      WHERE m.kind='participant' AND m.joined_at>now()-interval '56 days' AND u.id NOT IN (SELECT id FROM hidden) AND NOT(lower(u.email)=ANY($2::text[]))
       ORDER BY m.joined_at,m.user_id LIMIT 40
-    ), questions AS (
+    ), candidate_replies AS (
+      SELECT c.id FROM participants m JOIN wp_comments c ON c.author_id=m.user_id
+      WHERE c.created_at>=m.joined_at+interval '21 days' AND c.created_at<m.joined_at+interval '28 days'
+    ), ${visibleCommentsFor("candidateReplies")}, questions AS (
       SELECT p.id,m.user_id,m.channel,m.joined_at,p.created_at,d.accepted_at,
-        CASE WHEN c.id IS NULL OR a.email=$2 THEN NULL
-          WHEN h.kind='host' OR lower(a.email)=ANY($1::text[]) THEN 'host'
+        CASE WHEN c.id IS NULL OR a.email=$3 THEN NULL
+          WHEN h.kind='host' OR lower(a.email)=ANY($2::text[]) THEN 'host'
           WHEN h.kind='participant' THEN 'peer' ELSE 'outside' END AS source,
         c.created_at AS replied
       FROM participants m JOIN wp_posts p ON p.author_id=m.user_id
       JOIN wp_decisions d ON d.post_id=p.id
-      LEFT JOIN wp_rooms r ON r.id=p.room_id
       LEFT JOIN wp_comments c ON c.id=d.accepted_comment_id AND c.post_id=p.id AND c.author_id<>p.author_id
-        AND c.parent_id IS NULL AND c.status='visible' AND c.created_at>=p.created_at
+        AND c.parent_id IS NULL AND c.status='visible' AND c.withdrawn_at IS NULL
+        AND c.author_id NOT IN (SELECT id FROM hidden) AND c.created_at>=p.created_at
         AND d.accepted_at>=c.created_at AND d.accepted_at<m.joined_at+interval '28 days'
       LEFT JOIN wp_users a ON a.id=c.author_id
       LEFT JOIN wp_pilot_members h ON h.user_id=c.author_id AND h.joined_at<=c.created_at
-      WHERE p.status='visible' AND (p.room_id IS NULL OR r.safety_status='visible') AND ${visibleContentKind}
+      WHERE ${visiblePostForInteraction}
         AND ${questionDecisionPost} AND p.created_at>=m.joined_at AND p.created_at<m.joined_at+interval '28 days'
     ), activity AS (
       SELECT m.*,
         EXISTS(SELECT 1 FROM wp_pilot_days d WHERE d.user_id=m.user_id AND d.day_no BETWEEN 21 AND 27 AND d.answer) AS read_answer,
         EXISTS(SELECT 1 FROM wp_pilot_days d WHERE d.user_id=m.user_id AND d.day_no BETWEEN 21 AND 27 AND d.stats) AS read_stats,
         EXISTS(SELECT 1 FROM wp_pilot_days d WHERE d.user_id=m.user_id AND d.day_no BETWEEN 21 AND 27 AND d.social) AS read_social,
-        (EXISTS(SELECT 1 FROM wp_posts p LEFT JOIN wp_rooms r ON r.id=p.room_id WHERE p.author_id=m.user_id AND p.status='visible'
-          AND (p.room_id IS NULL OR r.safety_status='visible') AND ${visibleContentKind} AND NOT p.data @> '{"briefing":true}'
+        (EXISTS(SELECT 1 FROM wp_posts p WHERE p.author_id=m.user_id AND ${visiblePostForInteraction} AND NOT p.data @> '{"briefing":true}'
           AND p.created_at>=m.joined_at+interval '21 days' AND p.created_at<m.joined_at+interval '28 days')
-        OR EXISTS(SELECT 1 FROM wp_comments c JOIN wp_posts p ON p.id=c.post_id LEFT JOIN wp_rooms r ON r.id=p.room_id
-          LEFT JOIN wp_comments parent ON parent.id=c.parent_id
-          WHERE c.author_id=m.user_id AND c.status='visible' AND p.status='visible'
-          AND coalesce(parent.status,'visible')='visible' AND (p.room_id IS NULL OR r.safety_status='visible') AND ${visibleContentKind}
-          AND c.created_at>=m.joined_at+interval '21 days' AND c.created_at<m.joined_at+interval '28 days')
+        OR EXISTS(SELECT 1 FROM thread JOIN wp_comments c ON c.id=thread.id WHERE c.author_id=m.user_id)
         OR EXISTS(SELECT 1 FROM questions q WHERE q.user_id=m.user_id AND q.source IS NOT NULL AND q.accepted_at>=m.joined_at+interval '21 days')
         OR EXISTS(SELECT 1 FROM questions q JOIN wp_decisions d ON d.post_id=q.id WHERE q.user_id=m.user_id AND q.source IS NOT NULL
           AND d.tried_at>=m.joined_at+interval '21 days' AND d.tried_at<m.joined_at+interval '28 days')) AS contributed,
@@ -252,7 +251,7 @@ export async function pilotDashboard() {
         count(*) FILTER(WHERE source='peer')::int AS peer,count(*) FILTER(WHERE source='outside')::int AS outsider,count(*) FILTER(WHERE source='host')::int AS hosted
       FROM questions q WHERE k.cohort='all' OR q.channel=k.cohort
     ) replies ORDER BY CASE WHEN k.cohort='all' THEN 0 ELSE 1 END,k.cohort`,
-      [pilotHostEmails(), PATCH_PUBLISHER],
+      [null, pilotHostEmails(), PATCH_PUBLISHER],
     ),
     q`SELECT kind,count(*)::int n FROM wp_pilot_members WHERE joined_at>now()-interval '56 days' GROUP BY kind`,
     q`SELECT audience,intent,budget,count(*)::int n FROM wp_pilot_interest WHERE updated_at>now()-interval '56 days' GROUP BY audience,intent,budget ORDER BY audience,intent,budget`,

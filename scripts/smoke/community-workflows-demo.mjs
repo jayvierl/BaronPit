@@ -110,6 +110,31 @@ try {
     await visitor.waitForURL(url => url.searchParams.get("feed") === "builds");
     await visible(visitor.getByRole("heading", { name: "Community builds", exact: true }));
     assert.equal(await hub.getByRole("link", { name: "Builds", exact: true }).getAttribute("aria-current"), "page");
+    const compose = visitor.getByRole("navigation", { name: "Primary", exact: true })
+      .getByRole("link", { name: "Post to the Pit", exact: true });
+    await compose.focus();
+    await visitor.keyboard.press("Enter");
+    await visitor.waitForURL(url => url.pathname === "/builds" && url.searchParams.get("champ") === "Nami" &&
+      url.searchParams.get("room") === "1" && url.searchParams.get("compose") === "1");
+    await visible(visitor.locator("#compose textarea"));
+
+    const native = await fixtureContext(browser, origin, 390, false);
+    try {
+      const page = await native.newPage();
+      for (const path of ["/", "/rooms/general"]) {
+        await load(page, origin, path);
+        const draft = page.locator("#compose textarea");
+        assert.equal(await draft.count(), 1);
+        assert.equal(await draft.isVisible(), false);
+        await page.getByRole("navigation", { name: "Primary", exact: true })
+          .getByRole("link", { name: "Post to the Pit", exact: true }).focus();
+        await page.keyboard.press("Enter");
+        await visible(draft);
+        await visible(page.locator("#compose").getByRole("link", { name: "Open sign-in", exact: true }));
+      }
+    } finally {
+      await native.close();
+    }
   });
 
   await check("League search opens canonical item details and passes the item into the build composer", async () => {

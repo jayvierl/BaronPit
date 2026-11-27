@@ -247,6 +247,6 @@ export const ENDORSE_KINDS = [
   { id: "shot_caller", label: "Shot caller" },
 ] as const;
 
-export function gameCount(games: number) {
-  return games + (games === 1 ? " game" : " games");
+export function gameCount(games: number, scope?: "public") {
+  return `${games}${scope ? ` ${scope}` : ""} ${games === 1 ? "game" : "games"}`;
 }

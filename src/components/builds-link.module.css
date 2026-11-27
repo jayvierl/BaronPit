@@ -1,0 +1,10 @@
+.link { position: relative; }
+.status:not(:empty) {
+  position: absolute;
+  inset: auto 0 -2px;
+  height: 2px;
+  overflow: hidden;
+  font-size: 0;
+  border-block-end: 2px dotted currentColor;
+  pointer-events: none;
+}

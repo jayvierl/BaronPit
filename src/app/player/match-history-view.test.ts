@@ -80,3 +80,14 @@ it("paginates a hundred matches on the server and expands exactly the selected o
   expect(departed).not.toContain('id="match-NA1_101"');
   expect(departed).not.toContain("Discuss this match");
 });
+
+it("keeps the prior player, active filters and older page when opening an objective timeline", async () => {
+  const source = "/player?platform=na1&riotId=Previous%23NA1#match-NA1_82";
+  const lookupHref = base.lookupHref + "&fromPlayer=" + encodeURIComponent(source);
+  const matches = Array.from({length:25},(_,index)=>game(index+1));
+  const html = await render(createElement(OlderGames,{...base,lookupHref,matches,rawMatch:"NA1_16"}));
+  const link = html.match(/href="([^"<>]+)"[^>]*>View objective timeline<\/a>/)?.[1];
+  const url = new URL(link!.replaceAll("&amp;","&"),"https://fixture.invalid");
+  expect(Object.fromEntries(url.searchParams)).toMatchObject({fromPlayer:source,queue:"420",champion:"Ashe",older:"2",match:"NA1_16",timeline:"objectives"});
+  expect(url.hash).toBe("#match-NA1_16");
+});

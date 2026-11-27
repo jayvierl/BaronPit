@@ -29,7 +29,7 @@ it("shows separately tinted Solo/Duo and Flex records before the combined disclo
   expect(flex).toContain('data-tier="SILVER"');
   expect(flex).toMatch(/<dt>Win rate<\/dt><dd>15%<small>3W · 17L<\/small><\/dd>/);
   for (const value of ["Gold IV", "Silver II", "Combined ranked record", "30 games", "33%",
-    "Last 2 games · supported public queues", "Bot / Support", "1 game each", "Ashe", "View match history"]) expect(html).toContain(value);
+    "Latest 2 public games", "Bot / Support", "1 game each", "Ashe", "View match history"]) expect(html).toContain(value);
 });
 
 it("shows just a Flex placement and does not borrow the legacy Solo/Duo rank", () => {
@@ -65,7 +65,7 @@ it("shows both profile queues and distinguishes an unplaced queue from unknown l
 it("distinguishes absent data, unplaced rank and a stale snapshot without displaying a made-up record", () => {
   const html = renderToStaticMarkup(createElement(PlayerStats, { player: {...player, rankedEntries: []}, source: "stale" }));
   expect(html).toContain('data-tier="neutral"');
-  for (const value of ["Riot couldn’t refresh", "Last known Riot records", "Unranked", "Record unavailable", "No recent games", "UTC"]) expect(html).toContain(value);
+  for (const value of ["Riot couldn’t refresh", "Last known Riot records", "Unranked", "Record unavailable", "No recent public games", "UTC"]) expect(html).toContain(value);
   for (const value of ["Combined ranked record", "0%", "0W", "0L"]) expect(html).not.toContain(value);
 });
 

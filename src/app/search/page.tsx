@@ -123,7 +123,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
       </section>}
       {results.posts.length > 0 && <section>
         <h2 className="section">{scope === "builds" ? "Community builds" : term.startsWith("#") ? "Posts with this tag" : "Posts"}</h2>
-        {results.posts.map(p => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} viewerIdentity={viewerIdentity}/>)}
+        {results.posts.map(p => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} viewerIdentity={viewerIdentity} fromSearch={searchReturn}/>)}
       </section>}
     </>}
     {scope === "all" && <details key={searchReturn} className={styles.lookup} open={Boolean(term && (!results || (!term.startsWith("#") && term.includes("#"))))}>

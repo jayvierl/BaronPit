@@ -23,6 +23,7 @@ export interface User {
   bio: string;
   createdAt: string;
   bannedUntil: string | null;
+  safetyStatus?: string;
   strikeCount: number;
   ageBand: AgeBand | null;
   termsCurrent: boolean;
@@ -49,6 +50,7 @@ function rowToUser(r: Record<string, unknown>): User {
     bio: String(r.bio ?? ""),
     createdAt: String(r.created_at),
     bannedUntil: r.banned_until ? String(r.banned_until) : null,
+    safetyStatus: typeof r.safety_status === "string" ? r.safety_status : "visible",
     strikeCount: Number(r.strike_count ?? 0),
     pilotActive: r.pilot_active === true,
     ageBand: isAgeBand(r.age_band) ? r.age_band : null,
@@ -93,15 +95,17 @@ export async function requestMagicLink(emailRaw: string, origin: string, clientI
 }
 
 export async function inspectMagicLink(token: unknown) {
-  if (!validToken(token) || !dbAvailable()) return null;
-  const [row] = await q`SELECT u.age_band,u.terms_version,u.terms_accepted_at FROM wp_magic_links l LEFT JOIN wp_users u ON u.email=l.email
+  if (!validToken(token)) return null;
+  if (!dbAvailable()) throw new Error("Sign-in storage is unavailable");
+  const [row] = await q`SELECT l.return_to,u.age_band,u.terms_version,u.terms_accepted_at FROM wp_magic_links l LEFT JOIN wp_users u ON u.email=l.email
     WHERE l.token_hash=${hash(token)} AND l.used_at IS NULL AND l.expires_at>now() AND (l.may_create OR u.id IS NOT NULL)`;
   return row ? { needsConsent: !hasCurrentConsent(row),
-    ageBand: isAgeBand(row.age_band) ? row.age_band : null } : null;
+    ageBand: isAgeBand(row.age_band) ? row.age_band : null, returnTo: safeReturnTo(row.return_to) } : null;
 }
 
 export async function redeemMagicLink(token: unknown, band: AgeBand | null): Promise<{ user: User; sessionToken: string; returnTo: string } | null> {
-  if (!dbAvailable() || !validToken(token)) return null;
+  if (!validToken(token)) return null;
+  if (!dbAvailable()) throw new Error("Sign-in storage is unavailable");
   const sessionToken = randomBytes(32).toString("hex");
   const name = "Player " + randomBytes(4).toString("hex");
   const rows = await q`WITH consumed AS (
@@ -153,7 +157,8 @@ export async function destroySession(): Promise<void> {
 }
 
 export function isBanned(user: User): boolean {
-  return Boolean(user.bannedUntil && new Date(user.bannedUntil).getTime() > Date.now());
+  return (user.safetyStatus !== undefined && user.safetyStatus !== "visible") ||
+    Boolean(user.bannedUntil && new Date(user.bannedUntil).getTime() > Date.now());
 }
 
 // ON CONFLICT serializes attempts on the same bucket, including across function instances.

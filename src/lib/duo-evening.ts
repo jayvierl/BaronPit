@@ -68,7 +68,7 @@ export async function recordFitBoardDay(userId: number) {
     AND NOT EXISTS(SELECT 1 FROM wp_duo_arrival_days d WHERE d.user_id=c.user_id AND d.day=(now() AT TIME ZONE 'UTC')::date)`;
   if (!member || !await loadDuoFit(userId) || !(await privateDuoReadiness(userId)).ready) return;
   const { listings } = await readDuoBoard(userId, true);
-  const available = listings.some(l => !l.own && !l.requested && !l.held);
+  const available = listings.some(l => !l.own && l.requestState === null && !l.held);
   // A withdrawal or new enrollment while the board was loading invalidates this observation.
   await q`INSERT INTO wp_duo_arrival_days(user_id,day,available)
     SELECT c.user_id,(now() AT TIME ZONE 'UTC')::date,${available}

@@ -9,7 +9,9 @@ const dates = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric",
 
 function SampleScope({ analytics, partial }: Props) {
   return <p className={styles.meta}>
-    {analytics.sampleGames ? `${partial ? `${gameCount(analytics.sampleGames)} available` : `Last ${gameCount(analytics.sampleGames)}`} · supported public queues` : "No match records are available."}
+    {analytics.sampleGames ? (
+      partial ? `${gameCount(analytics.sampleGames, "public")} available` : `Latest ${gameCount(analytics.sampleGames, "public")}`
+    ) : "No recent public games are available."}
     {partial && " The available history may have gaps."}
   </p>;
 }

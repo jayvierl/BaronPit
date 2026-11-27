@@ -16,7 +16,7 @@ This is the source for [baronpit.com](https://baronpit.com), Vercel project `war
 
 ## Run
 
-Use Node 22 or newer. Run `npm ci` and `npm run dev`. Use `npm test`, `npm run lint`, `npx tsc --noEmit`, `npm run build` and then `npm run smoke` to verify a release. The smoke command runs the built application on loopback with synthetic PostgreSQL data. It uses no real account, database, Riot key or email recipient.
+Use Node 24, as in CI. Node 22.12 or later in the 22.x release line also works. Run `npm ci` and `npm run dev`. Use `npm test`, `npm run lint`, `npx tsc --noEmit`, `npm run build` and then `npm run smoke` to verify a release. The smoke command runs the built application on loopback with synthetic PostgreSQL data. It uses no real account, database, Riot key or email recipient.
 
 Run `npm run check:release -- https://baronpit.com` after promotion. This checks public page content for both the social/duo release and the Baron release. Compare the live deployment ID with the one reviewed before promotion.
 

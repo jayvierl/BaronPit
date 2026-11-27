@@ -87,7 +87,7 @@ it("sends a welcome through the isolated mail boundary, signs up once, and holds
   expect(preview.status).toBe(200);
   expect((await preview.json()).needsConsent).toBe(true);
   expect(preview.headers.has("set-cookie")).toBe(false);
-  expect((await verifyLink({ action: "confirm", ageBand: "adult", accepted: false, termsVersion: TERMS_VERSION })).status).toBe(410);
+  expect((await verifyLink({ action: "confirm", ageBand: "adult", accepted: false, termsVersion: TERMS_VERSION })).status).toBe(409);
   expect(await q`SELECT count(*)::int AS n FROM wp_users`).toEqual([{ n: 0 }]);
 
   const consent = { action: "confirm", ageBand: "adult", accepted: true, termsVersion: TERMS_VERSION };

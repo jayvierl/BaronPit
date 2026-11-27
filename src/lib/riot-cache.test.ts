@@ -62,6 +62,34 @@ describe("recent-form refresh", () => {
     mocked.q.mockResolvedValue([row(new Date())]);
     expect(await lookup()).toMatchObject({ ok: true, source: "cache" });
   });
+  it("reports unavailable saved records during a storage outage with no Riot call", async () => {
+    mocked.q.mockRejectedValue(new Error("fixture storage outage"));
+    const transport = vi.fn();
+    vi.stubGlobal("fetch",transport);
+    expect(await lookup()).toEqual({ok:false,code:"unavailable"});
+    expect(transport).not.toHaveBeenCalled();
+  });
+  it("uses each match's own routing cluster for a player's cross-region history", async () => {
+    mocked.q.mockResolvedValueOnce([]).mockImplementationOnce(async (_sql, ...args) => [{
+      ...row(new Date()), snapshot: JSON.parse(args[11]),
+    }]);
+    const ids = ["EUW1_11","NA1_12","OC1_13"];
+    const detailRegions: string[] = [];
+    const transport = vi.fn(async (url: string) => {
+      if (url.includes("/riot/account/")) return Response.json({puuid:"ref",gameName:"Fixture",tagLine:"NA1"});
+      if (url.includes("/summoner/")) return Response.json({summonerLevel:32,profileIconId:1});
+      if (url.includes("/league/")) return Response.json([]);
+      if (url.includes("/ids?")) return Response.json(ids);
+      const path = new URL(url);
+      const matchId = path.pathname.split("/").at(-1)!;
+      detailRegions.push(`${matchId}:${path.hostname.split(".")[0]}`);
+      return Response.json({metadata:{matchId},info:{gameDuration:1800,gameEndTimestamp:Date.now(),queueId:420,
+        participants:[{puuid:"ref",championName:"Ashe",win:true,kills:2,deaths:1,assists:4,totalMinionsKilled:100,neutralMinionsKilled:0}]}});
+    });
+    vi.stubGlobal("fetch",transport);
+    expect(await lookup()).toMatchObject({ok:true,source:"live",player:{snapshot:{matches:ids.map(matchId=>({matchId}))}}});
+    expect(detailRegions).toEqual(["EUW1_11:europe","NA1_12:americas","OC1_13:sea"]);
+  });
   it("coalesces lookups and preserves a stale row after a failed rank response", async () => {
     mocked.q.mockResolvedValue([row(new Date(0))]);
     const transport = vi.fn(async (url: string) => {
@@ -138,8 +166,9 @@ describe("recent-form refresh", () => {
   });
   it("preserves known good games if a successful ID-list response unexpectedly comes back empty", async () => {
     const previous = row(new Date(0));
+    const played = {matchId:"NA1_1",champion:"Ashe",win:true,kills:5,deaths:1,assists:4,cs:20,durationSec:900,playedAt:100};
     mocked.q.mockResolvedValue([
-      { ...previous, snapshot: { ...previous.snapshot, matches:[{matchId:"NA1_1",queueId:420,champion:"Ashe",win:true,kills:5,deaths:1,assists:4,cs:20,durationSec:900,playedAt:100}] } },
+      { ...previous, snapshot: { ...previous.snapshot, matches:[{...played,queueId:420}] } },
     ]);
     vi.stubGlobal("fetch", async (url: string) => {
       if (url.includes("/riot/account/"))
@@ -148,6 +177,9 @@ describe("recent-form refresh", () => {
     });
     expect(await lookup()).toMatchObject({ ok: true, source: "stale", player: { snapshot: { games: 1 } } });
     expect(mocked.q).toHaveBeenCalledTimes(1);
+    mocked.q.mockResolvedValue([{...previous,snapshot:{...previous.snapshot,matches:[{...played,queueId:0}]}}]);
+    expect(await lookup()).toMatchObject({ok:true,source:"stale",player:{snapshot:{games:0}}});
+    expect(mocked.q).toHaveBeenCalledTimes(2);
   });
   it("uses a supported account cluster and the Oceania match cluster separately", async () => {
     mocked.q.mockResolvedValue([]);

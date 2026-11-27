@@ -1,10 +1,10 @@
 import { publicPatch } from "@/lib/patch-notes";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
-import { currentPatch } from "@/lib/riot";
 import { buildFeed, getPost } from "@/lib/social";
 import { validId } from "@/lib/ids";
-import { buildCatalog } from "@/lib/build-catalog";
+import { currentBuildCatalog } from "@/lib/build-catalog";
+import { buildItemId } from "@/lib/build-sharing";
 import { examplePaths, pathFromPost } from "@/lib/build-comparison";
 import { BuildCompare } from "@/components/build-compare";
 
@@ -14,9 +14,10 @@ export default async function ComparePage({
 }: {
   searchParams: Promise<{ build?: string; item?: string }>;
 }) {
-  const [{ build, item }, user, patch] = await Promise.all([searchParams, getCurrentUser(), currentPatch()]);
-  const [catalog, community, target] = await Promise.all([
-    buildCatalog(patch),
+  const shop = currentBuildCatalog();
+  const [{ build, item }, user] = await Promise.all([searchParams, getCurrentUser()]);
+  const [{ catalog, current }, community, target] = await Promise.all([
+    shop,
     buildFeed(user, {}).catch(() => null),
     typeof build === "string" && /^[1-9]\d{0,9}$/.test(build) && validId(Number(build))
       ? getPost(Number(build), user).catch(() => null)
@@ -33,7 +34,8 @@ export default async function ComparePage({
     ...examplePaths(items, catalog.runes),
     ...Array.from(builds.values()).flatMap((p) => pathFromPost(p, shopIds, keystoneIds) ?? []),
   ];
-  const selectedItem = items.find((i) => i.id === Number(item));
+  const requestedItem = buildItemId(item);
+  const selectedItem = items.find((i) => i.id === requestedItem);
   if (selectedItem)
     choices.unshift({
       key: "selected-item",
@@ -42,7 +44,7 @@ export default async function ComparePage({
       runes: [],
       secondaryTree: "",
       runeNotes: "",
-      rationale: "Compare this item with another path for the same opponents.",
+      rationale: "Start one path with this item, then add the rest of the build.",
     });
   choices.push({
     key: "custom",
@@ -58,22 +60,23 @@ export default async function ComparePage({
       <Link href="/builds">Builds</Link>
       <h1 className="page-title">Compare build paths</h1>
       <p>
-        Try two item and rune paths against the same opponents. Start with a support example or a community
-        build, then adjust either side.
+        Compare shop costs and rune effects. Add a matchup as a note.
       </p>
       <p className="meta">
         Shop costs and effects from Riot for patch {publicPatch(catalog.patch) ?? "unavailable"}.
-        {catalog.patch !== patch && " The latest catalog is unavailable."}
+        {!current && " Riot’s current shop could not be verified. This comparison uses the last available catalog."}
       </p>
       {community === null && (
         <p className="notice">
           Community builds are temporarily unavailable. You can still compare shop items.
         </p>
       )}
+      {requestedItem && !selectedItem && <p className="notice">This item is unavailable in the comparison catalog.</p>}
       {build && !choices.some((p) => p.key === build) && (
-        <p className="notice">This build is unavailable for comparison with the current shop.</p>
+        <p className="notice">This build is unavailable for comparison with this shop catalog.</p>
       )}
       <BuildCompare
+        key={`${catalog.patch}/${selectedItem?.id ?? build ?? "default"}`}
         choices={choices}
         items={items}
         runes={catalog.runes}

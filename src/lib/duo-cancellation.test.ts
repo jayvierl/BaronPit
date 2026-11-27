@@ -32,12 +32,12 @@ beforeAll(async () => {
   vi.stubEnv("DUO_MATCHING_ENABLED", "true");
   await q`INSERT INTO wp_users (id,email,display_name,age_band,terms_version,terms_accepted_at,created_at)
     SELECT n,'cancel-'||n||'@fixture.invalid','Player','adult',${TERMS_VERSION},now(),now()-interval '2 days'
-    FROM generate_series(1,12) n`;
+    FROM generate_series(1,14) n`;
   await q`INSERT INTO wp_players(puuid,platform,game_name,tag_line,rank_tier,rank_div,snapshot)
     SELECT 'fixture-'||n,'na1','Private' || n,'TAG','GOLD','III','{"matches":[{"matchId":"NA1_1"}]}'
-    FROM generate_series(1,12) n`;
+    FROM generate_series(1,14) n`;
   await q`INSERT INTO wp_links (user_id,puuid,verified,is_primary)
-    SELECT n,'fixture-'||n,true,true FROM generate_series(1,12) n`;
+    SELECT n,'fixture-'||n,true,true FROM generate_series(1,14) n`;
 }, 30_000);
 
 afterAll(async () => {
@@ -180,5 +180,31 @@ it("requires a same-origin participant and keeps protective cancellation availab
     auth.current = null;
     vi.stubEnv("DUO_MATCHING_ENABLED", "true");
     vi.stubEnv("SAFETY_PAUSE_PUBLICATION", priorPause);
+  }
+});
+
+it("requires confirmed play for private thanks and does not accept a recipient, amount or payment action", async () => {
+  await q`UPDATE wp_users SET age_band='teen' WHERE id IN (13,14)`;
+  const id = await booking(13, 14, -65);
+  const send = (body: object) => POST(new Request("https://ward.test/api/lfg", {
+    method: "POST", headers: { origin: "https://ward.test", "content-type": "application/json" }, body: JSON.stringify(body),
+  }));
+  auth.current = { ...player(14), ageBand: "teen" };
+  try {
+    const basic = { action: "thank", id };
+    expect((await send(basic)).status).toBe(400);
+    await q`INSERT INTO wp_duo_game_checks (request_id,attempted_at,checked_at,first_game_at,expires_at)
+      VALUES (${id},now(),now(),now()-interval '30 minutes',now()+interval '29 days')`;
+    expect((await readDuoBoard(14)).requests).toMatchObject([{ id, thanks: { canSend: true, adultPair: false } }]);
+    expect((await send({ ...basic, amountCents: 500 })).status).toBe(400);
+    expect((await send({ ...basic, recipientId: 10 })).status).toBe(400);
+    expect((await send({ ...basic, action: "tip" })).status).toBe(400);
+    expect((await readDuoBoard(13)).requests).toMatchObject([{ id, thanks: { received: false } }]);
+    const response = await send(basic);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect((await readDuoBoard(13)).requests).toMatchObject([{ id, thanks: { received: true, adultPair: false } }]);
+  } finally {
+    auth.current = null;
   }
 });

@@ -121,9 +121,10 @@ function MatchRow({ match, patch, platform, lookupHref, motion, expanded, commun
   if (matchId) from.hash = matchId;
   const matchPath = from.pathname + from.search + from.hash;
   const question = reference && community ? { match: reference, showStarters: community.showStarters, fromMatch: matchPath, showQuestion: false } : null;
-  const timelineUrl = new URL(matchPath, "https://profile.invalid");
+  const timelineUrl = new URL(lookupHref, "https://profile.invalid");
   timelineUrl.searchParams.set("timeline", "objectives");
   timelineUrl.searchParams.set("match", match.matchId);
+  if (matchId) timelineUrl.hash = matchId;
   const returnUrl = new URL(timelineUrl);
   returnUrl.searchParams.delete("timeline");
   const fromMatch = encodeURIComponent(matchPath);

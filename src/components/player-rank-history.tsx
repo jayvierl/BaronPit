@@ -1,4 +1,5 @@
 import { APP_NAME } from "@/lib/brand";
+import { PLATFORMS } from "@/lib/platforms";
 import {
   RANK_HISTORY_QUEUES, rankHistoryLabel, rankHistoryPosition, rankHistoryPositionLabel,
   type QueueRankHistory, type RankHistoryPoint,
@@ -101,15 +102,16 @@ function QueueHistory({ history }: { history: QueueRankHistory }) {
 export async function PlayerRankHistory({ puuid, platform }: { puuid: string; platform: string }) {
   const histories = await readPlayerRankHistory(puuid, platform).catch(() => null);
   const queues = histories?.filter(history => history.recent.length > 0) ?? [];
+  const region = PLATFORMS.find(shard => shard.id === platform)?.label;
   return (
     <section aria-labelledby="rank-history-title" className={styles.section}>
       <h2 id="rank-history-title">Rank history</h2>
       {histories === null
         ? <p className={styles.note}>Rank history is temporarily unavailable.</p>
         : queues.length === 0
-          ? <p className={styles.note}>History starts when {APP_NAME} records a ranked refresh for this player.</p>
+          ? <p className={styles.note}>History starts when {APP_NAME} records a ranked refresh for this player{region ? ` on ${region}` : ""}.</p>
           : <>
-              <p className={styles.note}>{APP_NAME} saves the latest successful observation per queue and UTC day.</p>
+              <p className={styles.note}>Showing {region ?? "this region’s"} ranked observations. {APP_NAME} keeps the latest successful observation per queue and UTC day, including when a player changes regions that day.</p>
               {queues.map(history => <QueueHistory key={history.queue} history={history} />)}
             </>}
     </section>

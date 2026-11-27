@@ -1,5 +1,5 @@
 import bundled from "./build-catalog.json";
-import { currentPatch } from "./riot";
+import { confirmedPatch } from "./riot";
 
 export interface ShopItem {
   id: number;
@@ -90,14 +90,12 @@ export function parseBuildCatalog(patch: string, itemPayload: unknown, runePaylo
   return { patch, items, runes };
 }
 
-let latest: BuildCatalog = bundled;
-let attempt: { patch: string; promise: Promise<BuildCatalog>; retryAt: number } | undefined;
-export async function buildCatalog(patch?: string): Promise<BuildCatalog> {
-  const wanted = patch ?? (await currentPatch());
-  if (latest.patch === wanted || !catalogPatch.test(wanted)) return latest;
-  if (attempt?.patch === wanted && Date.now() < attempt.retryAt) return attempt.promise;
-  const root = `https://ddragon.leagueoflegends.com/cdn/${wanted}/data/en_US`;
-  const promise = Promise.all(
+let lastAvailable: BuildCatalog = bundled;
+const patchReads = new Map<string, { promise: Promise<BuildCatalog | null>; retryAt: number }>();
+
+async function loadPatchCatalog(patch: string): Promise<BuildCatalog> {
+  const root = `https://ddragon.leagueoflegends.com/cdn/${patch}/data/en_US`;
+  const [items, runes] = await Promise.all(
     ["item", "runesReforged"].map(async (name) => {
       const response = await fetch(`${root}/${name}.json`, {
         next: { revalidate: 86400 },
@@ -106,11 +104,41 @@ export async function buildCatalog(patch?: string): Promise<BuildCatalog> {
       if (!response.ok) throw new Error("Catalog unavailable");
       return response.json();
     }),
-  )
-    .then(([items, runes]) => (latest = parseBuildCatalog(wanted, items, runes)))
-    .catch(() => latest);
-  attempt = { patch: wanted, promise, retryAt: Date.now() + 60_000 };
-  return promise;
+  );
+  return parseBuildCatalog(patch, items, runes);
+}
+
+function exactBuildCatalog(patch: string): Promise<BuildCatalog | null> {
+  if (patch === lastAvailable.patch) return Promise.resolve(lastAvailable);
+  if (patch === bundled.patch) return Promise.resolve(bundled);
+  if (!catalogPatch.test(patch)) return Promise.resolve(null);
+  const existing = patchReads.get(patch);
+  if (existing && Date.now() < existing.retryAt) return existing.promise;
+  patchReads.delete(patch);
+  if (patchReads.size >= 4) {
+    const oldest = patchReads.keys().next().value;
+    if (oldest) patchReads.delete(oldest);
+  }
+  const read = {
+    promise: loadPatchCatalog(patch).then(catalog => {
+      read.retryAt = Infinity;
+      return catalog;
+    }).catch(() => null),
+    retryAt: Date.now() + 60_000,
+  };
+  patchReads.set(patch, read);
+  return read.promise;
+}
+
+export async function currentBuildCatalog() {
+  const patch = await confirmedPatch();
+  const catalog = patch ? await exactBuildCatalog(patch) : null;
+  if (catalog) lastAvailable = catalog;
+  return { catalog: catalog ?? lastAvailable, current: catalog !== null };
+}
+
+export async function buildCatalog(patch?: string): Promise<BuildCatalog> {
+  return patch ? (await exactBuildCatalog(patch)) ?? lastAvailable : (await currentBuildCatalog()).catalog;
 }
 
 export interface CardItem {

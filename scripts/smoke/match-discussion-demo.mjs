@@ -169,7 +169,7 @@ async function main() {
       await consent.check();
       const sourceDetails = river.getByText("Match source details", { exact: true });
       await sourceDetails.click();
-      await visible(river.getByText("Riot record retrieved", { exact: true }));
+      await visible(river.getByText("Match snapshot as of", { exact: true }));
       await river.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
       await screenshot(river, "02-public-preview-mobile.png");
       await consent.scrollIntoViewIfNeeded();

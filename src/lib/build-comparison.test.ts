@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { buildCatalog, cardItems, parseBuildCatalog } from "./build-catalog";
-import { examplePaths, pathCost, pathFromPost } from "./build-comparison";
+import { comparisonItemOptions, examplePaths, pathCost, pathFromPost } from "./build-comparison";
 import { ItemIcons } from "@/components/item-icons";
 
 describe("patch-stamped build comparisons", () => {
@@ -40,7 +40,16 @@ describe("patch-stamped build comparisons", () => {
     expect(pathFromPost({ ...base, status: "held" }, new Set([3190]))).toBeNull();
     expect(pathFromPost(base, new Set())).toBeNull();
     expect(pathFromPost(base, new Set([3190]), new Set([8465]))?.runes).toEqual([8465]);
-    expect(pathFromPost(base, new Set([3190]), new Set([9999]))?.runes).toEqual([]);
+    expect(pathFromPost(base, new Set([3190]), new Set([9999]))).toMatchObject({ runes: [], unavailableKeystone: "Guardian" });
+  });
+  it("keeps distinct same-name Riot items selectable and omits incomplete examples", async () => {
+    const { items, runes } = await buildCatalog("16.23.1");
+    const options = comparisonItemOptions(items.filter(item => item.shop));
+    expect(options.find(({ label }) => label === "Redemption (2,300g, #3107)")?.item.id).toBe(3107);
+    expect(options.find(({ label }) => label === "Redemption (2,800g, #323107)")?.item.id).toBe(323107);
+    expect(options.find(({ label }) => label === "Boots")?.item.id).toBe(1001);
+    expect(examplePaths(items.filter(i => i.id !== 3107), runes).map(path => path.key)).toEqual(["protect"]);
+    expect(examplePaths([], runes)).toEqual([]);
   });
   it("normalizes tagged Riot descriptions as plain text and rejects mismatched versions", () => {
     const input = {

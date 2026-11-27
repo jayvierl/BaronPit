@@ -97,3 +97,25 @@ it("accepts a published build, refuses to repost the patch publisher and leaves 
   expect(await setRepost(3,14,true)).toBe(false);
   expect((await readPosts(7,{following:true},20)).map(post => post.id)).toEqual([14]);
 });
+
+it("removes a quote repost from Following if the underlying original and the sharer become blocked", async () => {
+  await q`INSERT INTO wp_users(id,email,display_name) VALUES (5,'quote@fixture.invalid','Quote writer')`;
+  await q`INSERT INTO wp_posts(id,author_id,body) VALUES (20,2,'Original wave timing'),(21,5,'Commentary on the wave')`;
+  await q`INSERT INTO wp_quote_posts(post_id,original_post_id,original_author_id) VALUES (21,20,2)`;
+  expect(await setRepost(3,21,true)).toBe(true);
+  expect((await following()).find(post => post.id === 21)?.repostedBy).toMatchObject({ id: 3 });
+
+  await q`INSERT INTO wp_blocks(blocker_id,blocked_id) VALUES (2,3)`;
+  expect(await setRepost(3,21,true)).toBe(false);
+  expect((await following()).find(post => post.id === 21)).toBeUndefined();
+  await q`INSERT INTO wp_follows(follower_id,followee_id) VALUES(1,5)`;
+  const independentlyFollowed = (await following()).find(post => post.id === 21);
+  expect(independentlyFollowed).toMatchObject({ body: "Commentary on the wave", quote: { original: { postId: 20 } } });
+  expect(independentlyFollowed?.repostedBy).toBeUndefined();
+
+  await q`DELETE FROM wp_blocks WHERE blocker_id=2 AND blocked_id=3`;
+  await q`INSERT INTO wp_blocks(blocker_id,blocked_id) VALUES (3,2)`;
+  expect((await following()).find(post => post.id === 21)?.repostedBy).toBeUndefined();
+  await q`DELETE FROM wp_blocks WHERE blocker_id=3 AND blocked_id=2`;
+  expect((await following()).find(post => post.id === 21)?.repostedBy).toMatchObject({ id: 3 });
+});

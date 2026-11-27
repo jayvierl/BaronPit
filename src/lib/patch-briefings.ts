@@ -8,6 +8,10 @@ import { ensureRooms } from "./rooms";
 export async function runPatchWatch(): Promise<{ patch: string; changed: boolean; briefings: number }> {
   const patch = await confirmedPatch();
   if (!patch || !publicPatch(patch)) throw new Error("Current patch unavailable");
+  // Leave the last published patch intact so the next eligible run can catch up.
+  if (process.env.SAFETY_PAUSE_PUBLICATION === "true") {
+    return { patch, changed: false, briefings: 0 };
+  }
   const [, notes, sql] = await Promise.all([ensureRooms(), resolveNotesUrl(patch), getSql()]);
   const release = patch.split(".").slice(0, 2).join(".");
   const [, , result] = await sql.transaction([
@@ -17,13 +21,15 @@ export async function runPatchWatch(): Promise<{ patch: string; changed: boolean
       WHERE wp_users.safety_status='visible'
         AND (wp_users.display_name,wp_users.avatar_hue) IS DISTINCT FROM (excluded.display_name,excluded.avatar_hue)`,
     sql`WITH prior AS MATERIALIZED (SELECT value FROM wp_meta WHERE key='last_patch'),
+      publisher AS (SELECT id FROM wp_users WHERE email=${PATCH_PUBLISHER}
+        AND safety_status='visible' AND (banned_until IS NULL OR banned_until<=clock_timestamp())),
       advanced AS (
-        INSERT INTO wp_meta(key,value) VALUES ('last_patch',${patch})
+        INSERT INTO wp_meta(key,value) SELECT 'last_patch',${patch} FROM publisher
         ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE
           CASE WHEN wp_meta.value ~ '^[0-9]{1,3}([.][0-9]{1,3}){1,2}$'
             THEN string_to_array(wp_meta.value,'.')::int[] < string_to_array(excluded.value,'.')::int[] ELSE true END
         RETURNING value
-      ), publisher AS (SELECT id FROM wp_users WHERE email=${PATCH_PUBLISHER}),
+      ),
       canonical AS (SELECT id FROM wp_rooms WHERE slug='patch-meta' AND safety_status='visible'),
       old_notes AS MATERIALIZED (
         SELECT p.id FROM wp_posts p JOIN publisher u ON u.id=p.author_id WHERE p.kind='text' AND

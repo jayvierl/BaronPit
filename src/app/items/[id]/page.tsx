@@ -2,6 +2,7 @@ import { publicPatch } from "@/lib/patch-notes";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { GameAssetIcon } from "@/components/game-asset-icon";
+import { BuildsLink } from "@/components/builds-link";
 import { buildCatalog } from "@/lib/build-catalog";
 import { buildItemId, buildsHref } from "@/lib/build-sharing";
 import { readSearchReturn } from "@/lib/search-scopes";
@@ -34,9 +35,9 @@ export default async function ItemPage({ params, searchParams }: {
         {!item.shop && <p className="meta">Outside the standard Summoner’s Rift shop.</p>}
       </section>
       <div className={styles.links}>
-        {item.shop && <Link className="btn" href={buildsHref({ item: item.id, compose: true })}>Share a build with {item.name}</Link>}
-        <Link className="btn secondary" href={buildsHref({ item: item.id })}>See builds with this item</Link>
-        {item.shop && <Link className={styles.inlineLink} href={`/builds/compare?item=${id}`}>Compare this item in a build</Link>}
+        {item.shop && <BuildsLink className="btn" href={buildsHref({ item: item.id, compose: true, from: searchReturn })}>Share a build with {item.name}</BuildsLink>}
+        <BuildsLink className="btn secondary" href={buildsHref({ item: item.id, from: searchReturn })}>See builds with this item</BuildsLink>
+        {item.shop && <BuildsLink className={styles.inlineLink} href={`/builds/compare?item=${item.id}`}>Compare this item in a build</BuildsLink>}
       </div>
     </div>
   );

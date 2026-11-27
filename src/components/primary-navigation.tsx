@@ -73,6 +73,12 @@ function ComposeLink({ pathname, mobile }: { pathname: string; mobile?: boolean 
   const item = <><Icon path={composeIcon}/><span className={mobile ? styles.mobileComposeText : styles.railText}>{POST_TO_THE_PIT}</span></>;
   function openComposer(event: MouseEvent<HTMLAnchorElement>) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const contextualAction = document.querySelector<HTMLAnchorElement>("main a#compose[href]");
+    if (contextualAction) {
+      event.preventDefault();
+      contextualAction.click();
+      return;
+    }
     if (!focusComposer() && pathname !== "/" && document.querySelector("main [data-page-unavailable]")) {
       event.preventDefault();
       router.push("/#compose");

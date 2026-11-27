@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BuildsLink } from "@/components/builds-link";
 import { ChampionPortrait } from "@/components/champion-portrait";
 import { Composer } from "@/components/composer";
 import { GuestPostDraft } from "@/components/guest-draft";
@@ -100,14 +101,14 @@ export default async function RoomPage({ params, searchParams }: {
       {roomBuilds ? <>
         <p className="meta">Recent {champInfo?.name ?? roomBuilds} builds from across the community.</p>
         <div className={styles.hubLinks}>
-          <Link id="compose" className="btn small" href={buildsHref({ champion: roomBuilds, compose: true, room: true })} prefetch={false}>Share a build</Link>
-          <Link href={buildsHref({ champion: roomBuilds })} prefetch={false}>Explore all {champInfo?.name ?? roomBuilds} builds</Link>
+          <BuildsLink id="compose" className="btn small" href={buildsHref({ champion: roomBuilds, compose: true, room: true, from })}>Share a build</BuildsLink>
+          <BuildsLink href={buildsHref({ champion: roomBuilds })}>Explore all {champInfo?.name ?? roomBuilds} builds</BuildsLink>
         </div>
-      </> : <details id="compose" className={styles.compose} open={search.compose === "1"}>
+      </> : <details className={styles.compose} open={search.compose === "1"}>
         <summary>Post in {roomTitle}<span aria-hidden="true">＋</span></summary>
         {user
-          ? <Composer key={user.id + ":" + room.id} viewerId={user.id} roomId={room.id} patch={patch} champions={champions.map(c => c.id)} viewerIdentity={viewerIdentity} anchorId={null} />
-          : <GuestPostDraft roomId={room.id} destination={composeHref} label={`Post in ${roomTitle}`} anchorId={null}/>}
+          ? <Composer key={user.id + ":" + room.id} viewerId={user.id} roomId={room.id} patch={patch} champions={champions.map(c => c.id)} viewerIdentity={viewerIdentity} />
+          : <GuestPostDraft roomId={room.id} destination={composeHref} label={`Post in ${roomTitle}`}/>}
       </details>}
       {(!championSection || championSection === "discussions") && <nav className={styles.roomTabs} aria-label="Room feed filters">
         {roomFeeds.filter(({ key }) => !championSection || key !== "builds").map(({key, label}) => <Link key={key}
@@ -116,11 +117,11 @@ export default async function RoomPage({ params, searchParams }: {
       </nav>}
       {posts === null ? <p className="empty" role="status">{roomBuilds ? "Community builds" : "Room posts"} are temporarily unavailable. Refresh to try again.</p> : posts.length === 0
         ? <WardEmptyState text={roomBuilds ? "No community builds for this champion yet." : view.key === "all" ? "No threads in this room yet." : `No ${view.label.toLowerCase()} in this room yet.`}
-            action={roomBuilds ? <Link href={buildsHref({ champion: roomBuilds, compose: true, room: true })}>Share the first build</Link>
+            action={roomBuilds ? <BuildsLink href={buildsHref({ champion: roomBuilds, compose: true, room: true, from })}>Share the first build</BuildsLink>
               : view.key === "all" ? <Link href={composeHref} prefetch={false}>Start the first thread</Link>
               : <Link href={allThreads} scroll={false}>See all threads</Link>}/>
         : posts.map(p => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} viewerId={viewerId} viewerIdentity={viewerIdentity}
-          fromBuild={roomBuilds ? shareDestination : undefined} />)}
+          fromBuild={roomBuilds ? destination : undefined} />)}
     </div>
   );
 }

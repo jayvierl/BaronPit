@@ -3,6 +3,7 @@ import { HIDDEN_AUTHORS, visiblePostForInteraction } from "./community-queries";
 import { publicPatch } from "./patch-notes";
 import { buildCatalog } from "./build-catalog";
 import { matchRoleLabels, projectMatchContext, type DiscussionKind, type MatchContext } from "./match-context";
+import { matchObservedMs } from "./match-observation";
 import { questionDecisionPost } from "./match-card-projection";
 import { publicQueueSql } from "./public-match-queues";
 import { resolveQuestionMatch } from "./question-match";
@@ -261,7 +262,7 @@ const trialGames = `SELECT m->>'matchId' AS id, jsonb_build_object('champion',m-
   CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(pl.snapshot->'matches')='array' THEN pl.snapshot->'matches' ELSE '[]'::jsonb END) AS m
   WHERE l.user_id=$1 AND l.verified AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.puuid=l.puuid AND other.verified AND other.user_id<>l.user_id) AND m->>'champion'=d.champion
     AND CASE WHEN (m->>'playedAt') ~ '^[0-9]{10,14}$' THEN (m->>'playedAt')::bigint > extract(epoch FROM d.accepted_at)*1000
-      AND (m->>'playedAt')::bigint<=extract(epoch FROM least(pl.fetched_at,now()))*1000 ELSE false END
+      AND (m->>'playedAt')::bigint<=${matchObservedMs("pl.snapshot", "least(pl.fetched_at,now())")} ELSE false END
     AND ${publicQueueSql("m")} AND jsonb_typeof(m->'win')='boolean' AND jsonb_typeof(m->'kills')='number'
     AND jsonb_typeof(m->'deaths')='number' AND jsonb_typeof(m->'assists')='number'`;
 

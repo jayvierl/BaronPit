@@ -8,7 +8,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { duoEnabled, readDuoBoard, type DuoListing, type DuoRequest } from "@/lib/duo";
 import { privateDuoReadiness, type DuoReadiness } from "@/lib/duo-readiness";
 import { loadDuoFit } from "@/lib/duo-fit-store";
-import { LfgBoard, LfgForm } from "@/components/lfg-ui";
+import { LfgBoard } from "@/components/lfg-ui";
 import { DuoGameChecks } from "@/components/duo-game-checks";
 import { DuoFitForm } from "@/components/duo-fit-form";
 import { pinnedDuoIds } from "@/lib/duo-shortlist";
@@ -86,8 +86,8 @@ export default async function LfgPage({ searchParams }: { searchParams: Promise<
         <>
           <p>Matching as <strong>{state.riotId}</strong> · NA · <Link href="/me">Manage Riot accounts</Link></p>
           <p className="meta">Choose an hour of Ranked Solo/Duo or Normal Draft on NA. Ranked listings match compatible Solo/Duo placements from Iron through Emerald. League confirms final queue eligibility.</p>
-          <LfgBoard listings={state.listings} requests={state.requests} fit={fit} onlyFit={onlyFit} asOf={state.asOf} pinnedIds={pins}/>
-          {!state.listings.some(l => l.own) && <LfgForm key={JSON.stringify([fit,state.riotId,state.rankedPilot])} fit={fit} asOf={state.asOf} rankedPilot={state.rankedPilot} />}
+          <LfgBoard listings={state.listings} requests={state.requests} fit={fit} onlyFit={onlyFit} asOf={state.asOf} pinnedIds={pins}
+            hosting={{ riotId: state.riotId, rankedPilot: state.rankedPilot }}/>
           <p className="meta"><Link href="/pilot#duo-study">Volunteer for the Duo Finder study</Link></p>
         </>
       )}

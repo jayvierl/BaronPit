@@ -96,7 +96,7 @@ export function PlayerStats({ player, source = "cache", lookupHref, variant = "s
       )}
       {stats.sampleGames > 0 ? (
         <div className={styles.recent}>
-          <h3>{source === "partial" ? `${gameCount(stats.sampleGames)} available` : `Last ${gameCount(stats.sampleGames)}`} · supported public queues</h3>
+          <h3>{source === "partial" ? `${gameCount(stats.sampleGames, "public")} available` : `Latest ${gameCount(stats.sampleGames, "public")}`}</h3>
           <dl>
             {stats.sampleRecord && <div>
               <dt>Recent win rate</dt>
@@ -114,7 +114,7 @@ export function PlayerStats({ player, source = "cache", lookupHref, variant = "s
             </div>
           </dl>
         </div>
-      ) : <p className={styles.note}>No recent games are available for a role or champion breakdown.</p>}
+      ) : <p className={styles.note}>No recent public games are available for a role or champion breakdown.</p>}
     </section>
   );
 }

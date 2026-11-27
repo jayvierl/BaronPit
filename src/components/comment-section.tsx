@@ -52,6 +52,10 @@ function revealReply(section: HTMLElement | null, id: number) {
   return true;
 }
 
+function visibleReplyCount(comments: CommentView[]): number {
+  return comments.reduce((count, reply) => count + 1 + visibleReplyCount(reply.replies), 0);
+}
+
 export function CommentSection({
   postId,
   active = true,
@@ -64,7 +68,7 @@ export function CommentSection({
   repliesClosed = false,
   allowOneFix,
   decisionQuestion,
-  onVisibleReply,
+  onReplyCount,
 }: {
   postId: number;
   active?: boolean;
@@ -77,7 +81,7 @@ export function CommentSection({
   repliesClosed?: boolean;
   allowOneFix?: boolean;
   decisionQuestion?: boolean;
-  onVisibleReply?: () => void;
+  onReplyCount?: (count: number) => void;
 }) {
   const router = useRouter();
   const hydrated = useHydrated();
@@ -121,17 +125,26 @@ export function CommentSection({
         const response = await fetch(`/api/social/comments?postId=${postId}`, {
           cache: "no-store",
           signal: controller.signal,
+          headers: { "x-expected-viewer": String(viewerId ?? "guest") },
         });
+        if (controller.signal.aborted) return;
+        if (response.status === 409) {
+          setThread({ postId, revision, visit, error: "Your signed-in account changed. Refresh to see replies." });
+          return;
+        }
         const data = await response.json();
         if (!response.ok || data.ok !== true || !Array.isArray(data.comments)) throw new Error("Unavailable");
-        if (!controller.signal.aborted) setThread({ postId, revision, visit, comments: data.comments });
+        if (!controller.signal.aborted) {
+          onReplyCount?.(visibleReplyCount(data.comments));
+          setThread({ postId, revision, visit, comments: data.comments });
+        }
       } catch {
         if (!controller.signal.aborted) setThread({ postId, revision, visit, error: "Replies couldn’t load." });
       }
     }
     void load();
     return () => controller.abort();
-  }, [active, postId, revision, visit, useInitial]);
+  }, [active, postId, revision, visit, useInitial, onReplyCount, viewerId]);
 
   const current: ThreadLoad | null = useInitial
     ? { postId, revision, visit, comments: initialComments }
@@ -194,6 +207,7 @@ export function CommentSection({
     body: draft.trim(),
     parentId: typeof replyTo === "number" ? replyTo : undefined,
     oneFix: !!allowOneFix && oneFix && replyTo === null,
+    expectedAuthorId: viewerId ?? undefined,
   };
   const submissionKey = JSON.stringify(payload);
   const [attempted, setAttempted] = useState("");
@@ -214,10 +228,7 @@ export function CommentSection({
     setOneFix(false);
     if (result.status === "held") setNotice("Your reply is awaiting moderator review.");
     else if (result.status !== "visible") setNotice("Your earlier submission is recorded in My submissions.");
-    else {
-      setNotice("Reply posted.");
-      onVisibleReply?.();
-    }
+    else setNotice("Reply posted.");
     setRevision((r) => r + 1);
   }
 

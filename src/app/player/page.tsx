@@ -63,13 +63,14 @@ export default async function PlayerPage({ searchParams }: {
 
   const [result,patch,user] = await Promise.all([
     lookupPlayer(platform, name, tag, { profile: true, force: sp.force === "1" }),
-    currentPatch(),getCurrentUser(),
+    currentPatch(),getCurrentUser().catch(() => undefined),
   ]);
   if (!result.ok) {
     const text =
       result.code === "not_found" ? `No player named ${name}#${tag} on ${platform.toUpperCase()}. Check the spelling and the #tag.`
       : result.code === "key_unavailable" || result.code === "invalid_key" ? "Live player lookup is temporarily unavailable. Please try again later."
       : result.code === "rate_limited" ? "Riot is limiting lookups. Wait a moment before trying again."
+      : result.code === "unavailable" ? "We couldn’t open saved player records. Please try again shortly."
       : "The Riot API didn't answer just now. Try again in a moment.";
     return (
       <div style={{ maxWidth: 640, margin: "20px auto" }}>
@@ -91,16 +92,18 @@ export default async function PlayerPage({ searchParams }: {
   const analytics = buildPlayerAnalytics(matches);
   const incompleteHistory = partial || player.matchHistory?.complete === false;
   const [linked,owner,roomSlugs,masteryCatalog] = await Promise.all([
-    user ? q`SELECT 1 FROM wp_links WHERE user_id=${user.id} AND puuid=${player.puuid}` : [],
-    publicRiotOwner(player.puuid, user?.id ?? null).catch(() => null),
+    user ? q`SELECT 1 FROM wp_links WHERE user_id=${user.id} AND puuid=${player.puuid}`.catch(() => null) : null,
+    user === undefined ? null : publicRiotOwner(player.puuid, user?.id ?? null).catch(() => null),
     visibleChampionRoomSlugs(analytics.champions.map(entry => entry.id)).catch(() => []),
     masteryNeedsCatalog(player.championMastery) ? championList() : [],
   ]);
   const publicRooms = new Set(roomSlugs);
-  const linkedByMe = linked.length > 0;
+  const allowLink = linked?.length === 0 && !partial;
+  const canOpenMatchContext = !partial && user !== undefined;
   const badges = earnedBadges(snap);
   const streak = partial ? null : currentWinStreak(snap, player.fetchedAt);
   const history = recentMatchHistory(matches, sp.queue, sp.champion);
+  const publicSample = gameCount(history.sampleSize, "public");
   const latest = history.matches.slice(0, MATCH_DETAIL_LIMIT);
   const filtered = Boolean(history.queue || history.champion);
   const route = new URL(withSearchReturn(playerStatsHref(player.platform, player.gameName + "#" + player.tagLine), searchReturn), "https://lookup.invalid");
@@ -143,7 +146,7 @@ export default async function PlayerPage({ searchParams }: {
           <Avatar name={player.gameName} hue={265} size={84} imageUrl={profileIconUrl(patch, player.profileIcon)} />
         </div>
         <RefreshPlayer href={refreshHref} fetchedAt={player.fetchedAt} source={result.source} retryAt={result.retryAt} requested={sp.force === "1"} />
-        {user && !linkedByMe && !partial && <LinkPlayerButton platform={platform} gameName={player.gameName} tagLine={player.tagLine} />}
+        {user && allowLink && <LinkPlayerButton platform={platform} gameName={player.gameName} tagLine={player.tagLine} />}
       </header>
       <nav className={profileStyles.profileNav} aria-label="Player sections">
         <a href="#summary">Summary</a><a href="#match-history">Matches</a><a href="#player-champions">Champions</a>
@@ -174,23 +177,23 @@ export default async function PlayerPage({ searchParams }: {
           <button className="btn secondary small">Apply</button>
         </Form>
         <p className={styles.result} aria-live="polite">
-          {history.winRate === null ? `No matching games in ${incompleteHistory ? "the available" : "the last"} ${gameCount(history.sampleSize)}` : <>
-            {filtered ? `${history.matches.length} of ${gameCount(history.sampleSize)}` : incompleteHistory ? `${gameCount(history.sampleSize)} available` : `Last ${gameCount(history.sampleSize)}`}
+          {history.winRate === null ? `No matching games among the ${incompleteHistory ? "available" : "latest"} ${publicSample}` : <>
+            {filtered ? `${history.matches.length} of ${publicSample}` : incompleteHistory ? `${publicSample} available` : `Latest ${publicSample}`}
             {" · "}{history.wins}W–{history.losses}L · {history.winRate}% win rate
           </>}
           {filtered && <Link href={historyHref} className={styles.reset}>Clear filters</Link>}
         </p>
       </>}
-      {history.sampleSize === 0 && !discussionId && <p className="meta">{partial ? "Riot couldn’t provide recent matches for this lookup." : "No recent matches found for this player."}</p>}
+      {history.sampleSize === 0 && !discussionId && <p className="meta">{partial ? "Riot couldn’t provide recent public games for this lookup." : "No recent public games in this lookup."}</p>}
       {latest.length > 0 && (
         <LatestGames matches={latest} patch={patch} platform={player.platform} riotId={`${player.gameName}#${player.tagLine}`}
-          persisted={!partial} communityMatchIds={new Set(snap.matches.map(m => m.matchId))} lookupHref={lookupHref}
+          persisted={canOpenMatchContext} communityMatchIds={new Set(snap.matches.map(m => m.matchId))} lookupHref={lookupHref}
           queueFilter={history.queue} championFilter={history.champion} rawMatch={sp.match} showTimeline={sp.timeline === "objectives"}/>
       )}
       {!filtered && frequent.length > 0 && (
         <p className="meta">Also on the same team recently · {frequent.map(([name,games]) => `${name} (${games} games)`).join(", ")}</p>
       )}
-      <OlderGames matches={history.matches} patch={patch} platform={player.platform} riotId={`${player.gameName}#${player.tagLine}`} persisted={!partial} lookupHref={lookupHref}
+      <OlderGames matches={history.matches} patch={patch} platform={player.platform} riotId={`${player.gameName}#${player.tagLine}`} persisted={canOpenMatchContext} lookupHref={lookupHref}
         rawPage={sp.older} rawMatch={sp.match} showTimeline={sp.timeline === "objectives"} queueFilter={history.queue} championFilter={history.champion}/>
 
       <div id="player-champions" className={profileStyles.anchor}>

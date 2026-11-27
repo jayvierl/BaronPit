@@ -19,6 +19,7 @@ export function BuildAttachment({ post, patch, canReconfirm }: { post: PostView;
   const router = useRouter();
   const buildPatch = confirmed ?? publicPatch(data.patch);
   const currentPatch = publicPatch(patch);
+  const itemPatch = publicPatch(post.itemPatch);
   const stale = !!currentPatch && (!buildPatch || !samePatch(buildPatch, currentPatch));
   const champion = typeof data.champion === "string" ? data.champion : null;
   const keystone = buildKeystone(data.keystone);
@@ -43,7 +44,7 @@ export function BuildAttachment({ post, patch, canReconfirm }: { post: PostView;
       </div>
     </div>
     <ItemIcons ids={Array.isArray(data.items) ? data.items : []} patch={post.itemPatch ?? patch} details={post.itemDetails}/>
-    {stale && post.itemDetails?.length ? <p className="meta">Item details use the available Riot catalog.</p> : null}
+    {itemPatch && itemPatch !== buildPatch && post.itemDetails?.length ? <p className="meta">Item details use Riot catalog patch {itemPatch}.</p> : null}
     {keystone && <div className={styles.runes}>Keystone · {keystone.name}</div>}
     {notes && <div className={styles.runes}>Rune notes · {notes}</div>}
     {post.status === "visible" && <div className={styles.discussionLinks}>

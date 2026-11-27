@@ -2,7 +2,7 @@ import { publicSampleSql } from "./public-match-queues";
 import { RANKED_QUEUE, NORMAL_QUEUE, isSessionQueue, type SessionQueue, SESSION_MINUTES, parseSessionOffer, sessionWindow } from "./duo-session";
 import { confirmedBeforeCancellation, sharedGame } from "./verified-duo-game";
 import { getSql, q, queryRows } from "./db";
-import { decodeWindows, encodeWindows, scheduleWindows, type PlayWindow } from "./duo-schedule";
+import { encodeWindows, scheduleWindows } from "./duo-schedule";
 import { filterByDuoFit, loadDuoFit } from "./duo-fit-store";
 import { TERMS_VERSION } from "./account-policy";
 import type { LeagueTier } from "./rank";
@@ -25,8 +25,6 @@ export interface DuoListing {
   id: number;
   roles: string[];
   champs: string[];
-  blocks: string[];
-  playWindows: PlayWindow[];
   start: number | null;
   queue: SessionQueue | null;
   partnerRole: string | null;
@@ -40,7 +38,7 @@ export interface DuoListing {
   expiresAt: string;
   platform: string;
   own: boolean;
-  requested: boolean;
+  requestState: "pending" | "closed" | null;
   held: boolean;
 }
 export interface DuoRequest {
@@ -147,7 +145,8 @@ function pairScope(recentlyExpired = false) {
     ${acceptedBooking} AND (game.played OR ${ownRequeue}) AS can_requeue,
     CASE WHEN r.sender_id=$1 THEN owner.rank_tier ELSE sender.rank_tier END AS rank_tier,
     CASE WHEN r.sender_id=$1 THEN owner.rank_div ELSE sender.rank_div END AS rank_div,
-    CASE WHEN ${acceptedBooking} AND ((l.expires_at>now() AND l.status='open') OR (r.sender_requeue AND r.owner_requeue)) THEN
+    CASE WHEN ${acceptedBooking} AND r.accepted_at>now()-interval '30 days'
+      AND ((l.expires_at>now() AND l.status='open') OR (r.sender_requeue AND r.owner_requeue)) THEN
       CASE WHEN r.sender_id=$1 THEN owner.game_name||'#'||owner.tag_line ELSE sender.game_name||'#'||sender.tag_line END
     END AS contact,owner.platform
   FROM wp_duo_requests r JOIN wp_lfg l ON l.id=r.listing_id
@@ -184,8 +183,6 @@ function listing(row: Row, userId: number): DuoListing {
     id: Number(row.id),
     roles: row.roles as string[],
     champs: row.champs as string[],
-    blocks: row.blocks as string[],
-    playWindows: decodeWindows(row.play_windows),
     queue: isSessionQueue(row.session_queue) ? row.session_queue : null,
     start: isSessionQueue(row.session_queue) && row.session_start ? new Date(String(row.session_start)).getTime() : null,
     partnerRole: typeof row.partner_role === "string" ? row.partner_role : null,
@@ -200,7 +197,7 @@ function listing(row: Row, userId: number): DuoListing {
       ? `${row.rank_wins}W · ${row.rank_losses}L` : null,
     expiresAt: new Date(String(row.expires_at)).toISOString(),
     own: Number(row.user_id) === userId,
-    requested: row.requested === true,
+    requestState: row.request_status === "pending" ? "pending" : typeof row.request_status === "string" ? "closed" : null,
     held: row.status === "held",
   };
 }
@@ -212,8 +209,8 @@ export async function readDuoBoard(userId: number, onlyFit = false, asOf = Date.
       const windows = fit?.blocks.length ? encodeWindows(scheduleWindows(fit.blocks, fit.timeZone, asOf, 1)) : null;
       return queryRows(
         board +
-          ` SELECT b.id,b.user_id,b.roles,b.champs,b.blocks,b.play_windows::text AS play_windows,b.session_queue,b.session_start,b.partner_role,b.voice,b.vibe,b.note,b.rank_tier,b.rank_div,b.rank_wins,b.rank_losses,b.wins,b.games,b.platform,b.expires_at,b.status,
-        EXISTS(SELECT 1 FROM wp_duo_requests r WHERE r.listing_id=b.id AND r.sender_id=$1) AS requested
+          ` SELECT b.id,b.user_id,b.roles,b.champs,b.session_queue,b.session_start,b.partner_role,b.voice,b.vibe,b.note,b.rank_tier,b.rank_div,b.rank_wins,b.rank_losses,b.wins,b.games,b.platform,b.expires_at,b.status,
+        (SELECT r.status FROM wp_duo_requests r WHERE r.listing_id=b.id AND r.sender_id=$1) AS request_status
         FROM board b ${filterByDuoFit} ORDER BY (b.user_id=$1) DESC,(b.session_queue='${RANKED_QUEUE}') DESC NULLS LAST,b.created_at DESC,b.id DESC LIMIT 40`,
         [...params(userId), fit ? JSON.stringify(fit) : null, windows],
       );
@@ -221,6 +218,9 @@ export async function readDuoBoard(userId: number, onlyFit = false, asOf = Date.
     queryRows(
       pairs +
         ` SELECT id,status,sender_id,contact,expires_at,cancelled_at,can_cancel,
+          CASE WHEN contact IS NOT NULL THEN
+            CASE WHEN mutual THEN accepted_at+interval '30 days' ELSE expires_at END
+          END AS contact_ends_at,
           CASE WHEN contact IS NOT NULL AND session_queue='${RANKED_QUEUE}'
             THEN CASE WHEN sender_id=$1 THEN owner_id ELSE sender_id END END AS social_profile_id,
           EXISTS(SELECT 1 FROM wp_endorsements e WHERE e.from_user=$1 AND e.interaction_checked AND
@@ -245,7 +245,7 @@ export async function readDuoBoard(userId: number, onlyFit = false, asOf = Date.
           voice: (Number(r.sender_id) === userId ? r.voice : r.offered_voice) === true,
           vibe: String(Number(r.sender_id) === userId ? r.vibe : r.offered_vibe),
         } : null,
-        contactEndsAt: r.contact && !r.mutual ? new Date(String(r.expires_at)).getTime() : null,
+        contactEndsAt: r.contact_ends_at ? new Date(String(r.contact_ends_at)).getTime() : null,
         cancellationEndsAt: r.can_cancel === true ? new Date(String(r.expires_at)).getTime() : null,
         socialProfileId: r.social_profile_id == null ? null : Number(r.social_profile_id),
         riotId: typeof r.contact === "string" ? r.contact : null,
@@ -268,7 +268,7 @@ export async function createDuoListing(user: User, data: unknown) {
     return { ok: false, error: "Verified duo matching is waiting for Riot Sign On and safety coverage." };
   const parsed = duoPreferences(data);
   if (!parsed.ok) return parsed;
-  const { start, queue, roles, partnerRole, blocks, voice, vibe, note } = parsed.value;
+  const { start, queue, roles, partnerRole, voice, vibe, note } = parsed.value;
   if (!(await duoEligible(user.id)))
     return { ok: false, error: "Duo listings require verified ownership and current ranked game data." };
   if (!(await rateLimit(user.id, "duo-list", 3, 24 * 60)))
@@ -283,14 +283,14 @@ export async function createDuoListing(user: User, data: unknown) {
     sql`SELECT pg_advisory_xact_lock(hashtext('duo-session'),${user.id})`,
     sql(
       eligible +
-        `, proposed AS (SELECT id,$12::timestamptz AS session_start,$12::timestamptz + interval '${SESSION_MINUTES} minutes' AS expires_at FROM me)
-      INSERT INTO wp_lfg (user_id,puuid,roles,champs,blocks,voice,vibe,note,status,safe_listing,partner_role,play_windows,session_queue,session_start,expires_at)
+        `, proposed AS (SELECT id,$11::timestamptz AS session_start,$11::timestamptz + interval '${SESSION_MINUTES} minutes' AS expires_at FROM me)
+      INSERT INTO wp_lfg (user_id,puuid,roles,champs,voice,vibe,note,status,safe_listing,partner_role,play_windows,session_queue,session_start,expires_at)
       SELECT me.id,me.puuid,$3::text[],ARRAY(SELECT c->>'champion' FROM jsonb_array_elements(
         CASE WHEN ${publicSampleSql('me.snapshot')} AND jsonb_typeof(me.snapshot->'champPool')='array' THEN me.snapshot->'champPool' ELSE '[]'::jsonb END) c
-        WHERE c->>'champion' ~ '^[A-Za-z0-9]{1,30}$' LIMIT 5),$4::text[],$5::bool,$6,$7,$8,true,$9,$10::int4multirange,$11,proposed.session_start,proposed.expires_at FROM me JOIN proposed ON proposed.id=me.id
-      WHERE me.platform='na1' AND ($11='${NORMAL_QUEUE}' OR me.pilot_tier IS NOT NULL) AND proposed.session_start>clock_timestamp() AND NOT ${bookedSession("proposed","me.id")} AND NOT EXISTS (SELECT 1 FROM wp_lfg l WHERE l.user_id=$1 AND l.safe_listing AND l.status IN ('open','held') AND l.expires_at>now())
+        WHERE c->>'champion' ~ '^[A-Za-z0-9]{1,30}$' LIMIT 5),$4::bool,$5,$6,$7,true,$8,$9::int4multirange,$10,proposed.session_start,proposed.expires_at FROM me JOIN proposed ON proposed.id=me.id
+      WHERE me.platform='na1' AND ($10='${NORMAL_QUEUE}' OR me.pilot_tier IS NOT NULL) AND proposed.session_start>clock_timestamp() AND NOT ${bookedSession("proposed","me.id")} AND NOT EXISTS (SELECT 1 FROM wp_lfg l WHERE l.user_id=$1 AND l.safe_listing AND l.status IN ('open','held') AND l.expires_at>now())
       RETURNING id`,
-      [...params(user.id), roles, blocks, voice, vibe, note, held ? "held" : "open", partnerRole, windows, queue, new Date(start).toISOString()],
+      [...params(user.id), roles, voice, vibe, note, held ? "held" : "open", partnerRole, windows, queue, new Date(start).toISOString()],
     ),
   ]);
   return rows.length
@@ -299,8 +299,9 @@ export async function createDuoListing(user: User, data: unknown) {
 }
 export async function closeDuoListing(userId: number, id: number) {
   const sql = await getSql();
-  const [, rows] = await sql.transaction([
+  const [, , rows] = await sql.transaction([
     sql`SELECT pg_advisory_xact_lock(hashtext(${"wp-review:lfg:" + id}))`,
+    sql`SELECT pg_advisory_xact_lock(hashtext('duo-session'),${userId}::int)`,
     sql`WITH closed AS (
       UPDATE wp_lfg l SET status=CASE WHEN l.status='removed' THEN l.status ELSE 'closed' END
       WHERE l.id=${id} AND l.user_id=${userId} AND (l.status IN ('open','held','closed') OR (l.status='removed' AND EXISTS (
@@ -381,11 +382,15 @@ async function declineDuoRequest(userId: number, id: number) {
 
 export async function duoAction(user: User, id: number, action: "request" | "accept" | "decline", input?: unknown) {
   if (action === "decline") return declineDuoRequest(user.id, id);
+  if (!duoEnabled()) return missing;
   const offer = action === "request" ? parseSessionOffer(input) : null;
   if (action === "request" && !offer) return { ok: false, error: "Confirm the session time, your role, playstyle and voice choice." };
-  const peerId = await duoPeerId(user.id, action === "request" ? "lfg" : "duo_request", id);
+  const [listing] = offer ? await queryRows(board + ` SELECT b.user_id, EXISTS (
+    SELECT 1 FROM wp_duo_requests r WHERE r.listing_id=b.id AND r.sender_id=$1) AS tried
+    FROM board b WHERE b.id=$3 AND b.user_id<>$1`, [...params(user.id), id]) : [];
+  const peerId = offer ? Number(listing?.user_id) : await duoPeerId(user.id, "duo_request", id);
   if (!peerId) return missing;
-  if (action === "request" && !(await rateLimit(user.id, "duo-request", 6, 60)))
+  if (offer && listing?.tried !== true && !(await rateLimit(user.id, "duo-request", 6, 60)))
     return { ok: false, error: "You can make six requests per hour." };
   const sql = await getSql();
   // Serialize bookings for each player as well as reciprocal safety actions. Competing invites
@@ -397,11 +402,17 @@ export async function duoAction(user: User, id: number, action: "request" | "acc
     action === "request" && offer
       ? sql(
           board +
-            ` INSERT INTO wp_duo_requests(listing_id,sender_id,sender_puuid,offered_role,offered_voice,offered_vibe)
-      SELECT b.id,me.id,me.puuid,$6,$7,$8 FROM board b,me WHERE b.id=$3 AND b.user_id<>me.id AND b.status='open'
-      AND b.session_queue=$4 AND b.session_start=$5::timestamptz AND b.session_start>clock_timestamp()
-      AND (b.partner_role='Any' OR b.partner_role=$6 OR $6='Fill')
-      ON CONFLICT(listing_id,sender_id) DO NOTHING RETURNING id`,
+            `, current_offer AS (
+        SELECT b.id,me.id AS sender_id,me.puuid FROM board b,me WHERE b.id=$3 AND b.user_id<>me.id AND b.status='open'
+          AND b.session_queue=$4 AND b.session_start=$5::timestamptz AND b.session_start>clock_timestamp()
+          AND (b.partner_role='Any' OR b.partner_role=$6 OR $6='Fill')
+      ), sent AS (
+        INSERT INTO wp_duo_requests(listing_id,sender_id,sender_puuid,offered_role,offered_voice,offered_vibe)
+        SELECT id,sender_id,puuid,$6,$7,$8 FROM current_offer
+        ON CONFLICT(listing_id,sender_id) DO NOTHING RETURNING id
+      ) SELECT id FROM sent UNION ALL
+      SELECT r.id FROM current_offer c JOIN wp_duo_requests r ON r.listing_id=c.id AND r.sender_id=c.sender_id AND r.sender_puuid=c.puuid
+        WHERE r.status='pending' AND r.cancelled_at IS NULL AND r.offered_role=$6 AND r.offered_voice=$7 AND r.offered_vibe=$8`,
           [...params(user.id), id, offer.queue, new Date(offer.start).toISOString(), offer.role, offer.voice, offer.vibe],
         )
       : sql(
@@ -415,7 +426,8 @@ export async function duoAction(user: User, id: number, action: "request" | "acc
         WHERE p.id=c.id AND other.listing_id=other_listing.id AND other.status='pending' AND other.id<>c.id
           AND other_listing.session_start<p.expires_at AND p.session_start<other_listing.expires_at
           AND (p.owner_id IN (other.sender_id,other_listing.user_id) OR p.sender_id IN (other.sender_id,other_listing.user_id)))
-        SELECT id FROM changed`,
+        SELECT id FROM changed UNION ALL
+        SELECT p.id FROM pairs p WHERE p.id=$3 AND p.owner_id=$1 AND p.status='accepted' AND p.can_cancel`,
           [...params(user.id), id],
         ),
   ]);
@@ -466,7 +478,7 @@ export async function setRequeue(userId: number, requestId: number, active: bool
   return rows.length ? { ok: true } : missing;
 }
 
-// Once the four-hour listing expires it disappears immediately. Retain the recent confirmed
+// Once the session listing expires it disappears immediately. Retain the recent confirmed
 // interaction for a 30-day endorsement/report window. Cases and historical records are excluded.
 export async function clearExpiredDuoListings() {
   await q`WITH candidates AS (

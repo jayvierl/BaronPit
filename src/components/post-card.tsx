@@ -1,7 +1,7 @@
 "use client";
 
 import { signInHref } from "@/lib/signin-return";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { PostView, CommentView } from "@/lib/social";
@@ -11,6 +11,7 @@ import { buildThreadReturn } from "@/lib/build-sharing";
 import { clipLink } from "@/lib/clip-link";
 import { projectMatchContext } from "@/lib/match-context";
 import { PATCH_NOTES_INDEX, publicPatch } from "@/lib/patch-notes";
+import { readSearchReturn, withSearchReturn } from "@/lib/search-scopes";
 import { AvatarProfileLink, PermalinkTime, RichBody, timeAgo } from "./ui";
 import { BuildAttachment } from "./build-attachment";
 import { MatchCard } from "./match-card";
@@ -47,6 +48,7 @@ export function PostCard({
   viewerIdentity,
   fromMatch,
   fromBuild,
+  fromSearch,
 }: {
   post: PostView;
   patch: string;
@@ -57,9 +59,13 @@ export function PostCard({
   viewerIdentity?: AvatarIdentity | null;
   fromMatch?: string;
   fromBuild?: string;
+  fromSearch?: string;
 }) {
   const router = useRouter();
-  const threadHref = `/post/${post.id}`;
+  const d = post.data;
+  const buildSource = post.kind === "build" ? buildThreadReturn(fromBuild, d.champion, d.items, post.roomSlug) : null;
+  const threadPath = `/post/${post.id}${buildSource ? `?${new URLSearchParams({ fromBuild: buildSource.href })}` : ""}`;
+  const threadHref = withSearchReturn(threadPath, readSearchReturn(fromSearch));
   const visible = post.status === "visible";
   const [withdrawn,setWithdrawn] = useState(false);
   const [reactions, setReactions] = useState(post.reactions);
@@ -68,7 +74,10 @@ export function PostCard({
   const showComments = visible && (threadPage || inlineReplies);
   const [replyVisit, setReplyVisit] = useState(threadPage ? 1 : 0);
   const reactionPicker = useRef<HTMLDetailsElement>(null);
-  const [addedReplies, setAddedReplies] = useState(0);
+  const [replySnapshot, setReplySnapshot] = useState<{ postId: number; viewerId?: number | null; baseline: number; count: number } | null>(null);
+  const recordReplyCount = useCallback((count: number) => {
+    setReplySnapshot({ postId: post.id, viewerId, baseline: post.commentCount, count });
+  }, [post.id, viewerId, post.commentCount]);
   const action = usePostAction();
   const [myVote, setMyVote] = useState(post.myVote);
   const [pollResults, setPollResults] = useState(post.pollResults);
@@ -115,12 +124,11 @@ export function PostCard({
 
   const [rankLabel, main] = post.authorFlair?.split(" · ", 2) ?? [];
   const flair = rankLabel && <><RankBadge tier={post.authorTier}>{rankLabel}</RankBadge>{main && ` · ${main}`}</>;
-  const d = post.data as Record<string, unknown>;
-  const buildSource = post.kind === "build" ? buildThreadReturn(fromBuild, d.champion, d.items, post.roomSlug) : null;
   const matchContext = post.kind === "card" ? projectMatchContext(d.matchContext) : null;
   const destination = post.kind === "clip" && post.status === "visible" ? clipLink(d.url) : null;
   const likeCount = reactions["❤️"] ?? 0;
-  const replyCount = post.commentCount + addedReplies;
+  const replyCount = replySnapshot?.postId === post.id && replySnapshot.viewerId === viewerId && replySnapshot.baseline === post.commentCount
+    ? replySnapshot.count : post.commentCount;
   const otherReactionCount = REACTION_EMOJIS.reduce((n, emoji) => emoji === "❤️" ? n : n + (reactions[emoji] ?? 0), 0);
   const shownResults = post.dailyCall?.closed ? post.pollResults : pollResults;
   const pollTotal = shownResults?.reduce((a, b) => a + b, 0) ?? 0;
@@ -233,8 +241,7 @@ export function PostCard({
           </a>
         )}
         {visible && !threadPage && (post.kind === "build" || matchContext || post.isQuestion || post.lastReplyId) && <div className={styles.discussionLinks}>
-          {post.kind === "build" && <Link href={buildSource ? `${threadHref}?${new URLSearchParams({ fromBuild: buildSource.href })}` : threadHref}
-            prefetch={false}>Discuss this build →</Link>}
+          {post.kind === "build" && <Link href={threadHref} prefetch={false}>Discuss this build →</Link>}
           {matchContext && !post.isQuestion && <Link href={threadHref} prefetch={false}>View discussion →</Link>}
           {post.isQuestion && <Link href={threadHref} prefetch={false}>Discuss this decision →</Link>}
           {post.lastReplyId && post.lastReplyAt && <Link href={`${threadHref}#reply-${post.lastReplyId}`} prefetch={false}>Latest player reply{" "}
@@ -301,7 +308,7 @@ export function PostCard({
             signedIn={signedIn}
             viewerId={viewerId}
             viewerIdentity={viewerIdentity}
-            onVisibleReply={() => setAddedReplies((n) => n + 1)}
+            onReplyCount={recordReplyCount}
             decisionQuestion={post.isQuestion}
             repliesClosed={post.repliesClosed}
             allowOneFix={post.kind === "card"}
