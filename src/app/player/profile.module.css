@@ -1,12 +1,21 @@
-.identity { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.profile, .lookup { min-width: 0; }
+.lookup { padding-block: clamp(1.5rem, 4vw, 3rem); }
+.lookup > div { display: grid; gap: .35rem; }
+.lookup p { margin: 0 0 .65rem; }
+.header { padding: .9rem 0 1rem; border-bottom: 1px solid var(--border); }
+.identity { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: .85rem; }
 .identityText { min-width: 0; }
-.identity h1 { overflow-wrap: anywhere; margin: 0; }
-.tag { color: var(--ink-soft); font-weight: 500; }
-.identityText p { margin: .22rem 0; }
-.identityText a { color: var(--accent-ink); font-weight: 600; }
-.badges { display: flex; gap: .35rem; flex-wrap: wrap; margin-top: .55rem; }
-.profileNav { display: flex; flex-wrap: wrap; align-items: center; gap: 0 .95rem; border-block: 1px solid var(--border); margin: .9rem 0 .4rem; }
-.profileNav a { display: inline-flex; align-items: center; min-height: 42px; font-size: .85rem; font-weight: 600; color: var(--ink-mid); }
-.profileNav a:is(:hover, :focus-visible) { color: var(--accent-ink); }
+.identity h1 { margin: 0; overflow-wrap: anywhere; font-size: clamp(1.5rem, 4vw, 1.95rem); line-height: 1.12; font-weight: 680; letter-spacing: -.045em; }
+.tag { color: var(--ink-soft); font-size: .74em; font-weight: 450; margin-inline-start: .18em; }
+.identityText p { margin: .35rem 0 0; color: var(--ink-mid); font-size: .84rem; }
+.identityText a { color: var(--ink); font-weight: 580; }
 .anchor { scroll-margin-top: calc(80px + env(safe-area-inset-top)); }
-@media (max-width: 440px) { .profileNav { gap: 0 .73rem; } }
+.disclosure { border-top: 1px solid var(--border); }
+.disclosure:last-child { border-bottom: 1px solid var(--border); }
+.disclosure > summary { cursor: pointer; padding-block: .92rem; color: var(--ink); font-weight: 580; font-size: .96rem; }
+.disclosure > summary::marker { color: var(--ink-soft); font-size: .7em; }
+.disclosure[open] { padding-block-end: .75rem; }
+@media (max-width: 520px) {
+  .header { padding-block: .45rem .68rem; }
+  .identity { margin-bottom: .6rem; }
+}

@@ -52,7 +52,6 @@ it("shows both profile queues and distinguishes an unplaced queue from unknown l
   for (const html of [flexOnly, legacy]) {
     expect(html).toContain('aria-label="Ranked Solo/Duo"');
     expect(html).toContain('aria-label="Ranked Flex"');
-    expect(html).not.toContain("Most played champions");
     expect(html).not.toContain("Combined ranked record");
   }
   expect(flexOnly).toMatch(/aria-label="Ranked Solo\/Duo"[^>]*><h3>Ranked Solo\/Duo<\/h3><span[^>]+>Unranked<\/span>/);
@@ -60,6 +59,19 @@ it("shows both profile queues and distinguishes an unplaced queue from unknown l
   expect(flexOnly).toContain("67%");
   expect(legacy).toContain("Gold IV · 6 LP");
   expect(legacy).toMatch(/aria-label="Ranked Flex"[^>]*><h3>Ranked Flex<\/h3><span[^>]+>Rank unavailable<\/span>/);
+});
+
+it("labels the average of rated games in the recent sample and omits it below three observations", () => {
+  const match = { matchId: "NA1_1", champion: "Nami", win: true, queueId: 420, kills: 0, deaths: 1,
+    assists: 12, role: "UTILITY", cs: 30, items: [], durationSec: 1800, playedAt: 10 };
+  const render = (ratings: (number | undefined)[]) => renderToStaticMarkup(createElement(PlayerStats, {
+    variant: "profile", player: { ...player, snapshot: { ...EMPTY_SNAPSHOT, games: ratings.length,
+      roles: {UTILITY: ratings.length}, champPool: [{champion:"Nami",wins:1,games:ratings.length,kda:2}],
+      matches: ratings.map((performanceRating, index) => ({ ...match, matchId: `NA1_${index + 1}`, performanceRating })) } },
+  }));
+  const html = render([10, 6.5, 3, undefined]);
+  for (const label of ["Latest 4 public games", "Support", "Nami", "Avg. match rating", "6.5", "3 rated games"]) expect(html).toContain(label);
+  expect(render([10,undefined,4])).not.toContain("Avg. match rating");
 });
 
 it("distinguishes absent data, unplaced rank and a stale snapshot without displaying a made-up record", () => {

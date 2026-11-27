@@ -1,4 +1,5 @@
 import { teamBaronFields, type MatchParticipantSummary, type MatchSummary } from "./pure";
+import { matchPerformanceRating, storedMatchRating } from "./match-performance";
 
 const positions = new Set(["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"]);
 
@@ -115,7 +116,8 @@ export function matchFromRiot(raw: unknown, matchId: string, puuid: string, reta
       return participant ? [{ champion: participant.champion, name: participant.name ?? "", tag: participant.tag }] : [];
     }),
     championLevel: positive(me.champLevel), spellIds: spellIds(me.summoner1Id, me.summoner2Id), runes: liveRunes(me.perks),
-    teamKills, killParticipation: killParticipation(teamKills, kills, assists), teams, detailsVersion: 1,
+    teamKills, killParticipation: killParticipation(teamKills, kills, assists), teams, detailsVersion: 2,
+    performanceRating: teams ? matchPerformanceRating(participants, participants.indexOf(me), queueId, durationSec, info.mapId) : undefined,
   };
 }
 
@@ -148,7 +150,8 @@ export function readStoredMatches(raw: unknown, limit: number, existing: readonl
       ...teamBaronFields(m), teammates, championLevel: positive(m.championLevel),
       spellIds: spellIds(m.spellIds?.[0], m.spellIds?.[1]), runes: runes(m.runes),
       teamKills, killParticipation: killParticipation(teamKills, m.kills, m.assists), teams,
-      detailsVersion: m.detailsVersion === 1 ? 1 : undefined,
+      performanceRating: teams && m.detailsVersion === 2 ? storedMatchRating(m.performanceRating, m.queueId, m.durationSec) : undefined,
+      detailsVersion: m.detailsVersion === 1 || m.detailsVersion === 2 ? m.detailsVersion : undefined,
     });
   }
   return matches;

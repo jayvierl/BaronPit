@@ -34,6 +34,7 @@ const cutoffTime = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "nu
 
 function closeDisclosure(event: KeyboardEvent<HTMLDetailsElement>) {
   if (event.key !== "Escape" || !event.currentTarget.open) return;
+  event.stopPropagation();
   event.currentTarget.open = false;
   event.currentTarget.querySelector("summary")?.focus();
 }
@@ -132,6 +133,7 @@ export function PostCard({
   const otherReactionCount = REACTION_EMOJIS.reduce((n, emoji) => emoji === "❤️" ? n : n + (reactions[emoji] ?? 0), 0);
   const shownResults = post.dailyCall?.closed ? post.pollResults : pollResults;
   const pollTotal = shownResults?.reduce((a, b) => a + b, 0) ?? 0;
+  const showPercentages = pollTotal > 0 && (myVote !== null || callClosed);
 
   if (withdrawn) return <p role="status">You withdrew this post. <a href="/me#submissions">View my submissions</a></p>;
   return (
@@ -151,19 +153,51 @@ export function PostCard({
             <Link className="post-author" href={`/u/${post.authorId}`}>
               {post.authorName}
             </Link>
-            <WinStreak wins={post.authorWinStreak}/>
             {post.roomName && post.roomSlug && <span className={styles.topic}>
               <span aria-hidden="true">›</span> <Link href={`/rooms/${post.roomSlug}`}>{post.roomName}</Link>
             </span>}
             {threadPage
-              ? <span className={styles.permalink}><span aria-hidden="true">·</span> <time className="time" dateTime={post.createdAt} title={post.createdAt} suppressHydrationWarning>{timeAgo(post.createdAt)}</time></span>
+              ? <span className={styles.permalink}><time className="time" dateTime={post.createdAt} title={post.createdAt} suppressHydrationWarning>{timeAgo(post.createdAt)}</time></span>
               : <Link className={styles.permalink} href={threadHref} prefetch={false}>
-                  <span aria-hidden="true">·</span> <PermalinkTime iso={post.createdAt} context={`Open thread by ${post.authorName}`} />
+                  <PermalinkTime iso={post.createdAt} context={`Open thread by ${post.authorName}`} />
                 </Link>}
           </div>
           <details className={styles.options} onKeyDown={closeDisclosure}>
             <summary aria-label="Post options" title="Post options"><ThreadIcon name="more" /></summary>
             <div className={styles.optionsPanel}>
+              {post.authorFlair && (post.authorStatsHref
+                ? <Link href={post.authorStatsHref} prefetch={false} className={styles.flairLink}
+                    aria-label={`View ${post.authorName}’s verified Riot stats, ${post.authorFlair}`}>{flair}</Link>
+                : <span>{flair}</span>)}
+              <WinStreak wins={post.authorWinStreak}/>
+              {visible && <>
+                <details ref={reactionPicker}
+                  onBlur={event => {
+                    if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
+                  }}
+                  onKeyDown={closeDisclosure}>
+                  <summary title="More reactions" aria-label={`More reactions, ${otherReactionCount} total`}>
+                    More reactions{otherReactionCount > 0 && <span className={styles.count}>{otherReactionCount}</span>}
+                  </summary>
+                  <div className={styles.choices} role="group" aria-label="Choose a reaction">
+                    {REACTION_EMOJIS.filter(e => e !== "❤️").map(e => (
+                      <button key={e} type="button" className={`action-btn${mine.includes(e) ? " mine" : ""}`}
+                        disabled={action.busy} aria-pressed={mine.includes(e)} title={reactionNames[e] ?? e}
+                        aria-label={`${reactionNames[e] ?? e}, ${reactions[e] ?? 0} reactions`} onClick={() => {
+                          if (reactionPicker.current) {
+                            reactionPicker.current.open = false;
+                            reactionPicker.current.querySelector("summary")?.focus();
+                          }
+                          void react(e);
+                        }}>
+                        <span aria-hidden="true">{e}</span>{reactions[e] || ""}
+                      </button>
+                    ))}
+                  </div>
+                </details>
+                {post.canQuote && <QuoteControl original={{ postId:post.id, author:post.authorName, body:post.body.slice(0,180), room:post.roomName }}
+                  signedIn={signedIn} viewerId={viewerId}/>}
+              </>}
               {visible && signedIn && viewerId === post.authorId &&
                 <button type="button" className="text-btn" disabled={action.busy} onClick={async () => {
                   if (await action.send("/api/social/reply-policy", {postId:post.id, closed:!post.repliesClosed})) router.refresh();
@@ -174,12 +208,8 @@ export function PostCard({
             </div>
           </details>
         </header>
-        {(post.authorFlair || d.briefing === true || post.status === "held") && (
+        {(d.briefing === true || post.status === "held") && (
           <div className={styles.context}>
-            {post.authorFlair && (post.authorStatsHref
-              ? <Link href={post.authorStatsHref} prefetch={false} className={styles.flairLink}
-                  aria-label={`View ${post.authorName}’s verified Riot stats, ${post.authorFlair}`}>{flair}</Link>
-              : <span>{flair}</span>)}
             {d.briefing === true && <span>Automated patch update</span>}
             {post.status === "held" && <strong>Awaiting moderator review</strong>}
           </div>
@@ -198,40 +228,42 @@ export function PostCard({
         )}
 
         {post.kind === "poll" && Array.isArray(d.options) && (
-          <div>
-            {callCutoff ? <p className={styles.callStatus}><strong>Daily Call</strong>{" · "}{callClosed
-              ? post.dailyCall?.finalized ? "Final tally" : "Voting closed. Tally pending."
-              : <>Vote until <time dateTime={callCutoff}>{cutoffTime.format(new Date(callCutoff))}</time></>}</p>
-              : d.call === true && <p className="chip badge">Make the Call</p>}
+          <div className={styles.ballot}>
             {(d.options as string[]).map((opt, i) => {
               const n = shownResults?.[i] ?? 0;
-              const pct = pollTotal ? Math.round((n / pollTotal) * 100) : 0;
+              const pct = pollTotal ? Math.round(n * 100 / pollTotal) : 0;
               if (!visible) return <p key={i} className="meta">{opt}</p>;
               const outcome = <>
-                <span className="poll-fill" style={{ width: `${pct}%` }} />
-                <span>{opt}{myVote === i ? " ✓" : ""} — {n} vote{n === 1 ? "" : "s"} ({pct}%)</span>
+                {showPercentages && <span className={styles.pollFill} style={{ width: `${pct}%` }} aria-hidden="true" />}
+                <span>{opt}{myVote === i && <span aria-hidden="true"> ✓</span>}</span>
+                {showPercentages && <span className={styles.percent}>{pct}%</span>}
               </>;
-              if (callClosed) return <div key={i} className={`poll-option ${styles.closedOption}`}>{outcome}</div>;
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  disabled={action.busy}
-                  aria-pressed={myVote === i}
-                  className="poll-option"
-                  onClick={() => vote(i)}
-                >
-                  {outcome}
-                </button>
+              return callClosed ? <div key={i} className="poll-option">{outcome}</div> : (
+                <button key={i} type="button" disabled={action.busy} aria-pressed={myVote === i}
+                  className="poll-option" onClick={() => vote(i)}>{outcome}</button>
               );
             })}
+            {visible && <div className={styles.tally}>
+              {callCutoff ? <span>Daily Call</span> : d.call === true && <span>Make the Call</span>}
+              {pollTotal > 0 ? <details>
+                <summary title="See vote totals">{pollTotal} {pollTotal === 1 ? "vote" : "votes"}</summary>
+                <ul aria-label="Vote totals">
+                  {(d.options as string[]).map((option, i) => {
+                    const n = shownResults?.[i] ?? 0;
+                    return <li key={i}>{option} — {n} {n === 1 ? "vote" : "votes"} ({Math.round(n * 100 / pollTotal)}%)</li>;
+                  })}
+                </ul>
+              </details> : <span>No votes yet</span>}
+              {callCutoff && <span>{callClosed
+                ? post.dailyCall?.finalized ? "Final tally" : "Voting closed. Tally pending."
+                : <>Vote until <time dateTime={callCutoff}>{cutoffTime.format(new Date(callCutoff))}</time></>}</span>}
+            </div>}
           </div>
         )}
 
-        {post.kind === "card" && (matchContext ? <>
-          <MatchDiscussionPreview match={matchContext} fromMatch={fromMatch} postId={post.id}/>
-          {threadPage && viewerId !== post.authorId && <p className="meta">Use Post options → Report to flag a concern about this match card. <Link href="/safety">Safety Center</Link></p>}
-        </> : <MatchCard data={d} patch={patch} itemPatch={post.itemPatch} itemDetails={post.itemDetails} />)}
+        {post.kind === "card" && (matchContext
+          ? <MatchDiscussionPreview match={matchContext} fromMatch={fromMatch} postId={post.id}/>
+          : <MatchCard data={d} patch={patch} itemPatch={post.itemPatch} itemDetails={post.itemDetails} />)}
 
         {destination && (
           <a className={styles.clip} href={destination.href} target="_blank" rel="noopener noreferrer nofollow ugc">
@@ -266,33 +298,7 @@ export function PostCard({
                 aria-label={`${showComments ? "Hide" : "Show"} replies, ${replyCount} ${replyCount === 1 ? "reply" : "replies"}`}>
                 <ThreadIcon name="reply" />{replyCount > 0 && <span className={styles.count}>{replyCount}</span>}
               </button>}
-          <details className={styles.reactionPicker} ref={reactionPicker}
-            onBlur={event => {
-              if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
-            }}
-            onKeyDown={closeDisclosure}>
-            <summary title="More reactions" aria-label={`More reactions, ${otherReactionCount} total`}>
-              <ThreadIcon name="reactions" />{otherReactionCount > 0 && <span className={styles.count}>{otherReactionCount}</span>}
-            </summary>
-            <div className={styles.choices} role="group" aria-label="Choose a reaction">
-              {REACTION_EMOJIS.filter(e => e !== "❤️").map(e => (
-                <button key={e} type="button" className={`action-btn${mine.includes(e) ? " mine" : ""}`}
-                  disabled={action.busy} aria-pressed={mine.includes(e)} title={reactionNames[e] ?? e}
-                  aria-label={`${reactionNames[e] ?? e}, ${reactions[e] ?? 0} reactions`} onClick={() => {
-                    if (reactionPicker.current) {
-                      reactionPicker.current.open = false;
-                      reactionPicker.current.querySelector("summary")?.focus();
-                    }
-                    void react(e);
-                  }}>
-                  <span aria-hidden="true">{e}</span>{reactions[e] || ""}
-                </button>
-              ))}
-            </div>
-          </details>
           {post.canRepost && <RepostControl key={String(post.myRepost)} postId={post.id} initial={post.myRepost === true} signedIn={signedIn}/>}
-          {post.canQuote && <QuoteControl original={{ postId:post.id, author:post.authorName, body:post.body.slice(0,180), room:post.roomName }}
-            signedIn={signedIn} viewerId={viewerId}/>}
           <PostLibraryActions postId={post.id} signedIn={signedIn}/>
         </div>}
 

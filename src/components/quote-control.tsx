@@ -27,17 +27,24 @@ export function QuoteControl({ original, signedIn, viewerId }: { original: Origi
 
   useEffect(() => {
     if (!signedIn) return;
-    if (window.location.hash === `#${anchor}` && disclosure.current) disclosure.current.open = true;
+    function openEditor() {
+      const editor = disclosure.current;
+      if (!editor) return;
+      const options = editor.parentElement?.closest("details");
+      if (options) options.open = true;
+      editor.open = true;
+    }
+    if (window.location.hash === `#${anchor}`) openEditor();
     return restoreAfterMount(scope, saved => {
       if (typeof saved.body !== "string") return;
-      if (disclosure.current) disclosure.current.open = true;
+      openEditor();
       setBody(saved.body.slice(0, QUOTE_LIMIT));
       field.current?.focus();
     });
   }, [anchor, scope, signedIn]);
 
   if (!signedIn) return <a className="action-btn" aria-label="Sign in to quote" title="Sign in to quote" href={signInHref(returnTo)}>
-    <ThreadIcon name="quote" />
+    <ThreadIcon name="quote" /> Quote post
   </a>;
 
   const reconsider = action.reconsider && attempted === body;
@@ -57,13 +64,14 @@ export function QuoteControl({ original, signedIn, viewerId }: { original: Origi
     }
   }
 
-  return <details className={styles.control} id={anchor} ref={disclosure} onKeyDown={event => {
+  return <details id={anchor} ref={disclosure} onKeyDown={event => {
     if (event.key === "Escape" && event.currentTarget.open) {
+      event.stopPropagation();
       event.currentTarget.open = false;
       event.currentTarget.querySelector("summary")?.focus();
     }
   }}>
-    <summary title="Quote post" aria-label="Quote post"><ThreadIcon name="quote" /></summary>
+    <summary title="Quote post" aria-label="Quote post"><ThreadIcon name="quote" /> Quote post</summary>
     <form className={styles.composer} onSubmit={event => { event.preventDefault(); void publish(); }}>
       <label>Your comment<textarea ref={field} rows={3} required maxLength={QUOTE_LIMIT} value={body} disabled={!ready || action.busy}
         onChange={event => { setBody(event.target.value); setNotice(""); }}/></label>

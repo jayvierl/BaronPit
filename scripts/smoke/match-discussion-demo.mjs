@@ -41,13 +41,17 @@ function row(page) {
 
 async function matchRecord(page) {
   const match = await visible(row(page));
+  const details = match.locator("details").filter({ has: match.page().locator("summary").filter({ hasText: "Match details" }) }).first();
+  const alreadyOpen = await details.evaluate(el => el.open);
+  if (!alreadyOpen) await details.locator("summary").first().click();
   await match.getByRole("group", { name: "Items", exact: true }).getByRole("link").nth(2).waitFor();
   const data = await match.evaluate(node => ({
-    score: [...node.querySelectorAll("strong .sr-only")].map(text => text.textContent).find(text => /kills, .* assists$/.test(text)),
+    score: [...node.querySelectorAll(".sr-only")].map(text => text.textContent).find(text => /kills, .* assists$/.test(text)),
     items: [...node.querySelectorAll('[aria-label="Items"] a')].map(link => link.getAttribute("aria-label")),
     time: node.querySelector("time")?.getAttribute("datetime"),
-    verdict: node.querySelector("strong.win, strong.loss")?.textContent,
+    verdict: node.querySelector("[data-win]")?.textContent,
   }));
+  if (!alreadyOpen) await details.locator("summary").first().click();
   assert.equal(data.verdict, "Victory");
   assert.equal(data.score, "6 kills, 2 deaths, 7 assists");
   assert.ok(data.time && data.items.length > 0);
@@ -199,7 +203,7 @@ async function main() {
     await check("An independent account finds the thread in the feed and matchup hub", async () => {
       await account(desktop, origin, fixture.helperSession);
       await load(lane, origin, "/");
-      await visible(lane.getByText(discussion, { exact: true }).first());
+      await visible(lane.getByRole("article", { name: `Post by ${author}` }).getByText(discussion, { exact: true }));
       await load(lane, origin, "/questions?champion=Nami");
       const discussionLink = await visible(lane.locator(`main a[href="${postPath}"]`).first());
       await screenshot(lane, "04-matchup-hub-desktop.png");
@@ -223,7 +227,7 @@ async function main() {
       await submit(lane, await visible(lane.getByRole("button", { name: "Follow", exact: true })), "/api/social/follow", 200);
       await visible(lane.getByRole("button", { name: "Following", exact: true }));
       await load(lane, origin, "/?tab=following");
-      await visible(lane.getByText(discussion, { exact: true }).first());
+      await visible(lane.getByRole("article", { name: `Post by ${author}` }).getByText(discussion, { exact: true }));
       await load(lane, origin, "/playbook?tab=posts");
       await visible(lane.locator(`main a[href="${postPath}"]`).first());
       await load(river, origin, "/playbook?tab=posts");
@@ -267,7 +271,7 @@ async function main() {
       assert.equal(await lane.getByText(discussion, { exact: true }).count(), 0);
       await localPost(lane, origin, "/api/social/mute", { userId: authorId, mute: false }, 200);
       await load(lane, origin, "/?tab=following");
-      await visible(lane.getByText(discussion, { exact: true }).first());
+      await visible(lane.getByRole("article", { name: `Post by ${author}` }).getByText(discussion, { exact: true }));
       await localPost(lane, origin, "/api/social/block", { userId: authorId, block: true }, 200);
       await hiddenPost(lane, origin, postPath);
       await load(river, origin, postPath);

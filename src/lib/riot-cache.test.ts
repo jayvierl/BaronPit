@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { lookupPlayer, playerFromRow, type PlayerSnapshot } from "./riot";
+import { rankedMatchFixture } from "../../test/ranked-match";
 
 const mocked = vi.hoisted(() => ({ q: vi.fn() }));
 vi.mock("./db", () => ({ ...mocked, dbAvailable: () => true }));
@@ -349,5 +350,56 @@ describe("recent-form refresh", () => {
     vi.stubGlobal("fetch",transport);
     expect(await profile(true)).toEqual({ok:false,code:"rate_limited",retryAt:until});
     expect(transport).not.toHaveBeenCalled();
+  });
+
+  it("upgrades four recent saved ranked games per stale profile refresh without retrying unscorable evidence", async () => {
+    vi.useFakeTimers({toFake:["Date","setTimeout","clearTimeout"]});
+    const ids = Array.from({length:8}, (_, i) => `NA1_${100 - i}`);
+    const cached = row(new Date(0));
+    let stored: Record<string, unknown> = { ...cached, snapshot: { ...cached.snapshot, matches: ids.map((matchId, i) => ({
+      matchId, champion:"Nami", win:true, kills:2, deaths:4, assists:1, cs:10, durationSec:1800, playedAt:2_000_000,
+      role:"UTILITY", queueId:i === 0 ? 450 : 420, items:[], detailsVersion:1,
+    })) } };
+    mocked.q.mockImplementation(async (strings: TemplateStringsArray, ...args) => {
+      const sql = strings.join(" ");
+      if (sql.includes("AS riot_retry_at")) return [stored];
+      if (sql.includes("INSERT INTO wp_action_windows")) return [{bucket:args[0]}];
+      stored = { ...cached, fetched_at:new Date(args[12]), snapshot:JSON.parse(args[11]) };
+      return [stored];
+    });
+    const details: string[] = [];
+    let failOne = true;
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (url.includes("/riot/account/")) return Response.json({puuid:"ref",gameName:"Fixture",tagLine:"NA1"});
+      if (url.includes("/summoner/")) return Response.json({summonerLevel:32,profileIconId:1});
+      if (url.includes("/league/") || url.includes("/champion-mastery/")) return Response.json([]);
+      if (url.includes("/ids?")) return Response.json(ids);
+      const matchId = url.split("/").at(-1)!;
+      details.push(matchId);
+      if (failOne && matchId === ids[3]) return new Response(null,{status:503});
+      const game = rankedMatchFixture(matchId,"ref");
+      if (matchId === ids[2]) game.info.participants[9].gameEndedInEarlySurrender = true;
+      return Response.json(game);
+    });
+    const first = await profile(true);
+    if (!first.ok) throw new Error(first.code);
+    const matches = first.player.snapshot.matches;
+    expect(details).toEqual(ids.slice(1,5));
+    expect(matches[1]).toMatchObject({performanceRating:5.5,detailsVersion:2});
+    expect(matches[2]).toMatchObject({performanceRating:undefined,detailsVersion:2});
+    expect(matches[3]).toMatchObject({matchId:ids[3],detailsVersion:1,kills:2});
+    expect(await profile(true)).toMatchObject({source:"cache"});
+    expect(details).toHaveLength(4);
+    failOne = false;
+    // The pre-existing Update button can refresh rank early. Rating upgrades wait for a stale window.
+    vi.advanceTimersByTime(3 * 60_000);
+    expect(await profile(true)).toMatchObject({source:"live"});
+    expect(details).toHaveLength(4);
+    vi.advanceTimersByTime(11 * 60_000);
+    expect(await profile(true)).toMatchObject({source:"live"});
+    expect(details.slice(4)).toEqual([ids[3],...ids.slice(5)]);
+    vi.advanceTimersByTime(11 * 60_000);
+    expect(await profile(true)).toMatchObject({source:"live"});
+    expect(details).toHaveLength(8);
   });
 });

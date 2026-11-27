@@ -9,12 +9,13 @@
 .duo-intro { display: flex; align-items: center; justify-content: space-between; gap: .9rem; padding: .75rem 0 1.15rem; }
 .duo-intro h1 { margin: 0; letter-spacing: -.045em; }
 .duo-intro p { margin: .35rem 0 0; max-width: 32ch; }
-.duo-intro img { width: clamp(4.8rem, 19vw, 7rem); height: auto; aspect-ratio: 4 / 3; border-radius: .85rem; object-fit: cover; }
-.duo-page h2 { font-size: 1.2rem; }
+.duo-intro img { width: clamp(4rem, 15vw, 5.5rem); height: auto; aspect-ratio: 4 / 3; border-radius: .75rem; object-fit: cover; }
+.duo-page h2 { font-size: 1.05rem; font-weight: 650; line-height: 1.35; }
 .duo-page > header p { color: var(--ink-soft); }
-.duo-status { padding: .9rem 1.1rem; border-inline-start: 3px solid var(--accent); background: var(--hover); }
+.duo-status { padding: 1rem 0; border-block: 1px solid var(--border); }
 .duo-status h2, .duo-status p { margin: 0; }
-.duo-status p { margin-top: .4rem; }
+.duo-status p { margin: .35rem 0; color: var(--ink-mid); }
+.duo-status a { display: inline-block; padding-block: .4rem; font-size: .9rem; text-decoration: underline; text-underline-offset: .2em; }
 .duo-plan { scroll-margin-top: 5rem; }
 .duo-plan fieldset { border: 0; margin: 0; padding: 0; }
 .duo-fields, .duo-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; }

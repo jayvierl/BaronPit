@@ -89,6 +89,35 @@ try {
   let quotePath;
   let discussionPath;
 
+  await check("Keyboard and native Explore reach the room shortcuts", async () => {
+    for (const page of [visitor, lane]) {
+      await load(page, origin, "/");
+      await page.waitForLoadState("load");
+      const trigger = page.locator('summary[aria-label="Explore"]:visible');
+      await trigger.focus();
+      await page.keyboard.press("Enter");
+      const menu = await visible(page.getByRole("navigation", { name: "Explore destinations" }));
+      await page.keyboard.press("Tab");
+      assert.equal(await menu.getByRole("link", { name: "Following", exact: true }).evaluate(el => el === document.activeElement), true);
+      await page.keyboard.press("Escape");
+      await menu.waitFor({ state: "hidden" });
+      assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
+    }
+    const native = await fixtureContext(browser, origin, 390, false);
+    try {
+      const page = await native.newPage();
+      await load(page, origin, "/");
+      await page.waitForLoadState("load");
+      await page.locator('summary[aria-label="Explore"]:visible').click();
+      const rooms = page.getByRole("navigation", { name: "Explore destinations" }).getByRole("link", { name: "General", exact: true });
+      await (await visible(rooms)).click();
+      await page.waitForURL(url => url.pathname === "/rooms/general");
+      await visible(page.getByRole("heading", { name: /The Baron Pit|General/ }).first());
+    } finally {
+      await native.close();
+    }
+  });
+
   await check("Visitor discovers a champion through mobile search and navigates the champion hub", async () => {
     await load(visitor, origin, "/");
     await (await visible(visitor.getByRole("link", { name: "Search", exact: true }).last())).click();
@@ -221,6 +250,7 @@ try {
     await load(lane, origin, "/playbook?tab=posts");
     await visible(lane.getByRole("main").locator(`a[href="${buildPath}"]`).first());
     await load(lane, origin, buildPath);
+    await (await visible(build.locator('summary[aria-label="Post options"]'))).click();
     await (await visible(build.locator('summary[aria-label="Quote post"]'))).click();
     await lane.getByRole("textbox", { name: "Your comment", exact: true }).fill(quoteBody);
     const quote = await submit(lane, lane.getByRole("button", { name: "Publish quote", exact: true }), "/api/social/quote", 201);

@@ -19,6 +19,7 @@ export type { PlatformId };
 import { summarize, EMPTY_SNAPSHOT, type MatchSummary, type PlayerSnapshot } from "./pure";
 import { isPublicMatchQueue } from "./public-match-queues";
 import { matchFromRiot, readStoredMatches } from "./riot-match";
+import { eligibleForMatchRating } from "./match-performance";
 export { summarize, EMPTY_SNAPSHOT };
 export type { MatchSummary, PlayerSnapshot };
 
@@ -387,8 +388,15 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string, s
 
   if (profile && !retryAt()) {
     const deadline = Date.now() + 9_000;
-    // Reproject a few legacy rows per refresh, even when no new match has landed.
-    const legacy = coreIds.filter(id => known.get(id)?.detailsVersion !== 1).slice(0, 4);
+    // Use one existing optional four-match batch. Prioritize the most recent
+    // ranked games from a stale window, then older records without rich details.
+    const staleProfile = fallback && !playerSnapshotTiming(fallback.fetchedAt).fresh;
+    const rankedLegacy = staleProfile ? allIds.filter(id => {
+      const prior = known.get(id);
+      return prior && prior.detailsVersion !== 2 && eligibleForMatchRating(prior.queueId, prior.durationSec);
+    }) : [];
+    const missingDetails = allIds.filter(id => known.has(id) && !known.get(id)?.detailsVersion);
+    const legacy = [...new Set([...rankedLegacy, ...missingDetails])].slice(0, 4);
     const accepting = await collectMatchDetails(legacy, region, puuid, known, deadline, coreSet);
     const missing = olderIds.filter(id => !known.has(id));
     // Coordinate large cold backfills across function instances. Ordinary
@@ -396,11 +404,7 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string, s
     const bulkAllowed = missing.length <= 8 || (accepting && !retryAt() &&
       await claimRiotWindow("riot:profile-deep").catch(() => false));
     if (accepting && bulkAllowed) {
-      const available = await collectMatchDetails(missing, region, puuid, known, deadline, coreSet);
-      if (available && allIds.every(id => known.has(id))) {
-        const remainingLegacy = allIds.filter(id => known.get(id)?.detailsVersion !== 1 && !legacy.includes(id));
-        await collectMatchDetails(remainingLegacy, region, puuid, known, deadline, coreSet);
-      }
+      await collectMatchDetails(missing, region, puuid, known, deadline, coreSet);
     }
   }
 

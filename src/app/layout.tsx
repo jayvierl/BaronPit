@@ -11,6 +11,7 @@ import navStyles from "@/components/navigation.module.css";
 import { APP_NAME, APP_DESCRIPTION, SAFETY_CENTER, SUPPORT_EMAIL } from "@/lib/brand";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://baronpit.com"),
   title: `${APP_NAME} — League of Legends, together`,
   description: APP_DESCRIPTION,
   applicationName: APP_NAME,
@@ -18,20 +19,46 @@ export const metadata: Metadata = {
     icon: { url: "/baron-icon-32.png", sizes: "32x32", type: "image/png" },
     apple: { url: "/baron-icon-180.png", sizes: "180x180", type: "image/png" },
   },
+  openGraph: {
+    type: "website",
+    siteName: APP_NAME,
+    title: `${APP_NAME} — League of Legends, together`,
+    description: APP_DESCRIPTION,
+    url: "https://baronpit.com",
+    images: [{ url: "/baron-hero.png", alt: `${APP_NAME} — League of Legends, together` }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${APP_NAME} — League of Legends, together`,
+    description: APP_DESCRIPTION,
+    images: ["/baron-hero.png"],
+  },
 };
 
 export const viewport: Viewport = { viewportFit: "cover" };
 
 function ExploreLinks({ desktop = false }: { desktop?: boolean }) {
   return <ExploreMenu menuId={desktop ? "desktop-explore-destinations" : undefined}>
-    <Link href="/me" prefetch={false}>Account settings</Link>
-    {!desktop && <Link href="/rooms">Rooms</Link>}
-    <Link href="/questions">Match questions</Link>
-    <Link href="/review-hour">Bot lane review hour</Link>
-    {!desktop && <Link href="/playbook">Saved</Link>}
-    <Link href="/builds">Builds</Link>
-    <Link href="/champions">Champions</Link>
-    <Link href="/pilot">Community pilot</Link>
+    <div role="group" aria-label="Library">
+      <Link href="/?tab=following">Following</Link>
+      <Link href="/playbook" prefetch={false}>Saved</Link>
+      <Link href="/me" prefetch={false}>Account settings</Link>
+    </div>
+    <div role="group" aria-label="League">
+      <Link href="/player">Player lookup</Link>
+      <Link href="/builds">Builds</Link>
+      <Link href="/champions">Champions</Link>
+    </div>
+    <div role="group" aria-label="Rooms">
+      <Link href="/rooms">Browse rooms</Link>
+      <Link href="/rooms/general">General</Link>
+      <Link href="/rooms/patch-meta">Patch &amp; Meta</Link>
+      <Link href="/rooms/off-meta-lab">Off-Meta Lab</Link>
+      <Link href="/rooms/new-players">New Players</Link>
+      <Link href="/questions">Match questions</Link>
+      <Link href="/review-hour">Bot lane review hour</Link>
+      <Link href="/pilot">Community pilot</Link>
+    </div>
   </ExploreMenu>;
 }
 
@@ -42,13 +69,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <a className="skip-link" href="#content">Skip to content</a>
         <header className={`topbar ${navStyles.topbar}`}>
           <div className="topbar-inner">
-            <Link href="/" className={`wordmark ${navStyles.mobileWordmark}`}>
+            <Link href="/" className="wordmark">
               <Image unoptimized src="/baron-emblem-96.webp" width={32} height={32} alt="" />
               <span>{APP_NAME}</span>
             </Link>
             <div className="topbar-right">
               <ExploreLinks/>
-              <Link href="/profile" prefetch={false} className={`btn small ${navStyles.mobileProfile}`} aria-label="My profile">Profile</Link>
+              <Link href="/profile" prefetch={false} className={navStyles.profileShortcut} aria-label="My profile" title="My profile">
+                <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+                  <circle cx="12" cy="7.8" r="3.6"/><path d="M4.5 20c.7-3.7 3.2-5.5 7.5-5.5s6.8 1.8 7.5 5.5"/>
+                </svg>
+              </Link>
             </div>
           </div>
         </header>

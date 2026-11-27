@@ -24,23 +24,22 @@ export async function checkNavigation(journey) {
   const shortcuts = search.match(/<aside\b[^>]*aria-label="Site shortcuts"[^>]*>([\s\S]*?)<\/aside>/)?.[1] ?? "";
   assert.match(shortcuts, /<a\b[^>]*href="\/"[^>]*><img\b[^>]*src="\/baron-emblem-96\.webp"/);
   assert.match(shortcuts, /<a\b[^>]*aria-label="Post to the Pit"[^>]*href="\/#compose"/);
-  const roomRail = search.match(/<nav\b[^>]*aria-label="Rooms"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
-  for (const path of ["/rooms", "/rooms/general", "/rooms/patch-meta", "/rooms/off-meta-lab", "/rooms/new-players"]) {
-    assert.ok(roomRail.includes(`href="${path}"`));
+  for (const id of ["explore-destinations", "desktop-explore-destinations"]) {
+    assert.ok(search.includes(`aria-controls="${id}"`));
+    const menu = [...search.matchAll(/<nav\b([^>]*)>([\s\S]*?)<\/nav>/g)].find(([,attrs]) => attrs.includes(`id="${id}"`));
+    assert.ok(menu?.[1].includes('aria-label="Explore destinations"'));
+    for (const path of ["/?tab=following", "/playbook", "/rooms", "/rooms/general", "/rooms/patch-meta", "/rooms/off-meta-lab", "/rooms/new-players"]) {
+      assert.ok(menu[2].includes(`href="${path}"`), `Missing Explore destination ${path}`);
+    }
   }
-  const library = search.match(/<nav\b[^>]*aria-label="Library"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
-  assert.ok(library.includes('href="/?tab=following"') && library.includes('href="/playbook"'));
-  for (const id of ["explore-destinations", "desktop-explore-destinations"]) assert.ok(search.includes(`popoverTarget="${id}"`));
   assert.ok(search.includes('aria-label="My profile"'));
   assert.ok(search.includes('aria-label="Explore the community"'));
   assert.match(search, /<a\b[^>]*href="\/safety"[^>]*>Safety Center<\/a>/);
   await journey("/safety", {includes:["<title>Safety Center</title>",'>Safety Center</h1>']});
   await journey("/?tab=following", {redirectTo:"/signin?next=%2F%3Ftab%3Dfollowing"});
   const followed = await journey("/?tab=following", {session:true, html:true});
-  const followedPrimary = followed.match(/<nav\b[^>]*aria-label="Primary desktop"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
-  const followedLibrary = followed.match(/<nav\b[^>]*aria-label="Library"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
-  assert.doesNotMatch(followedPrimary, /aria-label="Home" aria-current=/);
-  assert.match(followedLibrary, /aria-label="Following" aria-current="page"/);
+  const feedTabs = followed.match(/<nav\b[^>]*aria-label="Feed selection"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
+  assert.match(feedTabs, /<a\b(?=[^>]*aria-current="page")(?=[^>]*href="\/\?tab=following")[^>]*>Following<\/a>/);
   await journey("/search?scope=players", {includes:['aria-label="League region"', 'name="q"', "Player stats"]});
   const cached = await journey("/search?scope=players&q=Fixture%20Support", {html:true});
   assert.ok(cached.includes("Fixture Support#WAVE") && !cached.includes(">Community profiles</h2>"));
