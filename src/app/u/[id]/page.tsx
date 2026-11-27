@@ -20,6 +20,7 @@ import { decisionCursor } from "@/lib/decisions-input";
 import { profileMatchDiscussions } from "@/lib/decisions";
 import { readSearchReturn, withSearchReturn } from "@/lib/search-scopes";
 import { readProfileLink } from "@/lib/profile-featured-link";
+import { validId } from "@/lib/ids";
 import { signInHref } from "@/lib/signin-return";
 import { Avatar } from "@/components/ui";
 import { PlayerStats } from "@/components/player-stats";
@@ -34,16 +35,21 @@ import styles from "./profile.module.css";
 
 export const dynamic = "force-dynamic";
 
+function ProfileUnavailable({ retryHref }: { retryHref: string }) {
+  return <section className={styles.empty}>
+    <h1>Profile temporarily unavailable</h1>
+    <p>We couldn’t load this profile.</p>
+    <a className="btn secondary" href={retryHref}>Try again</a>
+  </section>;
+}
+
 export default async function ProfilePage({ params, searchParams }: {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ tab?: string; updated?: string; before?: string; from?: string }>;
 }) {
-  const [{id},{tab,updated,before,from},viewer] = await Promise.all([params,searchParams,getCurrentUser()]);
+  const [{id},{tab,updated,before,from}] = await Promise.all([params,searchParams]);
   const userId = Number(id);
-  if (!Number.isSafeInteger(userId) || userId <= 0 || userId > 2147483647) notFound();
-  const today = new Date().toISOString().slice(0, 10);
-  const profile = await publicProfile(userId, viewer?.id ?? null, today);
-  if (!profile) notFound();
+  if (!/^\d+$/.test(id) || !validId(userId)) notFound();
   const activeTab = tab === "players" || tab === "stats" ? "stats" : tab === "replies" || tab === "discussions" ? tab : "posts";
   const searchReturn = readSearchReturn(from);
   const repliesCursor = activeTab === "replies" ? pageCursor(before) : null;
@@ -54,14 +60,23 @@ export default async function ProfilePage({ params, searchParams }: {
     return withSearchReturn(before ? `${path}&before=${before}` : path, searchReturn);
   }
   const statsHref = tabHref("stats");
-  const [patch,counts,endorsements,linkedPlayers,following,posts,featuredLink,pins,discussions] = await Promise.all([
+  const retryHref = tabHref(activeTab, repliesCursor ?? discussionsCursor);
+  const viewer = await getCurrentUser().catch(() => undefined);
+  if (viewer === undefined) return <ProfileUnavailable retryHref={retryHref} />;
+  const today = new Date().toISOString().slice(0, 10);
+  const profile = await publicProfile(userId, viewer?.id ?? null, today).catch(() => undefined);
+  if (profile === undefined) return <ProfileUnavailable retryHref={retryHref} />;
+  if (!profile) notFound();
+  const content = await Promise.all([
     activeTab === "posts" ? currentPatch() : "", followCounts(userId), endorsementCounts(userId), readLinkedPlayers(userId),
     viewer && viewer.id !== userId ? isFollowing(viewer.id,userId) : false,
     activeTab === "posts" ? feedByAuthor(userId,viewer,20).catch(() => null) : [],
     profile.link ? readProfileLink(profile.link, viewer?.id ?? null) : null,
     viewer && viewer.id !== userId ? pinnedDuoIds(viewer.id, [userId]).catch(() => null) : null,
     activeTab === "discussions" ? profileMatchDiscussions(userId, viewer?.id ?? null, discussionsCursor).catch(() => null) : null,
-  ]);
+  ]).catch(() => null);
+  if (!content) return <ProfileUnavailable retryHref={retryHref} />;
+  const [patch,counts,endorsements,linkedPlayers,following,posts,featuredLink,pins,discussions] = content;
   const player = linkedPlayers[0] ?? null;
   const badges = player?.verified ? earnedBadges(player.snapshot) : [];
   if (profile.featured && player?.verified) badges.unshift("Hand of Baron · featured today");

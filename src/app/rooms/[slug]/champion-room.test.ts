@@ -4,13 +4,9 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { readChampionDirectoryReturn } from "@/lib/champion-navigation";
 import RoomPage from "./page";
 
-const reads = vi.hoisted(() => ({ feed: vi.fn(), sample: vi.fn(), builds: vi.fn() }));
-vi.mock("@/lib/auth", () => ({ getCurrentUser: async () => null }));
-vi.mock("@/lib/rooms", () => ({ getRoom: async (slug: string) => ({
-  id: 41, slug, championId: slug === "champ-ashe" ? "Ashe" : null,
-  name: slug === "champ-ashe" ? "Ashe Mains" : "The Baron Pit", members: 3, joined: false,
-  description: "A fixture room", host: null, raidUntil: null,
-}) }));
+const reads = vi.hoisted(() => ({ user: vi.fn(), room: vi.fn(), feed: vi.fn(), sample: vi.fn(), builds: vi.fn() }));
+vi.mock("@/lib/auth", () => ({ getCurrentUser: reads.user }));
+vi.mock("@/lib/rooms", () => ({ getRoom: reads.room }));
 vi.mock("@/lib/riot", () => ({ currentPatch: async () => "16.23.1", championList: async () => [
   { id: "Ashe", name: "Ashe", title: "the Frost Archer", tags: ["Marksman", "Support"] },
 ] }));
@@ -34,6 +30,12 @@ const render = async (query: Record<string, string> = {}, slug = "champ-ashe") =
   renderToStaticMarkup(await RoomPage({ params: Promise.resolve({ slug }), searchParams: Promise.resolve(query) }));
 
 beforeEach(() => {
+  reads.user.mockReset().mockResolvedValue(null);
+  reads.room.mockReset().mockImplementation(async (slug: string) => ({
+    id: 41, slug, championId: slug === "champ-ashe" ? "Ashe" : null,
+    name: slug === "champ-ashe" ? "Ashe Mains" : "The Baron Pit", members: 3, joined: false,
+    description: "A fixture room", host: null, raidUntil: null,
+  }));
   reads.feed.mockReset().mockResolvedValue([]);
   reads.builds.mockReset().mockResolvedValue([]);
   reads.sample.mockReset().mockResolvedValue({ players: 2, games: 3, wins: 1,
@@ -92,4 +94,28 @@ it("opens the empty-room composer by native link and retains the sign-in return 
   const opened = await render({ view: "discussions", from: search, compose: "1" });
   expect(opened).toMatch(/<details[^>]*open=""[^>]*><summary[^>]*>Post in Ashe Mains[\s\S]*?<\/summary><div id="compose"/);
   expect(opened).toContain(`href="${href}">Draft return`);
+});
+
+it("shows retry and back links during a room storage outage without an empty build list", async () => {
+  reads.room.mockRejectedValueOnce(new Error("Community storage is unavailable"));
+  const html = await render({ feed: "builds", from: search });
+  expect(html).toContain("Room temporarily unavailable");
+  expect(html).toContain('href="/rooms/champ-ashe?feed=builds&amp;from=%2Fsearch%3Fscope%3Drooms%26q%3DAshe">Try again');
+  expect(html).toContain(`href="${search.replaceAll("&", "&amp;")}">Back to search`);
+  expect(reads.builds).not.toHaveBeenCalled();
+  expect(reads.feed).not.toHaveBeenCalled();
+  expect(html).not.toContain("No community builds");
+});
+
+it("treats session storage failure as unavailable but lets a successful missing-room lookup return 404", async () => {
+  reads.user.mockRejectedValueOnce(new Error("Session storage is unavailable"));
+  const html = await render({ compose: "1", from: "//external.invalid/search" }, "general");
+  expect(html).toContain('href="/rooms/general?compose=1">Try again');
+  expect(html).toContain('href="/rooms">Back to rooms');
+  expect(html).not.toContain("external.invalid");
+  expect(reads.room).not.toHaveBeenCalled();
+
+  reads.room.mockResolvedValueOnce(null);
+  await expect(render({}, "missing-room")).rejects.toMatchObject({ digest: "NEXT_HTTP_ERROR_FALLBACK;404" });
+  expect(reads.room).toHaveBeenCalledWith("missing-room", undefined);
 });

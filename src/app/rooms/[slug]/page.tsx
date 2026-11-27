@@ -31,17 +31,34 @@ export default async function RoomPage({ params, searchParams }: {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ feed?: string | string[]; view?: string | string[]; from?: string | string[]; compose?: string | string[] }>;
 }) {
-  const [{slug}, search, user] = await Promise.all([params, searchParams, getCurrentUser()]);
+  const [{ slug }, search] = await Promise.all([params, searchParams]);
+  const view = roomFeedFromParam(search.feed);
+  const searchReturn = readSearchReturn(search.from);
+  const directoryReturn = readChampionDirectoryReturn(search.from);
+  const context = await getCurrentUser().then(async user => ({ user, room: await getRoom(slug, user?.id) })).catch(() => null);
+  if (!context) {
+    const championRoute = slug.startsWith("champ-");
+    const from = searchReturn ?? (championRoute ? directoryReturn : undefined);
+    const retry = new URL(withSearchReturn(roomFeedHref(slug, view.key), from), "https://room.invalid");
+    if (search.view === "discussions") retry.searchParams.set("view", "discussions");
+    if (search.compose === "1") retry.searchParams.set("compose", "1");
+    return <section className="card" data-page-unavailable>
+      <h1 className="page-title">Room temporarily unavailable</h1>
+      <p role="status">The community room couldn’t load.</p>
+      <div className={styles.actions}>
+        <a className="btn small" href={`${retry.pathname}${retry.search}`}>Try again</a>
+        <Link className="btn small secondary" href={from ?? (championRoute ? "/champions" : "/rooms")} prefetch={false}>
+          {searchReturn ? "Back to search" : championRoute ? "Back to champions" : "Back to rooms"}
+        </Link>
+      </div>
+    </section>;
+  }
+  const { user, room } = context;
+  if (!room) notFound();
   const viewerId = user?.id ?? null;
   const viewerIdentity = publicAvatarIdentity(user);
-  const view = roomFeedFromParam(search.feed);
-  const [room, patch, champions] = await Promise.all([getRoom(slug, user?.id), currentPatch(), championList()]);
-  if (!room) notFound();
   const championSection = room.championId ? championRoomSection(search.view, view.key) : null;
-  const searchReturn = readSearchReturn(search.from);
-  const from = searchReturn ?? (room.championId ? readChampionDirectoryReturn(search.from) : undefined);
-  const champInfo = room.championId ? champions.find(c => c.id === room.championId) : null;
-  const roomTitle = champInfo ? `${champInfo.name} Mains` : room.name;
+  const from = searchReturn ?? (room.championId ? directoryReturn : undefined);
   const destination = championSection ? championRoomHref(room.slug, championSection, from, view.key)
     : withSearchReturn(roomFeedHref(room.slug, view.key), from);
   const shareDestination = championSection ? championRoomHref(room.slug, championSection, undefined, view.key)
@@ -52,11 +69,14 @@ export default async function RoomPage({ params, searchParams }: {
   const allThreads = championSection ? championRoomHref(room.slug, "discussions", from)
     : withSearchReturn(roomFeedHref(room.slug, "all"), from);
   const roomBuilds = championSection === "builds" && room.championId ? room.championId : null;
-  const [posts, sample] = await Promise.all([
+  const [patch, champions, posts, sample] = await Promise.all([
+    currentPatch(), championList(),
     (roomBuilds ? buildFeed(user, { champion: roomBuilds }, 12)
       : readRoomFeed(room.id, viewerId, view, championSection === "overview" ? 4 : undefined)).catch(() => null),
     room.championId && championSection === "overview" ? championRoomPulse(room.championId, viewerId).catch(() => null) : null,
   ]);
+  const champInfo = room.championId ? champions.find(c => c.id === room.championId) : null;
+  const roomTitle = champInfo ? `${champInfo.name} Mains` : room.name;
 
   return (
     <div>
