@@ -385,8 +385,8 @@ describe("recent-form refresh", () => {
     if (!first.ok) throw new Error(first.code);
     const matches = first.player.snapshot.matches;
     expect(details).toEqual(ids.slice(1,5));
-    expect(matches[1]).toMatchObject({performanceRating:5.5,detailsVersion:2});
-    expect(matches[2]).toMatchObject({performanceRating:undefined,detailsVersion:2});
+    expect(matches[1]).toMatchObject({performanceRating:5.5,detailsVersion:3});
+    expect(matches[2]).toMatchObject({performanceRating:undefined,detailsVersion:3});
     expect(matches[3]).toMatchObject({matchId:ids[3],detailsVersion:1,kills:2});
     expect(await profile(true)).toMatchObject({source:"cache"});
     expect(details).toHaveLength(4);

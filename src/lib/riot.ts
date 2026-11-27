@@ -19,7 +19,7 @@ export type { PlatformId };
 import { summarize, EMPTY_SNAPSHOT, type MatchSummary, type PlayerSnapshot } from "./pure";
 import { isPublicMatchQueue } from "./public-match-queues";
 import { matchFromRiot, readStoredMatches } from "./riot-match";
-import { eligibleForMatchRating } from "./match-performance";
+import { eligibleForMatchRating, MATCH_DETAILS_VERSION } from "./match-performance";
 export { summarize, EMPTY_SNAPSHOT };
 export type { MatchSummary, PlayerSnapshot };
 
@@ -393,7 +393,7 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string, s
     const staleProfile = fallback && !playerSnapshotTiming(fallback.fetchedAt).fresh;
     const rankedLegacy = staleProfile ? allIds.filter(id => {
       const prior = known.get(id);
-      return prior && prior.detailsVersion !== 2 && eligibleForMatchRating(prior.queueId, prior.durationSec);
+      return prior && prior.detailsVersion !== MATCH_DETAILS_VERSION && eligibleForMatchRating(prior.queueId, prior.durationSec);
     }) : [];
     const missingDetails = allIds.filter(id => known.has(id) && !known.get(id)?.detailsVersion);
     const legacy = [...new Set([...rankedLegacy, ...missingDetails])].slice(0, 4);

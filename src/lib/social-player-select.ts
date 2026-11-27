@@ -5,8 +5,8 @@ export function socialPlayerSelect(includeRatingEvidence = false) {
   // Preserve the roster only for rated games on the stats tab. The same reader
   // validates the rating evidence on both the profile and player lookup.
   const ratingFields = includeRatingEvidence
-    ? "CASE WHEN m->'detailsVersion' = '2'::jsonb AND jsonb_typeof(m->'performanceRating') = 'number' THEN ARRAY[]::text[] ELSE ARRAY['teams','detailsVersion','performanceRating'] END"
-    : "ARRAY['teams','detailsVersion','performanceRating']";
+    ? "CASE WHEN m->'detailsVersion' = '3'::jsonb AND jsonb_typeof(m->'performanceRating') = 'number' THEN ARRAY[]::text[] ELSE ARRAY['teams','detailsVersion','performanceRating','ratingReason','ratingBadge','vision'] END"
+    : "ARRAY['teams','detailsVersion','performanceRating','ratingReason','ratingBadge','vision']";
   return `p.puuid, p.platform, p.game_name, p.tag_line,
   p.summoner_level, p.profile_icon, p.rank_tier, p.rank_div, p.rank_lp, p.rank_wins, p.rank_losses, p.fetched_at,
   CASE WHEN jsonb_typeof(p.snapshot) = 'object' THEN

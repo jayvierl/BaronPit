@@ -1,5 +1,5 @@
 import { teamBaronFields, type MatchParticipantSummary, type MatchSummary } from "./pure";
-import { matchPerformanceRating, storedMatchRating } from "./match-performance";
+import { eligibleForMatchRating, MATCH_DETAILS_VERSION, rateMatch, validRating, withTeamBadges } from "./match-performance";
 
 const positions = new Set(["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"]);
 
@@ -33,13 +33,15 @@ function publicParticipant(raw: Record<string, unknown>, live = false, actualPla
   return { champion, ...(name && tag ? { name, tag } : {}), ...(actualPlayer ? { isPlayer: true } : {}) };
 }
 
-function roster(raw: unknown, showPlayer: boolean, hideIdentity: boolean): MatchParticipantSummary[] | undefined {
+function roster(raw: unknown, showPlayer: boolean, hideIdentity: boolean, rated: boolean, win: boolean): MatchParticipantSummary[] | undefined {
   if (!Array.isArray(raw) || raw.length !== 5) return undefined;
   const entries = raw.map(value => {
     const participant = object(value);
-    return publicParticipant(participant, false, showPlayer && participant.isPlayer === true, hideIdentity);
+    const row = publicParticipant(participant, false, showPlayer && participant.isPlayer === true, hideIdentity);
+    if (row && rated && validRating(participant.performanceRating)) row.performanceRating = participant.performanceRating;
+    return row;
   });
-  return entries.every((value): value is MatchParticipantSummary => value !== null) ? entries : undefined;
+  return entries.every((value): value is MatchParticipantSummary => value !== null) ? withTeamBadges(entries, win) : undefined;
 }
 
 function spellIds(first: unknown, second: unknown): MatchSummary["spellIds"] {
@@ -89,11 +91,18 @@ export function matchFromRiot(raw: unknown, matchId: string, puuid: string, reta
   const opposingLane = positions.has(String(me.teamPosition)) ? opponents.filter(player => player.teamPosition === me.teamPosition) : [];
   const objectives = Array.isArray(info.teams) && teamId
     ? object(info.teams.map(object).find(side => side.teamId === teamId)?.objectives) : {};
-  const allies = team.map(player => publicParticipant(player, true, player === me, queueId === 0));
-  const rivals = opponents.map(player => publicParticipant(player, true, false, queueId === 0));
+  const ratings = rateMatch(participants, queueId, durationSec, info.mapId);
+  function row(player: Record<string, unknown>) {
+    const entry = publicParticipant(player, true, player === me, queueId === 0);
+    if (entry && "rows" in ratings) entry.performanceRating = ratings.rows[participants.indexOf(player)].score;
+    return entry;
+  }
+  const allies = team.map(row);
+  const rivals = opponents.map(row);
   const fullRosters = allies.length === 5 && rivals.length === 5 && participants.length === 10;
   const teams = fullRosters && allies.every(entry => entry !== null) && rivals.every(entry => entry !== null)
-    ? { allies, opponents: rivals } : undefined;
+    ? { allies: withTeamBadges(allies, me.win), opponents: withTeamBadges(rivals, !me.win) } : undefined;
+  const ratedPlayer = teams?.allies.find(p => p.isPlayer);
   const killsPerPlayer = team.map(player => count(player.kills));
   const goldPerPlayer = team.map(player => count(player.goldEarned));
   const teamKills = count(object(objectives.champion).kills)
@@ -116,8 +125,9 @@ export function matchFromRiot(raw: unknown, matchId: string, puuid: string, reta
       return participant ? [{ champion: participant.champion, name: participant.name ?? "", tag: participant.tag }] : [];
     }),
     championLevel: positive(me.champLevel), spellIds: spellIds(me.summoner1Id, me.summoner2Id), runes: liveRunes(me.perks),
-    teamKills, killParticipation: killParticipation(teamKills, kills, assists), teams, detailsVersion: 2,
-    performanceRating: teams ? matchPerformanceRating(participants, participants.indexOf(me), queueId, durationSec, info.mapId) : undefined,
+    teamKills, killParticipation: killParticipation(teamKills, kills, assists), teams, detailsVersion: MATCH_DETAILS_VERSION,
+    vision: count(me.visionScore), performanceRating: ratedPlayer?.performanceRating, ratingBadge: ratedPlayer?.ratingBadge,
+    ratingReason: "reason" in ratings ? ratings.reason : ratedPlayer ? ratings.rows[participants.indexOf(me)].reason : undefined,
   };
 }
 
@@ -131,8 +141,11 @@ export function readStoredMatches(raw: unknown, limit: number, existing: readonl
     if (typeof m.matchId !== "string" || !m.matchId || seen.has(m.matchId) || !championId(m.champion) || typeof m.win !== "boolean" ||
         [m.kills, m.deaths, m.assists, m.cs, m.durationSec, m.playedAt].some(n => count(n) === undefined)) continue;
     seen.add(m.matchId);
-    const allies = roster(m.teams?.allies, true, m.queueId === 0), opponents = roster(m.teams?.opponents, false, m.queueId === 0);
+    const rated = m.detailsVersion === MATCH_DETAILS_VERSION && eligibleForMatchRating(m.queueId, m.durationSec);
+    const allies = roster(m.teams?.allies, true, m.queueId === 0, rated, m.win);
+    const opponents = roster(m.teams?.opponents, false, m.queueId === 0, rated, !m.win);
     const teams = allies && opponents && allies.filter(player => player.isPlayer).length === 1 ? { allies, opponents } : undefined;
+    const ratedPlayer = teams?.allies.find(p => p.isPlayer);
     const teamKills = count(m.teamKills);
     const items = Array.isArray(m.items) ? m.items.slice(0, 7).map(positive).filter(id => id !== undefined) : [];
     const teammates = Array.isArray(m.teammates) ? m.teammates.slice(0, 15).flatMap(value => {
@@ -150,8 +163,9 @@ export function readStoredMatches(raw: unknown, limit: number, existing: readonl
       ...teamBaronFields(m), teammates, championLevel: positive(m.championLevel),
       spellIds: spellIds(m.spellIds?.[0], m.spellIds?.[1]), runes: runes(m.runes),
       teamKills, killParticipation: killParticipation(teamKills, m.kills, m.assists), teams,
-      performanceRating: teams && m.detailsVersion === 2 ? storedMatchRating(m.performanceRating, m.queueId, m.durationSec) : undefined,
-      detailsVersion: m.detailsVersion === 1 || m.detailsVersion === 2 ? m.detailsVersion : undefined,
+      performanceRating: ratedPlayer?.performanceRating, ratingBadge: ratedPlayer?.ratingBadge, vision: count(m.vision),
+      ratingReason: m.detailsVersion === MATCH_DETAILS_VERSION && typeof m.ratingReason === "string" ? m.ratingReason.slice(0, 180) : undefined,
+      detailsVersion: m.detailsVersion === 1 || m.detailsVersion === 2 || m.detailsVersion === MATCH_DETAILS_VERSION ? m.detailsVersion : undefined,
     });
   }
   return matches;
