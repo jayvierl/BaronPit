@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 const riot = vi.hoisted(() => ({championCatalog:vi.fn(),confirmedPatch:vi.fn(),getCachedPlayer:vi.fn()}));
+const match = vi.hoisted(() => ({ resolveQuestionMatch: vi.fn() }));
 vi.mock("./riot", () => riot);
+vi.mock("./question-match", () => match);
 import { preparePost, scoreSubmission } from "./post-input";
 import { BARON_CALL_OPTIONS } from "./poll";
 afterEach(() => {vi.clearAllMocks();vi.unstubAllGlobals();});
@@ -41,13 +43,14 @@ describe("public post payloads", () => {
   });
   it.each([[true, "victory", "defeat"], [false, "defeat", "victory"]] as const)(
     "derives %s cards and motion from the snapshot without persisting client overrides", async (win, motion, supplied) => {
-    riot.getCachedPlayer.mockResolvedValue({gameName:"Example",tagLine:"NA1",puuid:"player",snapshot:{matches:[{matchId:"NA1_1",kills:3,champion:"Ashe",win,items:[],teamBaronKills:2}]}});
+    match.resolveQuestionMatch.mockResolvedValue({sourcePuuid:"player",preview:{platform:"na1",riotId:"Example#NA1",matchId:"NA1_1",
+      kills:3,deaths:2,assists:5,cs:93,champion:"Ashe",win,items:[],authorRole:"spectator"},baron:{teamBaronKills:2}});
     const result = await preparePost({kind:"card",body:"Last match",data:{puuid:"player",matchId:"NA1_1",motion:supplied,match:{win:!win,kills:100,teamBaronKills:99},extra:"private"}});
     expect(result).toMatchObject({ok:true,data:{riotId:"Example#NA1",motion,match:{win,kills:3,teamBaronKills:2}}});
     if(result.ok) expect(result.data).not.toHaveProperty("extra");
   });
   it("does not assign motion to an incomplete match record", async () => {
-    riot.getCachedPlayer.mockResolvedValue({snapshot:{matches:[{matchId:"NA1_1",champion:"Ashe"}]}});
+    match.resolveQuestionMatch.mockResolvedValue(null);
     expect(await preparePost({kind:"card",body:"Last match",data:{puuid:"player",matchId:"NA1_1",motion:"victory"}})).toMatchObject({ok:false});
   });
 });

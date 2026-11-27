@@ -164,7 +164,7 @@ describe("bounded player and community data queries", () => {
     await q`INSERT INTO wp_links(user_id,puuid,verified) VALUES (500,'flair',true)`;
     const [post] = await q`INSERT INTO wp_posts(author_id,kind,body) VALUES (500,'text','My post') RETURNING id`;
     for (const [snapshot,expected] of [
-      [{ champPool:[{ champion:"Ashe" }] }, "Gold IV · Ashe main"],
+      [{ champPool:[{ champion:"Ashe" }] }, "Gold IV"],
       [{ champPool:[] }, "Gold IV"], [{}, "Gold IV"], [{ champPool:[{ champion:{name:"Ashe"} }] }, "Gold IV"],
     ] as const) {
       await q`UPDATE wp_players SET snapshot=${JSON.stringify(snapshot)}::jsonb WHERE puuid='flair'`;

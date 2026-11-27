@@ -77,6 +77,6 @@ describe("public Riot profile summary", () => {
     });
     expect(publicPlayerSummary(playerFromRow({...row,snapshot:{
       games:3,wins:1,losses:2,kda:2,roles:{"":3},champPool:[{champion:"Ashe",games:3,wins:1,kda:2}],
-    }}))).toMatchObject({sampleGames:3,topRole:null,champions:[{name:"Ashe",games:3}]});
+    }}))).toMatchObject({sampleGames:0,topRole:null,champions:[]});
   });
 });

@@ -1,3 +1,4 @@
+import { questionDecisionPost } from "./match-card-projection";
 import { HIDDEN_AUTHORS, visiblePostForInteraction } from "./community-queries";
 import { q, queryRows } from "./db";
 import { trialOutcomes, type TrialOutcome } from "./decisions-input";
@@ -74,7 +75,7 @@ export async function featuredMatchup(
       FROM wp_decisions d JOIN wp_posts p ON p.id=d.post_id JOIN wp_users asker ON asker.id=p.author_id
       JOIN wp_comments c ON c.post_id=p.id AND c.id=d.accepted_comment_id AND c.parent_id IS NULL
       JOIN wp_users helper ON helper.id=c.author_id
-      WHERE ${visiblePostForInteraction} AND c.status='visible' AND c.author_id<>p.author_id
+      WHERE ${visiblePostForInteraction} AND ${questionDecisionPost} AND c.status='visible' AND c.author_id<>p.author_id
         AND c.author_id NOT IN (SELECT id FROM hidden) AND ${trustedProfile("asker")} AND ${trustedProfile("helper")}
         AND d.opponent IS NOT NULL AND d.opponent<>'' AND d.accepted_at >= $2::timestamptz AND d.accepted_at <= $4::timestamptz
       ORDER BY (d.accepted_at<$3::timestamptz) DESC,

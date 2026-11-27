@@ -10,6 +10,9 @@ export async function POST(req: Request) {
   const input = (await readObject(req)) as CreatePostInput & { expectedAuthorId?: number };
   if (input.expectedAuthorId !== undefined && input.expectedAuthorId !== user.id)
     return NextResponse.json({ ok: false, error: "Your signed-in account changed. Refresh before posting." }, { status: 409 });
+  if (input.kind === "card") {
+    return NextResponse.json({ ok: false, error: "Use Discuss this match in the player’s match history to preview and confirm the public context." }, { status: 400 });
+  }
   if (typeof input.body !== "string" || input.body.length > 2000 || (input.roomId != null && !validId(input.roomId))
       || (input.data != null && (typeof input.data !== "object" || Array.isArray(input.data) || JSON.stringify(input.data).length > 16384))) {
     return NextResponse.json({ ok:false,error:"Check the post text, room and attachment." }, {status:400});
@@ -17,7 +20,7 @@ export async function POST(req: Request) {
   if (input.kind === "poll" && (!Array.isArray(input.data?.options) || !input.data.options.every(o=>typeof o === "string" && o.trim()))) {
     return NextResponse.json({ ok:false, error:"Enter the choices for this poll." }, {status:400});
   }
-  if (!["text", "build", "poll", "card", "clip", "media"].includes(input.kind)) {
+  if (!["text", "build", "poll", "clip", "media"].includes(input.kind)) {
     return NextResponse.json({ ok: false, error: "Unknown post kind." }, { status: 400 });
   }
   const result = await createPost(user, { ...input, submitForReview: input.submitForReview === true });

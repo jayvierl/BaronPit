@@ -168,9 +168,11 @@ describe("private discussion library", () => {
   });
   it("unfurls a real decision with champion, question and only the validated scoreboard", async () => {
     await postgres.exec(`
+      INSERT INTO wp_players(puuid,platform,game_name,tag_line,snapshot) VALUES
+        ('private-id','na1','Private name','NA1','{"matches":[{"matchId":"NA1_81","queueId":420,"champion":"Ashe","win":true,"kills":2,"deaths":3,"assists":12}]}');
       INSERT INTO wp_posts(id,author_id,room_id,kind,body,card_validated,data) VALUES
         (30,2,1,'card','Should I recall after dragon?',true,
-          '{"match":{"champion":"Ashe","win":true,"kills":2,"deaths":3,"assists":12},"puuid":"private-id","riotId":"private-name"}'),
+          '{"match":{"champion":"Ashe","win":true,"kills":2,"deaths":3,"assists":12},"matchId":"NA1_81","puuid":"private-id","riotId":"private-name"}'),
         (31,2,1,'card','Legacy post',false,
           '{"match":{"champion":"Ashe","win":true,"kills":99,"deaths":0,"assists":11}}');
       INSERT INTO wp_decisions(post_id,champion,role,topic) VALUES (30,'Ashe','Support','Objective');

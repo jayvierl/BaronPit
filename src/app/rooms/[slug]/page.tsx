@@ -36,7 +36,7 @@ export default async function RoomPage({ params, searchParams }: {
   if (!room) notFound();
   const [posts, brief] = await Promise.all([
     readRoomFeed(room.id, viewerId, view).catch(() => null),
-    room.championId ? championRoomPulse(room.championId).catch(() => null) : null,
+    room.championId ? championRoomPulse(room.championId, viewerId).catch(() => null) : null,
   ]);
   const champInfo = room.championId ? champions.find(c => c.id === room.championId) : null;
   const destination = roomFeedHref(room.slug, view.key);
@@ -78,8 +78,8 @@ export default async function RoomPage({ params, searchParams }: {
             {brief.games === 0 ? <p className="meta">No {room.championId} games in the sampled champion pools yet. <Link href="/player">Look up a player</Link></p> : <>
               <div className="kv">
                 <div><b>{brief.players}</b><span>Sampled players</span></div>
-                <div><b>{brief.games}</b><span>Recent games</span></div>
-                <div><b>{Math.round((brief.wins / brief.games) * 100)}%</b><span>Win rate</span></div>
+                <div><b>{brief.games}</b><span>Player appearances</span></div>
+                <div><b>{Math.round((brief.wins / brief.games) * 100)}%</b><span>Sample win rate</span></div>
               </div>
               {brief.topPlayers.map(p => (
                 <Link key={`${p.platform}/${p.name}#${p.tag}`} className="match-row" prefetch={false}

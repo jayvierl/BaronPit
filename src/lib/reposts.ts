@@ -22,13 +22,14 @@ export async function setRepost(userId: number, postId: number, active: boolean)
 
 // Check the original author's and sharer's relationship again while reading.
 // Multiple followed people sharing the same original still produce a single card.
-export const followedReposts = `, shared AS (
+export function followedReposts(anchored = false) { return `, shared AS (
   SELECT DISTINCT ON (r.post_id) r.post_id,r.user_id,r.first_shared_at
   FROM wp_reposts r JOIN wp_posts source ON source.id=r.post_id
   WHERE r.active AND r.user_id IN (SELECT followee_id FROM wp_follows WHERE follower_id=$1 UNION ALL SELECT $1::int)
+    ${anchored ? "AND r.first_shared_at <= $12::timestamptz" : ""}
     AND r.user_id NOT IN (SELECT id FROM hidden)
     AND NOT EXISTS (SELECT 1 FROM wp_blocks b WHERE
       (b.blocker_id,b.blocked_id) IN ((r.user_id,source.author_id),(source.author_id,r.user_id)))
     AND NOT EXISTS (SELECT 1 FROM wp_mutes m WHERE m.muter_id=r.user_id AND m.muted_id=source.author_id)
   ORDER BY r.post_id,r.first_shared_at DESC,r.user_id
-)`;
+ )`; }

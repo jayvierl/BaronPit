@@ -96,7 +96,7 @@ export function PlayerStats({ player, source = "cache", lookupHref, variant = "s
       )}
       {stats.sampleGames > 0 ? (
         <div className={styles.recent}>
-          <h3>{source === "partial" ? `${gameCount(stats.sampleGames)} available` : `Last ${gameCount(stats.sampleGames)}`} · all queues</h3>
+          <h3>{source === "partial" ? `${gameCount(stats.sampleGames)} available` : `Last ${gameCount(stats.sampleGames)}`} · supported public queues</h3>
           <dl>
             <div>
               <dt>Most played role</dt>

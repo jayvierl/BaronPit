@@ -1,18 +1,20 @@
 import Link from "next/link";
 import type { CardItem } from "@/lib/build-catalog";
-import { questionHref, questionStarters } from "@/lib/decisions-input";
+import { questionHref, questionStarters, type QuestionMatch } from "@/lib/decisions-input";
 import styles from "@/app/questions/questions.module.css";
 
 export function MatchQuestionLinks({
-  puuid,
-  matchId,
+  match,
   items = [],
   showStarters = false,
+  showQuestion = true,
+  fromMatch,
 }: {
-  puuid: string;
-  matchId: string;
+  match: QuestionMatch;
   items?: CardItem[];
   showStarters?: boolean;
+  showQuestion?: boolean;
+  fromMatch?: string;
 }) {
   const named = Array.from(new Map(items.map((i) => [i.id, i])).values());
   return (
@@ -22,30 +24,30 @@ export function MatchQuestionLinks({
           <strong>Ask the community about this game</strong>
           <div>
             {questionStarters.map((starter) => (
-              <Link key={starter.id} href={questionHref({ puuid, matchId }, starter.id)}>
+              <Link key={starter.id} href={questionHref(match, starter.id, { fromMatch })} prefetch={false}>
                 {starter.label}
               </Link>
             ))}
           </div>
         </section>
       )}
-      <div className={styles.controls}>
-        <Link className="text-btn" href={questionHref({ puuid, matchId })}>
+      {(showQuestion || named.length > 0) && <div className={styles.controls}>
+        {showQuestion && <Link className="text-btn" href={questionHref(match, undefined, { fromMatch })} prefetch={false}>
           {showStarters ? "Write my own question" : "Ask about this game"}
-        </Link>
+        </Link>}
         {named.length > 0 && (
           <details>
             <summary>Ask about an item</summary>
             <ul>
               {named.map((item) => (
                 <li key={item.id}>
-                  <Link href={questionHref({ puuid, matchId, itemId: item.id })}>{item.name}</Link>
+                  <Link href={questionHref({ ...match, itemId: item.id }, undefined, { fromMatch })} prefetch={false}>{item.name}</Link>
                 </li>
               ))}
             </ul>
           </details>
         )}
-      </div>
+      </div>}
     </>
   );
 }

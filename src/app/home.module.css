@@ -16,7 +16,9 @@
 .activity, .destinations { gap: .4rem 1rem; flex-wrap: wrap; }
 .activity { padding: 4px 18px; border-bottom: 1px solid var(--border); }
 .activity a, .destinations a { display: inline-flex; align-items: center; min-height: 44px; font-size: .9rem; }
-.feed { background: var(--bg); }
+.feed { background: var(--bg); scroll-margin-top: calc(72px + env(safe-area-inset-top)); }
+.pages { display: flex; flex-wrap: wrap; gap: .5rem 1rem; padding-inline: 16px; border-top: 1px solid var(--border); }
+.pages a { display: inline-flex; align-items: center; min-height: 44px; font-size: .86rem; color: var(--accent-ink); font-weight: 600; }
 .feed > :last-child { border-bottom: 0; }
 .discovery { scroll-margin-top: 74px; }
 .community { color: var(--ink-mid); }

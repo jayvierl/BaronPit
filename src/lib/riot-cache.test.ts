@@ -39,7 +39,7 @@ describe("recent-form refresh", () => {
         champPool: [{ champion: "Ashe" }],
         matches: [
           {
-            champion: "Ashe",
+            champion: "Ashe", queueId:420,
             matchId: "NA1_1",
             win: true,
             kills: 2,
@@ -139,7 +139,7 @@ describe("recent-form refresh", () => {
   it("preserves known good games if a successful ID-list response unexpectedly comes back empty", async () => {
     const previous = row(new Date(0));
     mocked.q.mockResolvedValue([
-      { ...previous, snapshot: { ...previous.snapshot, games: 1, wins: 1, kda: 9 } },
+      { ...previous, snapshot: { ...previous.snapshot, matches:[{matchId:"NA1_1",queueId:420,champion:"Ashe",win:true,kills:5,deaths:1,assists:4,cs:20,durationSec:900,playedAt:100}] } },
     ]);
     vi.stubGlobal("fetch", async (url: string) => {
       if (url.includes("/riot/account/"))

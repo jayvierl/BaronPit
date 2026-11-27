@@ -21,6 +21,7 @@ import { visibleChampionRoomSlugs } from "@/lib/rooms";
 import { playerStatsHref, splitRiotId } from "@/lib/platforms";
 import { readSearchReturn, searchHref, withSearchReturn } from "@/lib/search-scopes";
 import { safeReturnTo } from "@/lib/signin-return";
+import { validId } from "@/lib/ids";
 import { LinkPlayerButton, LookupForm } from "@/components/social-ui";
 import { PlayerStats } from "@/components/player-stats";
 import { RecentResults } from "@/components/player-overview";
@@ -29,7 +30,7 @@ import { gameCount, earnedBadges } from "@/lib/pure";
 export const dynamic = "force-dynamic";
 
 export default async function PlayerPage({ searchParams }: {
-  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; match?: string; older?: string; queue?: string; champion?: string; from?: string; fromPlayer?: string }>;
+  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; match?: string; older?: string; queue?: string; champion?: string; from?: string; fromPlayer?: string; fromDiscussion?: string }>;
 }) {
   const sp = await searchParams;
   const platform = sp.platform && isPlatform(sp.platform) ? sp.platform : "na1";
@@ -41,13 +42,16 @@ export default async function PlayerPage({ searchParams }: {
   const {gameName:name, tagLine:tag} = splitRiotId(input,platform);
   const previous = playerReturn ?? searchReturn;
   const searchLink = previous && <Link href={previous} className={styles.searchLink}>← {playerReturn ? "Back to previous player" : "Back to search"}</Link>;
+  const discussionId = typeof sp.fromDiscussion === "string" && /^\d+$/.test(sp.fromDiscussion) && validId(Number(sp.fromDiscussion)) &&
+    typeof sp.match === "string" && matchSectionId(sp.match) ? Number(sp.fromDiscussion) : null;
+  const discussionLink = discussionId && <Link href={`/post/${discussionId}`} className={styles.searchLink} prefetch={false}>← Back to discussion</Link>;
   const lookupForm = <LookupForm key={JSON.stringify([input, platform])} platforms={PLATFORMS.map(({id,label}) => ({ id, label }))}
     defaultPlatform={platform} initialRiotId={input} searchReturn={searchReturn} playerReturn={playerReturn} />;
 
   if (!name || !tag) {
     return (
       <div style={{ maxWidth: 640, margin: "20px auto" }}>
-        {searchLink}
+        {discussionLink || searchLink}
         <div className="card">
           <h1 className="page-title">Player lookup</h1>
           <p className="meta">{input ? "Enter the game name and tag from the Riot ID. For example, Jay Lewis#NA1." : "Look up a player’s recent games, current rank and champion pool."}</p>
@@ -69,10 +73,10 @@ export default async function PlayerPage({ searchParams }: {
       : "The Riot API didn't answer just now. Try again in a moment.";
     return (
       <div style={{ maxWidth: 640, margin: "20px auto" }}>
-        {searchLink}
+        {discussionLink || searchLink}
         <div className="card">
           <h1 className="page-title">Lookup</h1>
-          <div className="notice warn">{text}</div>
+          <div className="notice warn">{discussionId ? `This match link couldn’t open the player’s history. ${text}` : text}</div>
           {lookupForm}
           <Link className={styles.searchLink} href={searchHref("players", input, platform, true)}>Search saved player records</Link>
         </div>
@@ -101,6 +105,7 @@ export default async function PlayerPage({ searchParams }: {
   const filtered = Boolean(history.queue || history.champion);
   const route = new URL(withSearchReturn(playerStatsHref(player.platform, player.gameName + "#" + player.tagLine), searchReturn), "https://lookup.invalid");
   if (playerReturn) route.searchParams.set("fromPlayer", playerReturn);
+  if (discussionId) route.searchParams.set("fromDiscussion", String(discussionId));
   const lookupHref = route.pathname + route.search;
   if (history.queue) route.searchParams.set("queue", history.queue);
   if (history.champion) route.searchParams.set("champion", history.champion);
@@ -120,7 +125,7 @@ export default async function PlayerPage({ searchParams }: {
   return (
     <div>
       {user?.pilotActive && <PilotVisit kind="stats"/>}
-      {searchLink ?? <Link className={styles.searchLink} href={searchHref("players", "", platform)}>Search for another player</Link>}
+      {discussionLink || searchLink || <Link className={styles.searchLink} href={searchHref("players", "", platform)}>Search for another player</Link>}
       <header>
         <div className={profileStyles.identity}>
           <div className={profileStyles.identityText}>
@@ -150,13 +155,13 @@ export default async function PlayerPage({ searchParams }: {
       </div>
       <h2 id="match-history" className={styles.heading}>Match history</h2>
       {history.sampleSize > 0 && <>
-        <Form action="/player#match-history" className={styles.filters} key={JSON.stringify([player.puuid, history.queue, history.champion])}>
+        <Form action="/player#match-history" className={styles.filters} key={JSON.stringify([platform, player.gameName, player.tagLine, history.queue, history.champion])}>
           <input type="hidden" name="platform" value={platform}/>
           <input type="hidden" name="riotId" value={player.gameName + "#" + player.tagLine}/>
           {searchReturn && <input type="hidden" name="from" value={searchReturn}/>}
           {playerReturn && <input type="hidden" name="fromPlayer" value={playerReturn}/>}
           <label>Queue<select name="queue" defaultValue={history.queue}>
-            <option value="">All queues</option>
+            <option value="">All supported queues</option>
             {history.queue && !history.queues.includes(history.queue) && <option value={history.queue}>Outside this sample</option>}
             {history.queues.map(q => <option key={q} value={q}>{matchQueueName(q)}</option>)}
           </select></label>
@@ -175,14 +180,16 @@ export default async function PlayerPage({ searchParams }: {
           {filtered && <Link href={historyHref} className={styles.reset}>Clear filters</Link>}
         </p>
       </>}
-      {history.sampleSize === 0 && <p className="meta">{partial ? "Riot couldn’t provide recent matches for this lookup." : "No recent matches found for this player."}</p>}
+      {history.sampleSize === 0 && !discussionId && <p className="meta">{partial ? "Riot couldn’t provide recent matches for this lookup." : "No recent matches found for this player."}</p>}
       {latest.length > 0 && (
-        <LatestGames matches={latest} patch={patch} platform={platform} puuid={player.puuid} persisted={!partial} communityMatchIds={new Set(snap.matches.map(m => m.matchId))} signedIn={Boolean(user)} lookupHref={lookupHref} queueFilter={history.queue} championFilter={history.champion} rawMatch={sp.match}/>
+        <LatestGames matches={latest} patch={patch} platform={player.platform} riotId={`${player.gameName}#${player.tagLine}`}
+          persisted={!partial} communityMatchIds={new Set(snap.matches.map(m => m.matchId))} lookupHref={lookupHref}
+          queueFilter={history.queue} championFilter={history.champion} rawMatch={sp.match}/>
       )}
       {!filtered && frequent.length > 0 && (
         <p className="meta">Also on the same team recently · {frequent.map(([name,games]) => `${name} (${games} games)`).join(", ")}</p>
       )}
-      <OlderGames matches={history.matches} patch={patch} platform={platform} lookupHref={lookupHref}
+      <OlderGames matches={history.matches} patch={patch} platform={player.platform} riotId={`${player.gameName}#${player.tagLine}`} persisted={!partial} lookupHref={lookupHref}
         rawPage={sp.older} rawMatch={sp.match} queueFilter={history.queue} championFilter={history.champion}/>
 
       <div id="player-champions" className={profileStyles.anchor}>

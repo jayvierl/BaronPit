@@ -3,8 +3,8 @@ import { FollowingStarter } from "@/components/following-starter";
 import { hasIncomingDuoRequest } from "@/lib/duo-activity";
 import { Suspense } from "react";
 import { CommunityObjective } from "@/components/community-objective";
-import { DailyCallHome } from "@/components/daily-call-home";
 import { TonightInThePit } from "@/components/tonight-in-the-pit";
+import { DailyCallHome } from "@/components/daily-call-home";
 import { CommunityWelcome } from "@/components/community-welcome";
 import { WardEmptyState } from "@/components/ward-mascot";
 import { LobbyRally } from "@/components/lobby-rally";
@@ -21,8 +21,10 @@ import { LookupForm } from "@/components/social-ui";
 import { getCurrentUser } from "@/lib/auth";
 import { publicAvatarIdentity } from "@/lib/author-identity";
 import { dbAvailable } from "@/lib/db";
-import { listFeaturedRooms } from "@/lib/rooms";
-import { feed, todaysSpotlight, dailyHighlight } from "@/lib/social";
+import { joinedRoomIds, listFeaturedRooms } from "@/lib/rooms";
+import { todaysSpotlight, dailyHighlight } from "@/lib/social";
+import { homeFeedHref, readFeedCursor, type HomeFeedTab } from "@/lib/feed-pagination";
+import { readHomeFeedPage } from "@/lib/post-reader";
 import { currentPatch, championList } from "@/lib/riot";
 import { PLATFORMS } from "@/lib/platforms";
 import { MatchCard } from "@/components/match-card";
@@ -32,18 +34,25 @@ import { socialRankLabel } from "@/lib/player-summary";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-  const [{tab},user] = await Promise.all([searchParams,getCurrentUser()]);
-  if (tab === "following" && !user) redirect(signInHref("/?tab=following"));
-  const viewerIdentity = publicAvatarIdentity(user);
-  const activeTab = tab === "following" && user ? "following" : "everyone";
+export default async function HomePage({ searchParams }: { searchParams: Promise<{ tab?: string; before?: string; summary?: string }> }) {
+  const [params,user] = await Promise.all([searchParams,getCurrentUser()]);
+  const activeTab: HomeFeedTab = params.tab === "following" ? "following" : "everyone";
   const now = new Date();
+  const before = readFeedCursor(params.before, activeTab, now.getTime());
+  const requestedSummary = params.summary === "tonight";
+  const summaryParams = new URLSearchParams({ summary: "tonight" });
+  if (activeTab === "following") summaryParams.set("tab", activeTab);
+  if (before && params.before) summaryParams.set("before", params.before);
+  const summaryHref = `/?${summaryParams}#tonight-in-the-pit-title`;
+  if (activeTab === "following" && !user) redirect(signInHref(requestedSummary ? summaryHref : homeFeedHref(activeTab, before ? params.before : null)));
+  const viewerIdentity = publicAvatarIdentity(user);
   const today = now.toISOString().slice(0, 10);
   const available = dbAvailable();
   const rooms = available ? listFeaturedRooms(user?.id).catch(() => []) : Promise.resolve([]);
-  const [patch, posts, champions, unread, duoInvite] = await Promise.all([
+  const interests = user && available ? joinedRoomIds(user.id).catch(() => []) : Promise.resolve([]);
+  const [patch, page, champions, unread, duoInvite] = await Promise.all([
     currentPatch(),
-    available ? feed(user,activeTab).catch(() => null) : null,
+    available ? readHomeFeedPage(user?.id ?? null, activeTab, before, now.getTime()).catch(() => null) : null,
     user ? championList() : [],
     user && available ? hasUnreadReplies(user.id).catch(() => false) : false,
     user && available ? hasIncomingDuoRequest(user.id).catch(() => false) : false,
@@ -66,32 +75,33 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             {!user && <Link className={styles.signUp} href={signInHref("/#compose", "signup")}>Create account</Link>}
           </div>
         </header>
-        <section className={styles.feed} aria-label="Conversations">
+        <section id="home-feed" tabIndex={-1} className={styles.feed} aria-label="Conversations">
           <HomeComposer viewerId={user?.id ?? null} patch={patch} champions={champions.map(c => c.id)} viewerIdentity={viewerIdentity}/>
           {(unread || duoInvite) && <nav className={styles.activity} aria-label="New activity">
             {unread && <Link href="/activity">New replies</Link>}
             {duoInvite && <Link href="/activity?tab=duos">New duo request</Link>}
           </nav>}
-          <HomeTimeline user={user} activeTab={activeTab} patch={patch} rooms={rooms} posts={posts} />
+          <HomeTimeline user={user} activeTab={activeTab} patch={patch} rooms={rooms} page={page} older={!!before} />
         </section>
       </div>
 
       <div className={styles.discovery} id="home-discover" tabIndex={-1}>
-        <HomeDiscoveryRail asOf={now.getTime()} activeTab={activeTab} posts={posts ?? []} roomsRead={rooms} patch={patch} viewerId={user?.id ?? null}/>
+        <HomeDiscoveryRail asOf={now.getTime()} activeTab={activeTab} posts={page?.posts ?? []} roomsRead={rooms} interestsRead={interests} patch={patch} viewerId={user?.id ?? null}/>
       </div>
 
       <div className={styles.community}>
-        <details>
+        <details open={requestedSummary}>
           <summary>Around the community</summary>
           <nav className={styles.destinations} aria-label="Community shortcuts">
             <Link href="/questions">Match questions</Link><Link href="/rooms">Rooms</Link><Link href="/player">Player lookup</Link>
+            {available && !requestedSummary && <Link href={summaryHref} prefetch={false}>Tonight in the pit</Link>}
           </nav>
           {activeTab === "everyone" && <>
             <Suspense fallback={null}><CommunityReview viewerId={user?.id ?? null}/></Suspense>
             {available && <Suspense fallback={null}><CommunityObjective viewerId={user?.id ?? null}/></Suspense>}
             {available && <Suspense fallback={null}><DailyCallHome viewerId={user?.id ?? null}/></Suspense>}
           </>}
-          {available && activeTab === "everyone" && <Suspense fallback={null}><TonightInThePit viewerId={user?.id ?? null} now={now.getTime()}/></Suspense>}
+          {available && requestedSummary && <Suspense fallback={<p id="tonight-in-the-pit-title" role="status">Loading recent match activity…</p>}><TonightInThePit viewerId={user?.id ?? null} now={now.getTime()}/></Suspense>}
           {available && <Suspense fallback={null}><HomeSpotlight today={today} viewerId={user?.id ?? null} patch={patch}/></Suspense>}
           <details className="community-lookup">
             <summary>Look up a player</summary>
@@ -105,13 +115,15 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   );
 }
 
-async function HomeTimeline({ user, activeTab, patch, rooms, posts }: {
+async function HomeTimeline({ user, activeTab, patch, rooms, page, older }: {
   user: Awaited<ReturnType<typeof getCurrentUser>>;
-  activeTab: "following" | "everyone";
+  activeTab: HomeFeedTab;
   patch: string;
   rooms: ReturnType<typeof listFeaturedRooms>;
-  posts: Awaited<ReturnType<typeof feed>> | null;
+  page: Awaited<ReturnType<typeof readHomeFeedPage>> | null;
+  older: boolean;
 }) {
+  const posts = page?.posts ?? null;
   const viewerIdentity = publicAvatarIdentity(user);
   function renderPost(post: NonNullable<typeof posts>[number]) {
     return <PostCard key={post.id} post={post} patch={patch} signedIn={!!user}
@@ -122,9 +134,14 @@ async function HomeTimeline({ user, activeTab, patch, rooms, posts }: {
     {posts === null ? (
       <div className="empty" role="status">The feed is temporarily unavailable. Refresh to try again.</div>
     ) : posts.length === 0 ? (
+      older ? <p className="empty">You’ve reached the end of this feed.</p> :
       activeTab === "following" && user ? <FollowingStarter userId={user.id} rooms={await rooms}/> :
         <WardEmptyState text="Start the first conversation." action={<Link href="/questions/new">Ask a match question</Link>}/>
     ) : posts.map(renderPost)}
+    {(older || page?.next) && <nav className={styles.pages} aria-label="Feed pages">
+      {older && <Link prefetch={false} href={`${homeFeedHref(activeTab)}#home-feed`}>Back to latest posts</Link>}
+      {page?.next && <Link prefetch={false} href={`${homeFeedHref(activeTab, page.next)}#home-feed`}>Older posts</Link>}
+    </nav>}
   </>;
 }
 

@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { copyableDraftText } from "@/lib/auth-draft";
+import { copyableDraftText, currentAppPath } from "@/lib/auth-draft";
 
-export function DraftHelp({ destination }: { destination: string }) {
+export function DraftHelp({ destination }: { destination?: string }) {
   const [message, setMessage] = useState("");
   const [manual, setManual] = useState("");
   async function copy() {
     setManual("");
     try {
-      const text = copyableDraftText(window.localStorage, destination);
+      const text = copyableDraftText(window.localStorage, destination ?? currentAppPath());
       if (!text) {
         setMessage("The draft text is unavailable here. Check the browser where you started.");
         return;
@@ -25,12 +25,14 @@ export function DraftHelp({ destination }: { destination: string }) {
       setMessage("Site storage is unavailable. Go back and copy your draft before opening your email.");
     }
   }
-  if (destination.split(/[?#]/, 1)[0] === "/lfg") {
+  if (destination?.split(/[?#]/, 1)[0] === "/lfg") {
     return <p className="notice">Your duo preferences stay in this browser for 30 minutes. Open the email link here to bring them back, then save them to your account.</p>;
   }
   return (
     <aside className="notice">
-      <p>Your draft stays in this browser for 30 minutes. Open the email link here to restore it. If your phone opens links in a different browser, copy your draft first.</p>
+      <p>{destination
+        ? "Your draft stays in this browser for 30 minutes. Open the email link here to restore it. If your phone opens links in a different browser, copy your draft first."
+        : "If you saved a draft in this browser, you can copy its text and paste it into a new question. Saved drafts expire after 30 minutes."}</p>
       <button type="button" className="text-btn" onClick={copy}>Copy draft text</button>
       {message && <p role="status">{message}</p>}
       {manual && <div className="field">

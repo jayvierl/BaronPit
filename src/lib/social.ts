@@ -34,14 +34,15 @@ export { dailyHighlight, todaysSpotlight } from "./player-insights";
 export type CreateResult = SubmissionResult;
 const badKey = { ok: false as const, error: "This draft identifier is invalid. Start a new submission." };
 
-export async function createPost(user: User, input: CreatePostInput, decision?: DecisionContext, decisionHash?: string): Promise<CreateResult> {
+export async function createPost(user: User, input: CreatePostInput, decision?: DecisionContext, decisionHash?: string,
+  checkedMatch?: import("./post-input").CheckedMatchForPost): Promise<CreateResult> {
   const key = input.submissionId ?? null;
   if (key !== null && !validSubmissionId(key)) return badKey;
   const hash = key ? decisionHash ?? submissionHash([input.kind,input.body,input.roomId ?? null,input.data ?? null,decision ?? null]) : null;
   const replay = await priorSubmission("post",user.id,key,hash);
   if (replay) return replay;
   if (!(await rateLimit(user.id, "post", 30, 60))) return { ok: false, error: "You're posting too fast — take a breath and try again in a bit." };
-  const draft = await preparePost(input);
+  const draft = await preparePost(input, user.id, checkedMatch);
   if (!draft.ok) return draft;
   const { body, data, roomId, fields } = draft;
   const lowTrust = inProbation(user.createdAt);

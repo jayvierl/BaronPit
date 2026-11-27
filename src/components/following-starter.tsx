@@ -12,7 +12,7 @@ export async function FollowingStarter({userId, rooms}: {userId: number; rooms: 
   const active = question ? null : await activeStarterRoom(userId).catch(() => null);
   const room = active ?? rooms.filter(r => !r.joined).sort((a,b) => b.members - a.members)[0];
   if (!question && !room) return <WardEmptyState text="Follow players or join a room to see their posts here."
-    action={<Link href="/rooms">Browse rooms</Link>}/>;
+    action={<Link href="/rooms#room-directory">Choose room interests</Link>}/>;
   return <section aria-labelledby="following-start" className={styles.starter}>
     <h2 id="following-start">Make this feed yours</h2>
     <p>Follow players or join a room to see their posts here.</p>
@@ -22,6 +22,6 @@ export async function FollowingStarter({userId, rooms}: {userId: number; rooms: 
       <p className={styles.preview}><Link href={`/post/${question.id}`}>{question.body}</Link></p>
       <div className={styles.row}><Link href={`/post/${question.id}`}>Join the conversation</Link><SafetyReport kind="post" targetId={question.id}/></div>
     </article> : room ? <div className={styles.row}><Link href={`/rooms/${room.slug}`}>{room.name}</Link><JoinButton roomId={room.id} initial={false}/></div> : null}
-    <Link href="/rooms" className="text-btn">Browse rooms</Link>
+    <Link href="/rooms#room-directory" className="text-btn">Choose room interests</Link>
   </section>;
 }

@@ -1,3 +1,4 @@
+import { publicQueueSql } from "./public-match-queues";
 import { HIDDEN_AUTHORS } from "./community-queries";
 import { queryRows } from "./db";
 
@@ -16,17 +17,18 @@ export async function tonightInThePit(viewerId: number | null, now: number) {
     FROM sample CROSS JOIN LATERAL jsonb_array_elements(
       CASE WHEN jsonb_typeof(sample.matches)='array' THEN sample.matches ELSE '[]'::jsonb END
     ) WITH ORDINALITY AS games(match,pos)
-    WHERE pos<=20 AND match->>'matchId' ~ '^[A-Za-z0-9]+_[0-9]{1,20}$'
+    WHERE pos<=20 AND ${publicQueueSql("match")} AND match->>'matchId' ~ '^[A-Za-z0-9]+_[0-9]{1,20}$'
       AND match->>'champion' ~ '^[A-Za-z][A-Za-z0-9]{0,63}$' AND jsonb_typeof(match->'win')='boolean'
   ), observations AS (
     SELECT puuid, match_id, min(played_ms) AS played_ms, min(champion) AS champion, bool_or(win) AS win FROM raw
     WHERE played_ms <= fetched_ms AND played_ms = trunc(played_ms)
     GROUP BY puuid,match_id
     HAVING min(played_ms)=max(played_ms) AND min(champion)=max(champion) AND bool_or(win)=bool_and(win)
-  ), known_matches AS (
-    SELECT match_id FROM observations GROUP BY match_id HAVING min(played_ms)=max(played_ms)
+  ), checked_times AS (
+    SELECT observations.*, min(played_ms) OVER game = max(played_ms) OVER game AS consistent
+    FROM observations WINDOW game AS (PARTITION BY match_id)
   ), recent AS (
-    SELECT o.* FROM observations o JOIN known_matches USING (match_id) WHERE o.played_ms >= $2::numeric
+    SELECT * FROM checked_times WHERE consistent AND played_ms >= $2::numeric
   ), chosen_period AS (
     SELECT count(DISTINCT match_id) FILTER (WHERE played_ms >= $4::numeric) >= 10 AS today FROM recent
   ), selected AS (

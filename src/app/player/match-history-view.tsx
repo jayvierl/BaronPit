@@ -4,19 +4,22 @@ import { cache, Suspense } from "react";
 import { GameCardArt } from "@/components/game-card-art";
 import { ItemIcons } from "@/components/item-icons";
 import { MatchQuestionLinks } from "@/components/match-question-links";
-import { ShareCardButton } from "@/components/social-ui";
 import { TeamBaronTag } from "@/components/team-baron-tag";
 import { timeAgo } from "@/components/ui";
 import { championAvatarArt } from "@/lib/avatar";
 import { buildCatalog, cardItems } from "@/lib/build-catalog";
+import { questionHref, type QuestionMatch } from "@/lib/decisions-input";
 import { gameCardMotion } from "@/lib/game-card-motion";
+import { matchRegion } from "@/lib/match-context";
 import { MATCH_DETAIL_LIMIT, matchQueueName, matchSectionId } from "@/lib/match-history";
 import { matchLoadout } from "@/lib/match-loadout";
 import { isPlatform, playerStatsHref } from "@/lib/platforms";
+import { isPublicMatchQueue } from "@/lib/public-match-queues";
 import { gameCount, type MatchParticipantSummary, type MatchSummary } from "@/lib/pure";
 import { MatchFragmentFocus } from "./match-fragment-focus";
 import { matchFilterPath, olderMatchHref, olderMatchPage } from "./older-match-page";
 import styles from "./history.module.css";
+import discussionStyles from "@/components/match-discussion.module.css";
 
 const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 const roles = new Map([["TOP", "Top"], ["JUNGLE", "Jungle"], ["MIDDLE", "Mid"], ["MID", "Mid"],
@@ -101,19 +104,23 @@ function Teams({ match, platform, fromMatch }: { match: MatchSummary; platform: 
 
 type MatchRowProps = {
   match: MatchSummary; patch: string; platform: string; lookupHref: string;
-  motion?: boolean; expanded?: boolean; community?: { puuid: string; signedIn: boolean; showStarters: boolean };
+  discussion?: Pick<QuestionMatch, "platform" | "riotId">;
+  motion?: boolean; expanded?: boolean; community?: { showStarters: boolean };
 };
 
-function MatchRow({ match, patch, platform, lookupHref, motion, expanded, community }: MatchRowProps) {
+function MatchRow({ match, patch, platform, lookupHref, motion, expanded, community, discussion }: MatchRowProps) {
   const catalog = match.items.length ? loadCatalog(patch) : null;
-  const question = community && { puuid: community.puuid, matchId: match.matchId, showStarters: community.showStarters };
   const matchId = matchSectionId(match.matchId);
+  const reference = discussion && matchRegion(match.matchId) && isPublicMatchQueue(match.queueId)
+    ? { ...discussion, matchId: match.matchId } : null;
   const matchPlatform = match.matchId.split("_", 1)[0].toLowerCase();
   const participantPlatform = isPlatform(matchPlatform) ? matchPlatform : platform;
   const from = new URL(lookupHref, "https://profile.invalid");
   from.searchParams.delete("fromPlayer");
   if (matchId) from.hash = matchId;
-  const fromMatch = encodeURIComponent(from.pathname + from.search + from.hash);
+  const matchPath = from.pathname + from.search + from.hash;
+  const question = reference && community ? { match: reference, showStarters: community.showStarters, fromMatch: matchPath, showQuestion: false } : null;
+  const fromMatch = encodeURIComponent(matchPath);
   const { spells, runes } = matchLoadout(match);
   const legacyTeam = !match.teams && match.queueId !== 0 ? match.teammates ?? [] : [];
   const duration = Number.isFinite(match.durationSec) && match.durationSec >= 1 ? Math.floor(match.durationSec) : undefined;
@@ -161,10 +168,13 @@ function MatchRow({ match, patch, platform, lookupHref, motion, expanded, commun
       </p>}
       <Teams match={match} platform={participantPlatform} fromMatch={fromMatch}/>
     </details>
+    {reference && <div className={discussionStyles.actions}>
+      <Link className={discussionStyles.discuss} prefetch={false}
+        href={questionHref(reference, undefined, { discuss: true, fromMatch: matchPath })}>Discuss this match</Link>
+    </div>}
     {question && (catalog ? <Suspense fallback={<MatchQuestionLinks {...question}/> }>
       <MatchQuestions question={question} catalog={catalog} ids={match.items}/>
     </Suspense> : <MatchQuestionLinks {...question}/>)}
-    {community?.signedIn && <div className={styles.share}><ShareCardButton puuid={community.puuid} match={{ matchId: match.matchId }}/></div>}
   </div>;
 }
 
@@ -176,22 +186,23 @@ async function MatchItems({ ids, catalog }: { ids: number[]; catalog: Catalog })
 }
 
 async function MatchQuestions({ question, catalog, ids }: {
-  question: { puuid: string; matchId: string; showStarters: boolean }; catalog: Catalog; ids: number[];
+  question: React.ComponentProps<typeof MatchQuestionLinks>; catalog: Catalog; ids: number[];
 }) {
   return <MatchQuestionLinks {...question} items={cardItems(await catalog, ids)}/>;
 }
 
-export function LatestGames({ matches, patch, platform, puuid, persisted, signedIn, lookupHref, communityMatchIds, queueFilter, championFilter, rawMatch }: {
-  matches: MatchSummary[]; patch: string; platform: string; puuid: string; persisted: boolean; signedIn: boolean;
+export function LatestGames({ matches, patch, platform, riotId, persisted, lookupHref, communityMatchIds, queueFilter, championFilter, rawMatch }: {
+  matches: MatchSummary[]; patch: string; platform: string; riotId: string; persisted: boolean;
   lookupHref: string; communityMatchIds: ReadonlySet<string>; queueFilter: string; championFilter: string; rawMatch?: string;
 }) {
   const base = matchFilterPath(lookupHref, queueFilter, championFilter);
   return matches.slice(0, MATCH_DETAIL_LIMIT).map((match, index) => <MatchRow key={match.matchId} match={match} patch={patch} platform={platform} lookupHref={base} expanded={rawMatch === match.matchId}
-    motion community={persisted && communityMatchIds.has(match.matchId) ? { puuid, signedIn, showStarters: index === 0 } : undefined}/>);
+    discussion={persisted && isPlatform(platform) ? { platform, riotId } : undefined}
+    motion community={persisted && communityMatchIds.has(match.matchId) ? { showStarters: index === 0 } : undefined}/>);
 }
 
-export function OlderGames({ matches, patch, platform, lookupHref, rawPage, rawMatch, queueFilter, championFilter }: {
-  matches: MatchSummary[]; patch: string; platform: string; lookupHref: string; rawPage?: string; rawMatch?: string;
+export function OlderGames({ matches, patch, platform, riotId, persisted, lookupHref, rawPage, rawMatch, queueFilter, championFilter }: {
+  matches: MatchSummary[]; patch: string; platform: string; riotId: string; persisted: boolean; lookupHref: string; rawPage?: string; rawMatch?: string;
   queueFilter: string; championFilter: string;
 }) {
   const page = olderMatchPage(matches, rawPage, rawMatch);
@@ -199,12 +210,13 @@ export function OlderGames({ matches, patch, platform, lookupHref, rawPage, rawM
   const key = `${base}:${page.page}:${page.selected ?? ""}`;
   const unavailable = typeof rawMatch === "string" && Boolean(matchSectionId(rawMatch)) && !matches.some(match => match.matchId === rawMatch);
   return <>
-    {unavailable && <p className={styles.archiveRange} role="status">This match is outside the available selection.</p>}
+    {unavailable && <p className={styles.archiveRange} role="status">This match is unavailable in the current recent-match window or filters.</p>}
     {page.total > 0 && <details id="older-games" className={styles.archive} open={page.open || undefined} key={`archive:${key}`}>
       <summary>Show {gameCount(page.total)} more</summary>
       <p className={styles.archiveRange}>Older games {page.offset + 1}–{page.offset + page.matches.length} of {page.total}</p>
       {page.matches.map(match => page.selected === match.matchId
-        ? <MatchRow key={match.matchId} match={match} patch={patch} platform={platform} lookupHref={olderMatchHref(base, page.page, match.matchId)} expanded/>
+        ? <MatchRow key={match.matchId} match={match} patch={patch} platform={platform} lookupHref={olderMatchHref(base, page.page, match.matchId)} expanded
+          discussion={persisted && isPlatform(platform) ? { platform, riotId } : undefined}/>
         : <div key={match.matchId} id={matchSectionId(match.matchId)} tabIndex={-1} className={`${styles.archiveRow} ${styles.matchTarget}`}>
           <MatchPortrait champion={match.champion} size={32}/>
           <div className={styles.archiveIdentity}><strong>{match.champion}</strong> <Result win={match.win}/>

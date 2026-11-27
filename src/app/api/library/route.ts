@@ -19,19 +19,18 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const access = await requireUser(req);
-  if (!access.ok) return access.response;
   const { action, kind, id, active, mode } = await readObject(req);
   if ((kind !== "post" && kind !== "comment") || !validId(id)) return authError("Invalid item.", 400);
+  const changingMode = action === "reply-mode" && kind === "post" && (mode === "all" || mode === "muted" || mode === "direct");
+  const toggling = (action === "save" || action === "watch" || action === "read" || action === "mute") && typeof active === "boolean";
+  if (!changingMode && !toggling) return authError("Invalid action.", 400);
+  const privateControl = changingMode ? mode !== "all" : active === false || action === "mute" || action === "read";
+  const access = await requireUser(req, privateControl ? "protect" : "participate");
+  if (!access.ok) return access.response;
   try {
-    let ok: boolean;
-    if (action === "reply-mode" && kind === "post" && (mode === "all" || mode === "muted" || mode === "direct")) {
-      ok = await setReplyMode(access.user.id, id, mode);
-    } else if ((action === "save" || action === "watch" || action === "read" || action === "mute") && typeof active === "boolean") {
-      ok = await changeLibrary(access.user.id, kind, id, action, active);
-    } else {
-      return authError("Invalid action.", 400);
-    }
+    const ok = action === "reply-mode"
+      ? changingMode && await setReplyMode(access.user.id, id, mode)
+      : toggling && await changeLibrary(access.user.id, kind, id, action, active);
     return ok ? NextResponse.json({ ok: true }, { headers }) : authError("This item is unavailable.", 404);
   } catch { return authError("The update couldn’t be confirmed. Please try again.", 503); }
 }

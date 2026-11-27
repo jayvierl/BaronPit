@@ -9,10 +9,12 @@ import type { PostView, CommentView } from "@/lib/social";
 import type { AvatarIdentity } from "@/lib/author-identity";
 import { REACTION_EMOJIS, samePatch } from "@/lib/pure";
 import { clipLink } from "@/lib/clip-link";
+import { projectMatchContext } from "@/lib/match-context";
 import { PATCH_NOTES_INDEX, publicPatch } from "@/lib/patch-notes";
 import { AvatarProfileLink, PermalinkTime, RichBody, timeAgo } from "./ui";
 import { ChampionPortrait } from "./champion-portrait";
 import { MatchCard } from "./match-card";
+import { MatchDiscussionPreview } from "./match-discussion-preview";
 import { PostLibraryActions } from "./discussion-library-actions";
 import { RepostControl } from "./repost-control";
 import { WithdrawSubmission } from "./withdraw-submission";
@@ -41,6 +43,7 @@ export function PostCard({
   threadPage = false,
   initialComments,
   viewerIdentity,
+  fromMatch,
 }: {
   post: PostView;
   patch: string;
@@ -49,6 +52,7 @@ export function PostCard({
   threadPage?: boolean;
   initialComments?: CommentView[] | null;
   viewerIdentity?: AvatarIdentity | null;
+  fromMatch?: string;
 }) {
   const router = useRouter();
   const threadHref = `/post/${post.id}`;
@@ -111,6 +115,7 @@ export function PostCard({
   const [rankLabel, main] = post.authorFlair?.split(" · ", 2) ?? [];
   const flair = rankLabel && <><RankBadge tier={post.authorTier}>{rankLabel}</RankBadge>{main && ` · ${main}`}</>;
   const d = post.data as Record<string, unknown>;
+  const matchContext = post.kind === "card" ? projectMatchContext(d.matchContext) : null;
   const destination = post.kind === "clip" && post.status === "visible" ? clipLink(d.url) : null;
   const likeCount = reactions["❤️"] ?? 0;
   const replyCount = post.commentCount + addedReplies;
@@ -256,7 +261,10 @@ export function PostCard({
           </div>
         )}
 
-        {post.kind === "card" && <MatchCard data={d} patch={patch} itemPatch={post.itemPatch} itemDetails={post.itemDetails} />}
+        {post.kind === "card" && (matchContext ? <>
+          <MatchDiscussionPreview match={matchContext} fromMatch={fromMatch} postId={post.id}/>
+          {threadPage && viewerId !== post.authorId && <p className="meta">Use Post options → Report to flag a concern about this match card. <Link href="/safety">Safety Center</Link></p>}
+        </> : <MatchCard data={d} patch={patch} itemPatch={post.itemPatch} itemDetails={post.itemDetails} />)}
 
         {destination && (
           <a className={styles.clip} href={destination.href} target="_blank" rel="noopener noreferrer nofollow ugc">
@@ -265,7 +273,8 @@ export function PostCard({
             <span aria-hidden="true">↗</span>
           </a>
         )}
-        {visible && !threadPage && (post.isQuestion || post.lastReplyId) && <div className={styles.discussionLinks}>
+        {visible && !threadPage && (matchContext || post.isQuestion || post.lastReplyId) && <div className={styles.discussionLinks}>
+          {matchContext && !post.isQuestion && <Link href={threadHref} prefetch={false}>View discussion →</Link>}
           {post.isQuestion && <Link href={threadHref} prefetch={false}>Discuss this decision →</Link>}
           {post.lastReplyId && post.lastReplyAt && <Link href={`${threadHref}#reply-${post.lastReplyId}`} prefetch={false}>Latest player reply{" "}
             <time dateTime={post.lastReplyAt} suppressHydrationWarning>{timeAgo(post.lastReplyAt)}</time>

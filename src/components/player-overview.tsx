@@ -16,7 +16,7 @@ export function RecentResults({ matches, historyPath, partial = false }: { match
     <section className={styles.form} aria-label="Recent form">
       <div>
         <p className={styles.label}>Recent form</p>
-        <p className={styles.meta}>{partial ? `${gameCount(recent.length)} available` : `Last ${gameCount(recent.length)}`} · all queues</p>
+        <p className={styles.meta}>{partial ? `${gameCount(recent.length)} available` : `Last ${gameCount(recent.length)}`} · supported public queues</p>
       </div>
       <ol className={styles.results} aria-label="Newest games first">
         {recent.map((match, index) => {
@@ -62,7 +62,7 @@ export function PlayerOverview({ player, statsPath, historyPath }: { player: Pla
       <RecentResults matches={player.snapshot.matches} historyPath={historyPath} />
       {hasSample && (
         <div className={styles.sample}>
-          {summary.sampleGames !== formLength && <p className={styles.meta}>Last {gameCount(summary.sampleGames)} · all queues</p>}
+          {summary.sampleGames !== formLength && <p className={styles.meta}>Last {gameCount(summary.sampleGames)} · supported public queues</p>}
           <dl>
             {summary.topRole && <div><dt>Top role</dt><dd>{summary.topRole.name} · {gameCount(summary.topRole.games)}{summary.topRole.name.includes(" / ") ? " each" : ""}</dd></div>}
             {champion && <div><dt>Top champion</dt><dd>{champion.name} · {gameCount(champion.games)}</dd></div>}

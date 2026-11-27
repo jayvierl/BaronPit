@@ -210,37 +210,3 @@ export function LinkPlayerButton({
     </span>
   );
 }
-
-export function ShareCardButton({ puuid, match }: { puuid: string; match: { matchId: string } }) {
-  const action = usePostAction();
-  const router = useRouter();
-  const [result, setResult] = useState("");
-  return (
-    <span>
-      <button
-        type="button"
-        className="btn small gold"
-        disabled={action.busy || !!result}
-        onClick={async () => {
-          const data = await action.sendDraft("/api/social/post", {
-            kind: "card",
-            body: "",
-            data: { puuid, matchId: match.matchId },
-          });
-          if (!data) return;
-          if (data.status === "held") {
-            setResult("Awaiting review");
-            return;
-          }
-          if (data.status !== "visible") { setResult("Submission received"); router.push("/me#submissions"); return; }
-          setResult("Shared ✓");
-          if (typeof data.postId === "number") router.push(`/post/${data.postId}`);
-          else router.refresh();
-        }}
-      >
-        {result || (action.busy ? "Sharing…" : "Share as card")}
-      </button>
-      <ActionFeedback error={action.error} />
-    </span>
-  );
-}

@@ -15,6 +15,7 @@ export { PLATFORMS, isPlatform };
 export type { PlatformId };
 
 import { summarize, EMPTY_SNAPSHOT, type MatchSummary, type PlayerSnapshot } from "./pure";
+import { isPublicMatchQueue } from "./public-match-queues";
 import { matchFromRiot, readStoredMatches } from "./riot-match";
 export { summarize, EMPTY_SNAPSHOT };
 export type { MatchSummary, PlayerSnapshot };
@@ -162,36 +163,17 @@ function storedMastery(raw: unknown): ChampionMastery | undefined {
 function readSnapshot(raw: unknown): PlayerSnapshot {
   if (!raw || typeof raw !== "object") return EMPTY_SNAPSHOT;
   const stored = raw as Partial<PlayerSnapshot>;
-  if (Array.isArray(stored.matches) && stored.matches.length) {
-    const matches = readStoredMatches(stored.matches, COMMUNITY_MATCH_LIMIT);
-    return { ...summarize(matches), coverageFrom: stored.coverageFrom, coverageThrough: stored.coverageThrough };
-  }
-  // Older data may only contain aggregates. Preserve complete aggregates without inventing unknown values.
-  if (
-    [stored.games, stored.wins, stored.losses, stored.kda].every(Number.isFinite) &&
-    Array.isArray(stored.champPool) &&
-    stored.roles &&
-    typeof stored.roles === "object"
-  ) {
-    return {
-      ...EMPTY_SNAPSHOT,
-      games: stored.games!,
-      wins: stored.wins!,
-      losses: stored.losses!,
-      kda: stored.kda!,
-      roles: stored.roles,
-      champPool: stored.champPool.filter(
-        (c) => c && typeof c.champion === "string" && [c.games, c.wins, c.kda].every(Number.isFinite),
-      ),
-    };
-  }
-  return EMPTY_SNAPSHOT;
+  // Aggregate-only legacy rows cannot establish which games were public.
+  if (!Array.isArray(stored.matches)) return EMPTY_SNAPSHOT;
+  const matches = readStoredMatches(stored.matches, COMMUNITY_MATCH_LIMIT).filter(m => isPublicMatchQueue(m.queueId));
+  return { ...summarize(matches), coverageFrom: stored.coverageFrom, coverageThrough: stored.coverageThrough };
 }
 
 export function playerFromRow(r: Record<string, unknown>): Player {
   const stored = r.snapshot as Partial<PlayerSnapshot> & { olderMatches?: unknown; historyComplete?: unknown; rankedEntries?: unknown; championMastery?: unknown } | null;
   const snapshot = readSnapshot(stored);
-  const older = readStoredMatches(stored?.olderMatches, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT, snapshot.matches);
+  const older = readStoredMatches(stored?.olderMatches, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT, snapshot.matches)
+    .filter(match => isPublicMatchQueue(match.queueId));
   const complete = stored?.historyComplete === true && older.length === (Array.isArray(stored.olderMatches) ? stored.olderMatches.length : 0) &&
     snapshot.matches.length === stored.matches?.length;
   return {
@@ -358,7 +340,10 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string, s
   const coreSet = new Set(coreIds);
   const known = new Map((fallback?.matchHistory?.matches ?? fallback?.snapshot.matches ?? []).map(match => [match.matchId, match]));
   if (fallback) {
-    const raw = observed.snapshot as { matches?: unknown } | null;
+    const raw = observed.snapshot as { matches?: unknown; olderMatches?: unknown } | null;
+    for (const match of readStoredMatches(raw?.olderMatches, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT)) {
+      if (allIds.includes(match.matchId)) known.set(match.matchId, match);
+    }
     for (const match of readStoredMatches(raw?.matches, COMMUNITY_MATCH_LIMIT, [], true)) {
       if (coreSet.has(match.matchId)) known.set(match.matchId, match);
     }
@@ -380,7 +365,7 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string, s
       puuid, platform, gameName: realName, tagLine: realTag, summonerLevel: level, profileIcon: icon,
       rankTier: solo?.tier ?? null, rankDiv: solo?.rank ?? null, rankLp: solo?.leaguePoints ?? null,
       rankWins: solo?.wins ?? null, rankLosses: solo?.losses ?? null, rankedEntries, championMastery,
-      snapshot: summarize(readStoredMatches(matches, COMMUNITY_MATCH_LIMIT)), fetchedAt: observedAt,
+      snapshot: summarize(readStoredMatches(matches, COMMUNITY_MATCH_LIMIT).filter(match => isPublicMatchQueue(match.queueId))), fetchedAt: observedAt,
     } };
   }
 
@@ -413,7 +398,9 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string, s
     const olderMatches = retained.matches.filter(match => !coreIds.includes(match.matchId)).slice(0, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT);
     history = { olderMatches, historyComplete: retained.complete && coreIds.every((id, index) => id === retained.matches[index]?.matchId) };
   }
-  const snapshot = { ...summarize(recentMatches) };
+  // Retain the bounded source rows for private duo checks and incremental reuse.
+  // Denormalized fields used by social surfaces contain public observations only.
+  const snapshot = { ...summarize(recentMatches.filter(match => isPublicMatchQueue(match.queueId))), matches: recentMatches };
   // Only the original first-20 window is eligible community/duo evidence.
   if (recentMatches.length && recentMatches.every(m => m.startedAt && m.teammates?.length && m.teammates.every(t => t.name && t.tag))) {
     snapshot.coverageThrough = Math.max(...recentMatches.map(m => m.playedAt));
