@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useId, useRef, useState } from "react";
 import {
   FALLBACK_PATCH,
@@ -15,7 +16,7 @@ import styles from "./game-tag.module.css";
 
 /**
  * One champion/item tag inside a post body: icon + colored name, with a
- * detail card on hover, focus or tap. The token carries the display name,
+ * detail card on hover or focus and a link to its catalog entry. The token carries the display name,
  * so the chip is complete before the catalog arrives; the catalog only
  * enriches the card (and corrects the name to the catalog's own).
  */
@@ -23,10 +24,9 @@ export function GameTagChip({ tag }: { tag: TagRef }) {
   const catalog = useTagCatalog();
   const [hover, setHover] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [pinned, setPinned] = useState(false);
   const closeTimer = useRef<number | undefined>(undefined);
   const cardId = useId();
-  const open = hover || focused || pinned;
+  const open = hover || focused;
 
   const champion = tag.kind === "champion" && catalog ? findTagChampion(catalog, tag.id) : undefined;
   const item = tag.kind === "item" && catalog ? findTagItem(catalog, tag.id) : undefined;
@@ -46,23 +46,20 @@ export function GameTagChip({ tag }: { tag: TagRef }) {
 
   return (
     <span className={styles.wrap} onMouseEnter={enter} onMouseLeave={leave}>
-      <button
-        type="button"
+      <Link
+        href={tag.kind === "item" ? `/items/${encodeURIComponent(tag.id)}` : `/champions/${encodeURIComponent(tag.id)}`}
+        prefetch={false}
         className={`${styles.chip} ${tag.kind === "champion" ? styles.champion : styles.item}`}
         aria-label={`${name}, ${kindLabel.toLowerCase()}`}
-        aria-expanded={open}
         aria-describedby={open ? cardId : undefined}
-        onClick={() => setPinned((value) => !value)}
         onFocus={() => setFocused(true)}
         onBlur={(event) => {
           if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) {
             setFocused(false);
-            setPinned(false);
           }
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
-            setPinned(false);
             setFocused(false);
             setHover(false);
           }
@@ -71,7 +68,7 @@ export function GameTagChip({ tag }: { tag: TagRef }) {
         {/* Plain img: next.config keeps remote image patterns Riot-only by design. */}
         <img src={icon} alt="" width={18} height={18} loading="lazy" />
         <span>{name}</span>
-      </button>
+      </Link>
       {open && (
         <span className={styles.card} role="tooltip" id={cardId}>
           <span className={styles.cardHead}>

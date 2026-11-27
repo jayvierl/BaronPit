@@ -1,3 +1,4 @@
+import { catalogText as plain } from "./catalog-text";
 import bundled from "./build-catalog.json";
 import { confirmedPatch } from "./riot";
 
@@ -25,20 +26,6 @@ const object = (value: unknown): Dict =>
   typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Dict) : {};
 const catalogPatch = /^\d+\.\d+\.\d+$/;
 
-function plain(value: unknown) {
-  return typeof value === "string"
-    ? value
-        .replace(/<br\s*\/?\s*>/gi, "\n")
-        .replace(/<[^>]*>/g, "")
-        .replace(/&amp;/g, "&")
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;|&apos;/g, "'")
-        .replace(/&nbsp;/g, " ")
-        .replace(/[ \t]+/g, " ")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim()
-    : "";
-}
 export function parseBuildCatalog(patch: string, itemPayload: unknown, runePayload: unknown): BuildCatalog {
   if (!catalogPatch.test(patch) || object(itemPayload).version !== patch || !Array.isArray(runePayload))
     throw new Error("Invalid patch");
