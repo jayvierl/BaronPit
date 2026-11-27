@@ -27,6 +27,34 @@
 .champions li > div { overflow-wrap: anywhere; }
 .more { display: inline-flex; align-items: center; min-height: 32px; color: var(--accent-ink); font-size: .78rem; font-weight: 650; }
 
+.tableWrap { overflow-x: auto; margin-block: 8px; }
+.champTable { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.champTable th, .champTable td { padding: 7px 6px; border-bottom: 1px solid var(--border); text-align: start; vertical-align: middle; }
+.champTable thead th { color: var(--ink-soft); font-size: .74rem; font-weight: 600; white-space: nowrap; }
+.champTable thead th a { color: inherit; text-decoration: none; }
+.champTable thead th a:hover, .champTable thead th a:focus-visible { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.champTable th.num, .champTable td.num { text-align: end; font-variant-numeric: tabular-nums; }
+.champTable td small { display: block; color: var(--ink-soft); font-size: .7rem; }
+.champTable th[scope="row"] { font-weight: 500; }
+.champCell { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.champCell > span { display: grid; }
+.champCell .more { min-height: 24px; }
+.spark { display: block; width: 96px; height: 28px; margin-top: 3px; margin-inline-start: auto; }
+.sparkLine { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+
+.roleRecords, .matchups { margin: 6px 0 0; padding: 0; list-style: none; }
+.roleRecords li, .matchups li {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .8rem;
+  padding-block: 7px; border-bottom: 1px solid var(--border); font-size: .85rem;
+}
+.roleRecords li > :first-child, .matchups li > :first-child { font-weight: 620; min-width: 7.5rem; }
+.roleRecords small { color: var(--ink-soft); font-size: .72rem; }
+.preferred {
+  margin-inline-start: .5rem; padding: .05rem .45rem; border: 1px solid var(--border);
+  border-radius: 99px; color: var(--accent-ink); font-size: .68rem; font-weight: 650;
+  letter-spacing: .03em; text-transform: uppercase; vertical-align: .08em;
+}
+
 @media (max-width: 380px) {
   .panel { padding-inline: 9px; }
   .metrics { font-size: .77rem; }

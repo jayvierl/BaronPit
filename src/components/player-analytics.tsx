@@ -157,28 +157,116 @@ export function PlayerActivity({ analytics, partial }: Props) {
 const CHAMPIONS_SHOWN = 8;
 type ChampionRecord = PlayerAnalytics["champions"][number];
 
-function ChampionRows({ champions, patch, visibleRooms }: { champions: readonly ChampionRecord[]; patch: string; visibleRooms?: ReadonlySet<string> }) {
-  return <ul className={styles.champions}>
-    {champions.map(champion => {
-      const slug = `champ-${champion.id.toLowerCase()}`;
-      const hasRoom = visibleRooms?.has(slug) ?? false;
-      const kda = metricText(champion.kda, "decimal");
-      return <li key={champion.id}>
-        <ChampionPortrait compact id={champion.id} patch={patch} size={32} />
-        <div>
-          <strong>{champion.name}</strong>
-          <p className={styles.meta}>{gameCount(champion.games)} · {champion.wins}W–{champion.losses}L · {recordRate(champion)} WR</p>
-          <p className={styles.meta}>
-            {kda === "0 deaths" ? kda : `${kda} KDA`}{champion.kda.count < champion.games && ` (${gameCount(champion.kda.count)} measured)`}
-            {" · "}{champion.csPerMinute.value?.toFixed(1) ?? "—"} CS/min{champion.csPerMinute.count < champion.games && ` (${gameCount(champion.csPerMinute.count)} measured)`}
-          </p>
-        </div>
-        <Link prefetch={false} className={styles.more} href={hasRoom ? `/rooms/${slug}` : `/builds?champ=${encodeURIComponent(champion.id)}`}>
-          {hasRoom ? "Room" : "Builds"}<span className="sr-only"> for {champion.name}</span>
-        </Link>
-      </li>;
-    })}
-  </ul>;
+export type ChampionSortKey = "games" | "winrate" | "kda" | "cs" | "rating" | "damage";
+export type ChampionSort = { key: ChampionSortKey; dir: "asc" | "desc"; base: string };
+
+const championSortColumns: { key: ChampionSortKey; label: string; value: (c: ChampionRecord) => number | null }[] = [
+  { key: "games", label: "Games", value: c => c.games },
+  { key: "winrate", label: "Win rate", value: c => c.games ? c.wins / c.games : null },
+  { key: "kda", label: "KDA", value: c => c.kda.value },
+  { key: "cs", label: "CS/min", value: c => c.csPerMinute.value },
+  { key: "rating", label: "Avg rating", value: c => c.rating.value },
+  { key: "damage", label: "Team dmg", value: c => c.damageShare.value },
+];
+
+function sortedChampions(champions: readonly ChampionRecord[], sort?: ChampionSort): ChampionRecord[] {
+  const column = championSortColumns.find(entry => entry.key === sort?.key) ?? championSortColumns[0];
+  const dir = sort?.dir === "asc" ? 1 : -1;
+  return [...champions].sort((a, b) => {
+    const av = column.value(a), bv = column.value(b);
+    if (av !== bv) {
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      return (av - bv) * dir;
+    }
+    return b.games - a.games || a.name.localeCompare(b.name);
+  });
+}
+
+function RatingSparkline({ values, champion }: { values: readonly number[]; champion: string }) {
+  if (values.length < 2) return null;
+  const width = 96, height = 28, gutter = 3;
+  const x = (i: number) => gutter + ((width - 2 * gutter) * i) / (values.length - 1);
+  const y = (value: number) => height - gutter - ((height - 2 * gutter) * (value - 1)) / 9;
+  const line = values.map((value, i) => `${x(i).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+  return <svg role="img" aria-label={`Match ratings on ${champion} across the last ${values.length} rated games, oldest to newest`}
+    viewBox={`0 0 ${width} ${height}`} className={styles.spark}>
+    <polyline points={line} className={styles.sparkLine} />
+  </svg>;
+}
+
+function ChampionTable({ champions, patch, visibleRooms, sort }: {
+  champions: readonly ChampionRecord[]; patch: string; visibleRooms?: ReadonlySet<string>; sort?: ChampionSort;
+}) {
+  const sortHref = (key: ChampionSortKey) => {
+    const url = new URL(sort!.base, "https://profile.invalid");
+    url.searchParams.set("csort", key);
+    url.searchParams.set("cdir", sort!.key === key && sort!.dir === "desc" ? "asc" : "desc");
+    url.hash = "player-champions";
+    return url.pathname + url.search + url.hash;
+  };
+  return <div className={styles.tableWrap}>
+    <table className={styles.champTable} aria-label="Champion records in this sample">
+      <thead><tr>
+        <th scope="col">Champion</th>
+        {championSortColumns.map(column => {
+          const active = (sort?.key ?? "games") === column.key;
+          return <th key={column.key} scope="col" className={styles.num}
+            aria-sort={sort && active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>
+            {sort ? <Link prefetch={false} href={sortHref(column.key)} aria-current={active || undefined}>
+              {column.label}{active ? (sort.dir === "asc" ? " ↑" : " ↓") : ""}
+            </Link> : column.label}
+          </th>;
+        })}
+      </tr></thead>
+      <tbody>{sortedChampions(champions, sort).map(champion => {
+        const slug = `champ-${champion.id.toLowerCase()}`;
+        const hasRoom = visibleRooms?.has(slug) ?? false;
+        const kda = metricText(champion.kda, "decimal");
+        return <tr key={champion.id}>
+          <th scope="row">
+            <span className={styles.champCell}>
+              <ChampionPortrait compact id={champion.id} patch={patch} size={32} />
+              <span>
+                <strong>{champion.name}</strong>
+                <Link prefetch={false} className={styles.more} href={hasRoom ? `/rooms/${slug}` : `/builds?champ=${encodeURIComponent(champion.id)}`}>
+                  {hasRoom ? "Room" : "Builds"}<span className="sr-only"> for {champion.name}</span>
+                </Link>
+              </span>
+            </span>
+          </th>
+          <td className={styles.num}>{champion.games}</td>
+          <td className={styles.num}>{recordRate(champion)}<small>{champion.wins}W–{champion.losses}L</small></td>
+          <td className={styles.num}>{kda === "0 deaths" ? kda : kda}<small>{champion.kda.count < champion.games ? `${gameCount(champion.kda.count)} measured` : undefined}</small></td>
+          <td className={styles.num}>{champion.csPerMinute.value?.toFixed(1) ?? "—"}<small>{champion.csPerMinute.count < champion.games ? `${gameCount(champion.csPerMinute.count)} measured` : undefined}</small></td>
+          <td className={styles.num}>
+            {champion.rating.value !== null ? <>{champion.rating.value.toFixed(1)}<small>{gameCount(champion.rating.count)} rated</small>
+              <RatingSparkline values={champion.ratingSeries} champion={champion.name} /></> : "—"}
+          </td>
+          <td className={styles.num}>{champion.damageShare.value !== null
+            ? <>{Math.round(champion.damageShare.value * 100)}%<small>{champion.damageShare.count < champion.games ? `${gameCount(champion.damageShare.count)} measured` : undefined}</small></>
+            : "—"}</td>
+        </tr>;
+      })}</tbody>
+    </table>
+  </div>;
+}
+
+export function PlayerRoleBreakdown({ analytics, partial }: Props) {
+  const records = analytics.roleRecords;
+  return <section className={styles.panel} aria-labelledby="player-role-breakdown">
+    <h2 id="player-role-breakdown">Role breakdown</h2>
+    <SampleScope analytics={analytics} partial={partial} />
+    {records.length > 0 ? <ul className={styles.roleRecords}>
+      {records.map(record => <li key={record.name}>
+        <span>{record.name}{record.preferred && <span className={styles.preferred}>Preferred</span>}</span>
+        <span>{gameCount(record.games)} · {record.wins}W–{record.losses}L · {recordRate(record)} WR</span>
+        <span>{record.rating.value !== null
+          ? <>Avg rating {record.rating.value.toFixed(1)} <small>({gameCount(record.rating.count)} rated)</small></>
+          : "Not rated"}</span>
+      </li>)}
+    </ul> : <p className={styles.meta}>Riot did not record a role for these queues.</p>}
+  </section>;
 }
 
 function RankedRows({ records }: { records: PlayerAnalytics["rankedWeek"] }) {
@@ -197,18 +285,31 @@ function RankedRows({ records }: { records: PlayerAnalytics["rankedWeek"] }) {
   </>;
 }
 
-export function PlayerChampionAnalytics({ analytics, partial, patch, visibleRooms }: Props & { patch: string; visibleRooms?: ReadonlySet<string> }) {
-  const { champions, rankedWeek } = analytics;
+export function PlayerChampionAnalytics({ analytics, partial, patch, visibleRooms, sort }: Props & {
+  patch: string; visibleRooms?: ReadonlySet<string>; sort?: ChampionSort;
+}) {
+  const { champions, rankedWeek, matchups } = analytics;
+  const ratedGames = champions.reduce((total, champion) => total + champion.rating.count, 0);
   return <section className={styles.panel} aria-labelledby="player-champion-pool">
     <h2 id="player-champion-pool">Champion pool</h2>
     <SampleScope analytics={analytics} partial={partial} />
     {champions.length > 0 && <>
-      <h3>Most played</h3>
-      <ChampionRows champions={champions.slice(0, CHAMPIONS_SHOWN)} patch={patch} visibleRooms={visibleRooms} />
-      {champions.length > CHAMPIONS_SHOWN && <details className={styles.disclosure}>
-        <summary>Show {champions.length - CHAMPIONS_SHOWN} more champions</summary>
-        <ChampionRows champions={champions.slice(CHAMPIONS_SHOWN)} patch={patch} visibleRooms={visibleRooms} />
-      </details>}
+      <ChampionTable champions={champions} patch={patch} visibleRooms={visibleRooms} sort={sort} />
+      <p className={styles.meta}>
+        Average rating covers {ratedGames} rated {ratedGames === 1 ? "game" : "games"} in this sample.
+        Team damage share is only recorded for games stored with damage data.
+      </p>
+    </>}
+    {matchups.length > 0 && <>
+      <h3>Head-to-head</h3>
+      <p className={styles.meta}>Opponent champions met at least twice in this sample.</p>
+      <ul className={styles.matchups}>
+        {matchups.map(matchup => <li key={matchup.name}>
+          <span>vs {matchup.name}</span>
+          <strong>{matchup.wins}W–{matchup.losses}L</strong>
+          <span className={styles.meta}>{gameCount(matchup.games)}</span>
+        </li>)}
+      </ul>
     </>}
     <h3>Ranked W/L by champion · last 7 days</h3>
     <p className={styles.meta}>Solo/Duo and Flex games in this snapshot · {dates.formatRange(analytics.weekStart, analytics.asOf)} UTC</p>

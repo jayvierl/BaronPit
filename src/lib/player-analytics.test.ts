@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
-import { buildPlayerAnalytics } from "./player-analytics";
+import { buildPlayerAnalytics, formComparison } from "./player-analytics";
+import { EARLY_SURRENDER_REASON } from "./match-performance";
 import type { MatchSummary } from "./pure";
 
 const now = Date.parse("2026-11-27T00:00:00Z");
@@ -45,6 +46,75 @@ it("includes only Solo/Duo and Flex results within the trailing 168 UTC hours", 
   ],now);
   expect(sample.rankedWeek).toEqual([{id:"Ahri",name:"Ahri",games:2,wins:1,losses:1}]);
   expect(sample.weekStart).toBe(now - 7*day);
+});
+
+it("adds per-champion rating averages, rating series and damage share only where stored", () => {
+  const sample = buildPlayerAnalytics([
+    game(3, { performanceRating: 4, teamDamageShare: .3 }),
+    game(2, { performanceRating: 8, teamDamageShare: .2 }),
+    game(1, { performanceRating: 6 }),
+    game(4, { champion: "Vi", role: "JUNGLE" }),
+  ], now);
+  const ahri = sample.champions.find(c => c.id === "Ahri")!;
+  expect(ahri.rating).toEqual({ value: 6, count: 3 });
+  expect(ahri.ratingSeries).toEqual([6, 8, 4]);
+  expect(ahri.damageShare).toEqual({ value: .25, count: 2 });
+  const vi = sample.champions.find(c => c.id === "Vi")!;
+  expect(vi.rating).toEqual({ value: null, count: 0 });
+  expect(vi.damageShare).toEqual({ value: null, count: 0 });
+  expect(vi.ratingSeries).toEqual([]);
+});
+
+it("breaks records down by role with the most-played role marked preferred", () => {
+  const sample = buildPlayerAnalytics([
+    game(1, { role: "BOTTOM", performanceRating: 9 }),
+    game(2, { role: "BOTTOM", win: false, performanceRating: 5 }),
+    game(3, { role: "UTILITY", champion: "Alistar" }),
+    game(4, { role: "", champion: "Vi", queueId: 450 }),
+  ], now);
+  expect(sample.roleRecords).toEqual([
+    { name: "Bot", games: 2, wins: 1, losses: 1, rating: { value: 7, count: 2 }, preferred: true },
+    { name: "Support", games: 1, wins: 1, losses: 0, rating: { value: null, count: 0 }, preferred: false },
+  ]);
+});
+
+it("shows head-to-head records only for opponents met at least twice", () => {
+  const sample = buildPlayerAnalytics([
+    game(1, { opponentChampion: "Lulu" }),
+    game(2, { opponentChampion: "Lulu", win: false }),
+    game(3, { opponentChampion: "Lulu" }),
+    game(4, { opponentChampion: "Jinx", win: false }),
+    game(5, {}),
+  ], now);
+  expect(sample.matchups).toEqual([{ name: "Lulu", games: 3, wins: 2, losses: 1 }]);
+});
+
+it("excludes flagged early surrenders from analytics only when asked", () => {
+  const games = [game(1), game(2, { ratingReason: EARLY_SURRENDER_REASON, win: false }), game(3, { win: false })];
+  expect(buildPlayerAnalytics(games, now).sampleGames).toBe(3);
+  const excluded = buildPlayerAnalytics(games, now, { excludeEarlySurrenders: true });
+  expect(excluded.sampleGames).toBe(2);
+  expect(excluded.champions[0]).toMatchObject({ games: 2, wins: 1, losses: 1 });
+});
+
+it("compares the last twenty games with the previous twenty when forty are stored", () => {
+  const matches = Array.from({ length: 45 }, (_, i) => game(i + 1, {
+    win: i < 20, kills: i < 20 ? 8 : 4, performanceRating: i < 20 ? 8 : 4,
+  }));
+  const comparison = formComparison(matches);
+  expect(comparison.latest).toMatchObject({ games: 20, winRate: { value: 100, count: 20 }, rating: { value: 8, count: 20 } });
+  expect(comparison.earlier).toMatchObject({ games: 20, winRate: { value: 0, count: 20 }, rating: { value: 4, count: 20 } });
+});
+
+it("splits smaller samples into honest halves and skips flagged remakes in comparisons", () => {
+  const matches = [
+    ...Array.from({ length: 12 }, (_, i) => game(i + 1, { win: true })),
+    game(99, { ratingReason: EARLY_SURRENDER_REASON, win: false }),
+    ...Array.from({ length: 12 }, (_, i) => game(i + 21, { win: false })),
+  ];
+  const comparison = formComparison(matches);
+  expect(comparison.latest).toMatchObject({ games: 12, winRate: { value: 100, count: 12 } });
+  expect(comparison.earlier).toMatchObject({ games: 12, winRate: { value: 0, count: 12 } });
 });
 
 it("buckets only valid end timestamps by UTC hours and weekdays, leaving missing denominators empty", () => {

@@ -33,12 +33,22 @@ function publicParticipant(raw: Record<string, unknown>, live = false, actualPla
   return { champion, ...(name && tag ? { name, tag } : {}), ...(actualPlayer ? { isPlayer: true } : {}) };
 }
 
+function damageShare(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1 ? value : undefined;
+}
+
 function roster(raw: unknown, showPlayer: boolean, hideIdentity: boolean, rated: boolean, win: boolean): MatchParticipantSummary[] | undefined {
   if (!Array.isArray(raw) || raw.length !== 5) return undefined;
   const entries = raw.map(value => {
     const participant = object(value);
     const row = publicParticipant(participant, false, showPlayer && participant.isPlayer === true, hideIdentity);
     if (row && rated && validRating(participant.performanceRating)) row.performanceRating = participant.performanceRating;
+    if (row) {
+      const damage = count(participant.damage), taken = count(participant.damageTaken), share = damageShare(participant.damageShare);
+      if (damage !== undefined) row.damage = damage;
+      if (taken !== undefined) row.damageTaken = taken;
+      if (share !== undefined) row.damageShare = share;
+    }
     return row;
   });
   return entries.every((value): value is MatchParticipantSummary => value !== null) ? withTeamBadges(entries, win) : undefined;
@@ -92,11 +102,28 @@ export function matchFromRiot(raw: unknown, matchId: string, puuid: string, reta
   const objectives = Array.isArray(info.teams) && teamId
     ? object(info.teams.map(object).find(side => side.teamId === teamId)?.objectives) : {};
   const ratings = rateMatch(participants, queueId, durationSec, info.mapId);
+  // Damage comes from the same Match-V5 payload — no extra Riot request.
+  const teamDamage = new Map<number, number>();
+  for (const player of participants) {
+    const side = positive(player.teamId), dealt = count(player.totalDamageDealtToChampions);
+    if (side && dealt !== undefined) teamDamage.set(side, (teamDamage.get(side) ?? 0) + dealt);
+  }
+  function damageFields(player: Record<string, unknown>) {
+    const dealt = count(player.totalDamageDealtToChampions), taken = count(player.totalDamageTaken);
+    const side = positive(player.teamId), total = side ? teamDamage.get(side) : undefined;
+    return {
+      ...(dealt !== undefined ? { damage: dealt } : {}),
+      ...(taken !== undefined ? { damageTaken: taken } : {}),
+      ...(dealt !== undefined && total ? { damageShare: dealt / total } : {}),
+    };
+  }
   function row(player: Record<string, unknown>) {
     const entry = publicParticipant(player, true, player === me, queueId === 0);
     if (entry && "rows" in ratings) entry.performanceRating = ratings.rows[participants.indexOf(player)].score;
+    if (entry) Object.assign(entry, damageFields(player));
     return entry;
   }
+  const ownDamage = damageFields(me);
   const allies = team.map(row);
   const rivals = opponents.map(row);
   const fullRosters = allies.length === 5 && rivals.length === 5 && participants.length === 10;
@@ -118,6 +145,10 @@ export function matchFromRiot(raw: unknown, matchId: string, puuid: string, reta
     opponentChampion: opposingLane.length === 1 ? championId(opposingLane[0].championName) : undefined,
     gamePatch: typeof info.gameVersion === "string" ? /^([1-9]\d?\.[1-9]\d?)(?:\.|$)/.exec(info.gameVersion)?.[1] : undefined,
     items, gold: count(me.goldEarned), teamGold, ...teamBaronFields({ teamBaronKills: object(objectives.baron).kills }),
+    ...(ownDamage.damage !== undefined ? {
+      damage: ownDamage.damage, damageTaken: ownDamage.damageTaken,
+      teamDamageShare: ownDamage.damageShare, damageVersion: 1 as const,
+    } : {}),
     // The existing accepted-duo SQL uses the current 20's same-team evidence.
     // Custom identities do not enter public rosters or the older profile tail.
     teammates: team.flatMap(entry => {
@@ -165,12 +196,16 @@ export function readStoredMatches(raw: unknown, limit: number, existing: readonl
       return m.queueId === 0 && !retainPrivateCustom ? [{ champion, name: "" }]
         : [{ champion, name: riotName(entry.name, 32) ?? "", tag: riotName(entry.tag, 16) }];
     }) : [];
+    const damage = m.damageVersion === 1 ? count(m.damage) : undefined;
     matches.push({
       matchId: m.matchId, champion: m.champion, win: m.win, kills: m.kills, deaths: m.deaths, assists: m.assists, cs: m.cs,
       durationSec: m.durationSec, queueId: m.queueId, role: typeof m.role === "string" ? m.role : "", playedAt: m.playedAt,
       startedAt: positive(m.startedAt) && m.startedAt! <= m.playedAt ? m.startedAt : undefined,
       gamePatch: typeof m.gamePatch === "string" && /^\d{1,2}\.\d{1,2}$/.test(m.gamePatch) ? m.gamePatch : undefined,
       opponentChampion: championId(m.opponentChampion), items, gold: count(m.gold), teamGold: count(m.teamGold),
+      ...(damage !== undefined ? {
+        damage, damageTaken: count(m.damageTaken), teamDamageShare: damageShare(m.teamDamageShare), damageVersion: 1 as const,
+      } : {}),
       ...teamBaronFields(m), teammates, championLevel: positive(m.championLevel),
       spellIds: spellIds(m.spellIds?.[0], m.spellIds?.[1]), runes: runes(m.runes),
       teamKills, killParticipation: killParticipation(teamKills, m.kills, m.assists), teams,

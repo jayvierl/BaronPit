@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
 import { buildPlayerAnalytics } from "@/lib/player-analytics";
 import type { MatchSummary } from "@/lib/pure";
-import { PlayerActivity, PlayerChampionAnalytics, PlayerPerformance, PlayerPlayStyle } from "./player-analytics";
+import { PlayerActivity, PlayerChampionAnalytics, PlayerPerformance, PlayerPlayStyle, PlayerRoleBreakdown } from "./player-analytics";
 
 const now = Date.parse("2026-11-27T00:00:00Z");
 const example: MatchSummary = { matchId: "NA1_1", champion: "Ahri", win: true, kills: 6, deaths: 2, assists: 5, cs: 140,
@@ -24,6 +24,43 @@ it("labels partial results, fractional class tags and UTC activity without claim
   expect(activity).toContain("Match end times in UTC");
   expect(activity).toContain("Hour-by-hour results (UTC)");
   expect(activity).toMatch(/3 PM<\/span>[\s\S]*?1 game · 1W · 100% WR/);
+});
+
+it("renders a sortable champion table with rating averages, sparklines and honest damage gaps", () => {
+  const rated = { ...example, performanceRating: 7 };
+  const analytics = buildPlayerAnalytics([
+    rated, { ...rated, matchId: "NA1_2", performanceRating: 9 },
+    { ...example, matchId: "NA1_3", champion: "Ashe", win: false },
+  ], now);
+  const html = renderToStaticMarkup(createElement(PlayerChampionAnalytics, {
+    analytics, patch: "16.23.1",
+    sort: { key: "rating" as const, dir: "desc" as const, base: "/player?platform=na1&riotId=X%23NA1" },
+  }));
+  expect(html).toContain("Avg rating");
+  expect(html).toContain("8.0"); // Ahri average of 7 and 9
+  expect(html).toContain("2 games rated");
+  expect(html).toContain("Average rating covers 2 rated games in this sample.");
+  expect(html).toContain("<svg"); // rating sparkline for Ahri
+  expect(html).toContain("Team dmg");
+  expect(html).toContain("—"); // Ashe has no rating or damage data
+  expect(html).toContain('href="/player?platform=na1&amp;riotId=X%23NA1&amp;csort=kda&amp;cdir=desc#player-champions"');
+  expect(html).toContain('aria-sort="descending"');
+});
+
+it("shows head-to-head records and the preferred role in the breakdown", () => {
+  const analytics = buildPlayerAnalytics([
+    { ...example, opponentChampion: "Lulu" },
+    { ...example, matchId: "NA1_2", opponentChampion: "Lulu", win: false },
+    { ...example, matchId: "NA1_3", champion: "Ashe", role: "BOTTOM" },
+  ], now);
+  const champs = renderToStaticMarkup(createElement(PlayerChampionAnalytics, { analytics, patch: "16.23.1" }));
+  expect(champs).toContain("Head-to-head");
+  expect(champs).toContain("vs Lulu");
+  expect(champs).toContain("1W–1L");
+  const roles = renderToStaticMarkup(createElement(PlayerRoleBreakdown, { analytics }));
+  expect(roles).toContain("Role breakdown");
+  expect(roles).toContain("Mid");
+  expect(roles).toContain("Preferred");
 });
 
 it("keeps champion room and build links working without presenting the seven-day list as complete history", () => {

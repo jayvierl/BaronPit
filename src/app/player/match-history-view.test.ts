@@ -46,6 +46,27 @@ it("renders actual match metrics, Data Dragon builds and both public teams", asy
   expect(url.searchParams.get("fromPlayer")).toContain("queue=420&champion=Ashe#match-NA1_1");
 });
 
+it("shows stored damage in the scoreboard and expanded numbers, with gaps marked not zeroed", async () => {
+  const match: MatchSummary = {
+    ...game(1), performanceRating: 8.3, ratingReason: "Largest difference against the opposing role: kill participation, 65% vs 35%.",
+    damage: 20000, damageTaken: 9000, teamDamageShare: 1 / 3, damageVersion: 1,
+    teams: { allies: [
+        { champion: "Ashe", isPlayer: true, name: "Fixture", tag: "NA1", performanceRating: 8.3, damage: 20000, damageShare: 1 / 3 },
+        { champion: "Nami", name: "Ally", tag: "WAVE", performanceRating: 6 },
+      ],
+      opponents: [{ champion: "Vi", name: "Rival", tag: "NA1", damage: 12000, damageShare: .24 }] },
+  };
+  const html = await render(createElement(LatestGames, { ...base, matches: [match] }));
+  expect(html).toContain("180 CS"); // collapsed row carries raw CS
+  expect(html).toContain("20.0k damage (33% of team)");
+  expect(html).toContain("9.0k damage taken");
+  expect(html).toContain("20.0k dmg");
+  expect(html).toContain("12.0k dmg · 24%");
+  expect(html).toContain("—"); // the unrated, damage-less ally is marked, not zeroed
+  // Scoreboards come before the score explanation in the expanded card.
+  expect(html.indexOf("Allied team")).toBeLessThan(html.indexOf("Why this score?"));
+});
+
 it("preserves legacy rows without guessing unknown metrics or displaying private roster data", async () => {
   const match = { ...game(1), queueId: 0, durationSec: 0, spellIds: [4,99999] as [number, number],
     teammates: [{ champion: "Vi", name: "Private", tag: "OWN" }] };

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { RankBadge } from "@/components/rank-badge";
 import { matchSectionId } from "@/lib/match-history";
+import { isEarlySurrender } from "@/lib/match-performance";
 import { publicPlayerSummary } from "@/lib/player-summary";
 import { gameCount, type MatchSummary } from "@/lib/pure";
 import type { Player } from "@/lib/riot";
@@ -9,14 +10,21 @@ import styles from "./player-overview.module.css";
 const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 const FORM_LENGTH = 6;
 
-export function RecentResults({ matches, historyPath, partial = false }: { matches: MatchSummary[]; historyPath: string; partial?: boolean }) {
-  const recent = matches.slice(0, FORM_LENGTH);
+export function RecentResults({ matches, historyPath, partial = false, limit = 10 }: {
+  matches: MatchSummary[]; historyPath: string; partial?: boolean; limit?: number;
+}) {
+  // Form counts completed games only: remakes and early surrenders flagged by
+  // the stored rating evidence are skipped, never silently counted.
+  const recent = matches.filter(match => !isEarlySurrender(match)).slice(0, limit);
   if (!recent.length) return null;
+  const wins = recent.filter(match => match.win).length;
   return (
     <section className={styles.form} aria-label="Recent form">
       <div>
         <p className={styles.label}>Recent form</p>
-        <p className={styles.meta}>{partial ? `${gameCount(recent.length, "public")} available` : `Latest ${gameCount(recent.length, "public")}`}</p>
+        <p className={styles.meta}>{partial
+          ? `${gameCount(recent.length, "public")} available · ${wins}W–${recent.length - wins}L`
+          : `Last ${gameCount(recent.length)} · ${wins}W–${recent.length - wins}L`}</p>
       </div>
       <ol className={styles.results} aria-label="Newest games first">
         {recent.map((match, index) => {
@@ -60,7 +68,7 @@ export function PlayerOverview({ player, statsPath, historyPath }: { player: Pla
         {summary.asOf ? <>{summary.snapshotFresh ? "Riot snapshot · " : "Last known Riot snapshot · "}<time dateTime={summary.asOf}>{dateFormat.format(new Date(summary.asOf))}</time></>
           : "Snapshot date unavailable"}
       </p>
-      <RecentResults matches={player.snapshot.matches} historyPath={historyPath} />
+      <RecentResults matches={player.snapshot.matches} historyPath={historyPath} limit={FORM_LENGTH} />
       {hasSample && (
         <div className={styles.sample}>
           {summary.sampleGames !== formLength && <p className={styles.meta}>Latest {gameCount(summary.sampleGames, "public")}</p>}

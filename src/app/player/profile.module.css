@@ -10,6 +10,20 @@
 .identityText p { margin: .35rem 0 0; color: var(--ink-mid); font-size: .84rem; }
 .identityText a { color: var(--ink); font-weight: 580; }
 .anchor { scroll-margin-top: calc(80px + env(safe-area-inset-top)); }
+/* Desktop: match history takes the wide column and the champion summary sits
+   beside it; the block breaks out of the standard reading column only here.
+   Mobile keeps the single column: summary, history, then the summary aside. */
+.layout { display: grid; }
+@media (min-width: 1024px) {
+  .layout {
+    --wide: min(1060px, calc(100vw - 3rem));
+    width: var(--wide);
+    margin-inline-start: calc(50% - var(--wide) / 2);
+    grid-template-columns: minmax(0, 1fr) 290px;
+    column-gap: 1.75rem;
+    align-items: start;
+  }
+}
 .disclosure { border-top: 1px solid var(--border); }
 .disclosure:last-child { border-bottom: 1px solid var(--border); }
 .disclosure > summary { cursor: pointer; padding-block: .92rem; color: var(--ink); font-weight: 580; font-size: .96rem; }
