@@ -1,4 +1,16 @@
 .profile, .lookup { min-width: 0; }
+/* One centered Player Stats shell owns the horizontal boundaries for the
+   header, recent form, match history and Champion Summary, and is the
+   container the overview grid below responds to. */
+.profile {
+  box-sizing: border-box;
+  inline-size: 100%;
+  max-inline-size: 78rem;
+  min-inline-size: 0;
+  margin-inline: auto;
+  padding-inline: clamp(0.75rem, 2vw, 2rem);
+  container: player / inline-size;
+}
 .lookup { padding-block: clamp(1.5rem, 4vw, 3rem); }
 .lookup > div { display: grid; gap: .35rem; }
 .lookup p { margin: 0 0 .65rem; }
@@ -10,18 +22,32 @@
 .identityText p { margin: .35rem 0 0; color: var(--ink-mid); font-size: .84rem; }
 .identityText a { color: var(--ink); font-weight: 580; }
 .anchor { scroll-margin-top: calc(80px + env(safe-area-inset-top)); }
-/* Desktop: match history takes the wide column and the champion summary sits
-   beside it; the block breaks out of the standard reading column only here.
-   Mobile keeps the single column: summary, history, then the summary aside. */
-.layout { display: grid; }
-@media (min-width: 1024px) {
+/* Overview grid inside the shell. Single column stacks rail, history, then
+   Champion Summary. As the shell widens the rail takes the left track and
+   the summary starts below the history; only at the widest width do all
+   three sit side by side. No viewport breakout: every track is sized from
+   the shell itself. */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "rail" "history" "summary";
+  gap: 1rem;
+  align-items: start;
+}
+.layout > * { min-inline-size: 0; }
+.railCell { grid-area: rail; }
+.historyCell { grid-area: history; }
+.summaryCell { grid-area: summary; }
+@container player (min-width: 66rem) {
   .layout {
-    --wide: min(1060px, calc(100vw - 3rem));
-    width: var(--wide);
-    margin-inline-start: calc(50% - var(--wide) / 2);
-    grid-template-columns: minmax(0, 1fr) 290px;
-    column-gap: 1.75rem;
-    align-items: start;
+    grid-template-columns: minmax(14rem, 17rem) minmax(0, 1fr);
+    grid-template-areas: "rail history" "rail summary";
+  }
+}
+@container player (min-width: 80rem) {
+  .layout {
+    grid-template-columns: minmax(14rem, 17rem) minmax(0, 1fr) minmax(15rem, 20rem);
+    grid-template-areas: "rail history summary";
   }
 }
 .disclosure { border-top: 1px solid var(--border); }

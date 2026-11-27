@@ -61,7 +61,8 @@ it("shows stored damage in the scoreboard and expanded numbers, with gaps marked
   expect(html).toContain("20.0k damage (33% of team)");
   expect(html).toContain("9.0k damage taken");
   expect(html).toContain("20.0k dmg");
-  expect(html).toContain("12.0k dmg · 24%");
+  expect(html).toContain("12.0k dmg");
+  expect(html).toContain("24%"); // team share rides in its own span under the total
   expect(html).toContain("—"); // the unrated, damage-less ally is marked, not zeroed
   // Scoreboards come before the score explanation in the expanded card.
   expect(html.indexOf("Allied team")).toBeLessThan(html.indexOf("Why this score?"));
@@ -130,4 +131,64 @@ it("keeps the rating and badge visible beside duration, age and items, and repea
   const sparse = await render(createElement(LatestGames, { ...base, matches: [game(2)] }));
   expect(sparse).toContain("Not rated");
   expect(sparse).toContain("no current rating evidence");
+});
+
+it("gives the scoreboard shared Player / Damage / Rating columns and keeps long Riot IDs whole", async () => {
+  const match: MatchSummary = {
+    ...game(1),
+    teams: { allies: [
+        { champion: "Annie", isPlayer: true, name: "GAMBLING ADDICT", tag: "NA4", performanceRating: 8.3, damage: 21000, damageShare: .3 },
+        { champion: "Nami", name: "AveryLongUnbrokenTeammateName", tag: "LONG", damage: 0 },
+      ],
+      opponents: [{ champion: "Vi", name: "Rival", tag: "NA1" }] },
+  };
+  const html = await render(createElement(LatestGames, { ...base, matches: [match] }));
+  // Column labels exist once per team, ahead of the rows they describe.
+  expect(html.match(/>Player</g)).toHaveLength(2);
+  expect(html.match(/>Damage</g)).toHaveLength(2);
+  expect(html.match(/>Rating</g)).toHaveLength(2);
+  // Long names render in full in the scoreboard (wrapping is a CSS concern);
+  // nothing is ellipsized in the markup.
+  expect(html).toContain("GAMBLING ADDICT#NA4");
+  expect(html).toContain("AveryLongUnbrokenTeammateName#LONG");
+  expect(html).not.toContain("…");
+  // Zero damage is a real zero; missing damage stays an em dash.
+  expect(html).toContain("0.0k dmg");
+  expect(html).toContain("—");
+});
+
+it("renders match tags with their real numbers in the tooltip and screen-reader text", async () => {
+  const match: MatchSummary = { ...game(1), killParticipation: .82, teamKills: 17, vision: 58, deaths: 0 };
+  const html = await render(createElement(LatestGames, { ...base, matches: [match] }));
+  const glance = html.slice(0, html.indexOf("<details"));
+  for (const label of ["In Every Fight", "Servant of Darkness", "Untouchable"]) expect(glance).toContain(label);
+  expect(glance).toContain('title="Involved in 82% of your team&#x27;s 17 kills."');
+});
+
+it("groups the latest games under day headers with the group's counted record", async () => {
+  const matches = [
+    { ...game(1), playedAt: Date.UTC(2026, 10, 25, 10) },
+    { ...game(2), playedAt: Date.UTC(2026, 10, 25, 9), win: false },
+    { ...game(3), playedAt: Date.UTC(2026, 10, 24, 10) },
+  ];
+  const html = await render(createElement(LatestGames, { ...base, matches }));
+  expect(html).toMatch(/(Today|Yesterday|Wednesday, Nov 25, 2026)/);
+  expect(html).toContain("1W–1L · 50% win rate");
+  expect(html).toMatch(/(Today|Yesterday|Tuesday, Nov 24, 2026)/);
+  expect(html).toContain("1W–0L · 100% win rate");
+});
+
+it("shows the participant mini-list on collapsed rows only when team rosters are stored", async () => {
+  const withTeams: MatchSummary = {
+    ...game(1),
+    teams: { allies: [{ champion: "Ashe", isPlayer: true, name: "Fixture", tag: "NA1" }, { champion: "Nami", name: "Ally", tag: "WAVE" }],
+      opponents: [{ champion: "Vi" }, { champion: "Jinx" }] },
+  };
+  const html = await render(createElement(LatestGames, { ...base, matches: [withTeams] }));
+  const glance = html.slice(0, html.indexOf("<details"));
+  expect(glance).toContain("Ally");
+  expect(glance).toContain("Vi");
+  expect(glance).toContain("Jinx");
+  const legacy = await render(createElement(LatestGames, { ...base, matches: [{ ...game(2), teammates: [{ champion: "Vi", name: "Private", tag: "OWN" }] }] }));
+  expect(legacy.slice(0, legacy.indexOf("<details"))).not.toContain("Private");
 });

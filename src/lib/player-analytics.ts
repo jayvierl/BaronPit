@@ -138,6 +138,59 @@ function timeKnown(value: unknown, now: number): value is number {
   return measuredCount(value) && value > 0 && value <= Math.min(now, 8.64e15);
 }
 
+export type ActivityDay = { date: string; games: number; wins: number; losses: number };
+
+const DAY_MS = 86_400_000;
+/** The grid never renders more than a year plus a week of daily cells; with a
+ * bounded match sample this only guards against corrupt timestamps. Totals
+ * and the labelled range always describe exactly the rendered days. */
+const MAX_CALENDAR_DAYS = 371;
+
+function utcDayKey(time: number) {
+  const date = new Date(time);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+/** One cell per UTC calendar day across the date range the dated matches in
+ * the sample actually cover — never a claimed fixed window. Days without a
+ * dated match are present as empty cells so gaps stay visible. */
+function activityCalendar(matches: readonly MatchSummary[], now: number) {
+  const byDay = new Map<string, ActivityDay>();
+  const secondsByDay = new Map<string, number>();
+  let first = Infinity, last = -Infinity;
+  for (const match of matches) {
+    if (!timeKnown(match.playedAt, now)) continue;
+    const date = new Date(match.playedAt);
+    const dayStart = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+    first = Math.min(first, dayStart);
+    last = Math.max(last, dayStart);
+    const key = utcDayKey(dayStart);
+    const day = byDay.get(key) ?? { date: key, games: 0, wins: 0, losses: 0 };
+    day.games++;
+    if (match.win) day.wins++;
+    else day.losses++;
+    byDay.set(key, day);
+    if (measuredCount(match.durationSec) && match.durationSec > 0) {
+      secondsByDay.set(key, (secondsByDay.get(key) ?? 0) + match.durationSec);
+    }
+  }
+  const empty = { days: [] as ActivityDay[], start: null as string | null, end: null as string | null, totalGames: 0, totalHours: 0 };
+  if (!byDay.size) return empty;
+  const start = Math.max(first, last - (MAX_CALENDAR_DAYS - 1) * DAY_MS);
+  const days: ActivityDay[] = [];
+  let totalGames = 0, totalSeconds = 0;
+  for (let time = start; time <= last; time += DAY_MS) {
+    const key = utcDayKey(time);
+    const day = byDay.get(key) ?? { date: key, games: 0, wins: 0, losses: 0 };
+    days.push(day);
+    totalGames += day.games;
+    totalSeconds += secondsByDay.get(key) ?? 0;
+  }
+  return { days, start: utcDayKey(start), end: utcDayKey(last), totalGames, totalHours: totalSeconds / 3600 };
+}
+
+export type ActivityCalendar = ReturnType<typeof activityCalendar>;
+
 export function buildPlayerAnalytics(matches: readonly MatchSummary[], now = Date.now(),
   options?: { excludeEarlySurrenders?: boolean }) {
   // Keep chronology from Riot's newest-first list. A malformed row or duplicate should never inflate a metric.
@@ -213,6 +266,7 @@ export function buildPlayerAnalytics(matches: readonly MatchSummary[], now = Dat
     weekStart, asOf: now,
     performance: { latest: performance(sample.slice(0, RECENT_MATCHES)), earlier: performance(sample.slice(RECENT_MATCHES)) },
     activity: activityCounts(sample, now),
+    calendar: activityCalendar(sample, now),
   };
 }
 

@@ -10,6 +10,8 @@ import { buildCatalog } from "@/lib/build-catalog";
 import { questionHref, type QuestionMatch } from "@/lib/decisions-input";
 import { matchRegion } from "@/lib/match-context";
 import { MATCH_DETAIL_LIMIT, matchQueueName, matchSectionId } from "@/lib/match-history";
+import { groupMatchesByDay, type MatchDayGroup } from "@/lib/match-day-groups";
+import { matchTags } from "@/lib/match-tags";
 import { matchLoadout } from "@/lib/match-loadout";
 import { isPlatform, playerStatsHref } from "@/lib/platforms";
 import { isPublicMatchQueue } from "@/lib/public-match-queues";
@@ -69,32 +71,68 @@ function MatchRating({ player }: { player: Pick<MatchSummary, "performanceRating
   </span>;
 }
 
+function MatchTags({ match }: { match: MatchSummary }) {
+  const tags = matchTags(match);
+  if (!tags.length) return null;
+  return <ul className={styles.tags} aria-label="Match highlights">
+    {tags.map(tag => <li key={tag.id}>
+      <span className={styles.tag} tabIndex={0} title={tag.reason}>{tag.label}<span className="sr-only">: {tag.reason}</span></span>
+    </li>)}
+  </ul>;
+}
+
+/** Compact both-teams list for the collapsed row. Purely a visual duplicate —
+ * the same rosters are available accessibly in the expanded scoreboard — so
+ * it is hidden from assistive tech. Names truncate here (and only here);
+ * the scoreboard wraps them instead. */
+function MiniTeams({ match }: { match: MatchSummary }) {
+  if (!match.teams || match.queueId === 0) return null;
+  return <div className={styles.miniTeams} aria-hidden="true">
+    {[match.teams.allies, match.teams.opponents].map((players, side) => (
+      <ul key={side} className={styles.miniTeam}>
+        {players.map((player, index) => (
+          <li key={index} className={styles.miniRow} data-viewed={player.isPlayer || undefined}>
+            <MatchPortrait champion={player.champion} size={18}/>
+            {/* Same display rule as the scoreboard: a name is shown only as
+                part of a full Riot ID (name + tag); otherwise the champion. */}
+            <span className={styles.miniName}>{player.name && player.tag ? player.name : player.champion}</span>
+          </li>
+        ))}
+      </ul>
+    ))}
+  </div>;
+}
+
 function MatchGlance({ match, patch }: { match: MatchSummary; patch: string }) {
   const duration = Number.isFinite(match.durationSec) && match.durationSec >= 1 ? Math.floor(match.durationSec) : 0;
   const kp = match.killParticipation;
   const role = roles.get(match.role);
   const catalog = match.items.length ? loadCatalog(patch) : null;
   return <div className={styles.glance}>
-    <div className={styles.gameSummary}>
-      <MatchPortrait champion={match.champion} size={40}/>
-      <div className={styles.gameInfo}>
-        <p className={styles.championName}><strong>{match.champion}</strong><span>{role ?? "Role unavailable"}</span></p>
-        <p className={styles.byline}><Result win={match.win}/> · {queue(match)}</p>
+    <div className={styles.glanceMain}>
+      <div className={styles.gameSummary}>
+        <MatchPortrait champion={match.champion} size={40}/>
+        <div className={styles.gameInfo}>
+          <p className={styles.championName}><strong>{match.champion}</strong><span>{role ?? "Role unavailable"}</span></p>
+          <p className={styles.byline}><Result win={match.win}/> · {queue(match)}</p>
+        </div>
+        <Kda match={match}/>
+        <MatchRating player={match}/>
       </div>
-      <Kda match={match}/>
-      <MatchRating player={match}/>
+      <p className={styles.matchNumbers}>
+        <span>{duration ? `Duration ${Math.floor(duration / 60)}m ${duration % 60}s` : "Duration unavailable"}</span>
+        <MatchTime playedAt={match.playedAt} relative/>
+        {Number.isFinite(match.cs) && <span>{match.cs} CS</span>}
+        {kp != null && kp >= 0 && kp <= 1 && <span>{Math.round(kp * 100)}% KP</span>}
+        {role === "Support" && match.vision != null
+          ? <span>{match.vision} vision</span>
+          : duration > 0 && Number.isFinite(match.cs) && <span>{(match.cs * 60 / duration).toFixed(1)} CS/min</span>}
+      </p>
+      {catalog && <Suspense fallback={null}><MatchItems ids={match.items} catalog={catalog}/></Suspense>}
+      <MatchTags match={match}/>
+      {match.performanceRating === undefined && <p className={styles.reason}>{ratingExplanation(match)}</p>}
     </div>
-    <p className={styles.matchNumbers}>
-      <span>{duration ? `Duration ${Math.floor(duration / 60)}m ${duration % 60}s` : "Duration unavailable"}</span>
-      <MatchTime playedAt={match.playedAt} relative/>
-      {Number.isFinite(match.cs) && <span>{match.cs} CS</span>}
-      {kp != null && kp >= 0 && kp <= 1 && <span>{Math.round(kp * 100)}% KP</span>}
-      {role === "Support" && match.vision != null
-        ? <span>{match.vision} vision</span>
-        : duration > 0 && Number.isFinite(match.cs) && <span>{(match.cs * 60 / duration).toFixed(1)} CS/min</span>}
-    </p>
-    {catalog && <Suspense fallback={null}><MatchItems ids={match.items} catalog={catalog}/></Suspense>}
-    {match.performanceRating === undefined && <p className={styles.reason}>{ratingExplanation(match)}</p>}
+    <MiniTeams match={match}/>
   </div>;
 }
 
@@ -123,10 +161,12 @@ function Participant({ player, platform, fromMatch }: { player: MatchParticipant
 }
 
 function ParticipantDamage({ player }: { player: MatchParticipantSummary }) {
-  if (player.damage == null) return <span className={styles.participantDamage} aria-label="Damage unavailable">—</span>;
-  return <span className={styles.participantDamage}>
-    {(player.damage / 1000).toFixed(1)}k dmg
-    {player.damageShare != null && <> · {Math.round(player.damageShare * 100)}%<span className="sr-only"> of team damage</span></>}
+  // Unavailable damage is an em dash, never a zero: the two mean different
+  // things and the stored data keeps them distinct.
+  if (player.damage == null) return <span className={styles.damageCell} aria-label="Damage unavailable">—</span>;
+  return <span className={styles.damageCell}>
+    <span>{(player.damage / 1000).toFixed(1)}k dmg</span>
+    {player.damageShare != null && <span className={styles.damageShare}>{Math.round(player.damageShare * 100)}%<span className="sr-only"> of team damage</span></span>}
   </span>;
 }
 
@@ -135,18 +175,30 @@ function Teams({ match, platform, fromMatch }: { match: MatchSummary; platform: 
   const teams = [{ label: "Allied team", players: match.teams.allies }, { label: "Opposing team", players: match.teams.opponents }];
   return <div className={styles.teams}>
     {teams.map(({ label, players }) => (
-      <div key={label}>
+      <div key={label} className={styles.teamPanel}>
         <h4>{label}</h4>
+        <div className={`${styles.scoreRow} ${styles.scoreHead}`} aria-hidden="true">
+          <span>Player</span><span className={styles.damageCell}>Damage</span><span className={styles.ratingCell}>Rating</span>
+        </div>
         <ul className={styles.teamMembers}>
-          {players.map((player, index) => <li key={index} data-viewed={player.isPlayer || undefined}>
-            <Participant player={player} platform={platform} fromMatch={fromMatch}/>
+          {players.map((player, index) => <li key={index} className={styles.scoreRow} data-viewed={player.isPlayer || undefined}>
+            <span className={styles.playerCell}>
+              <Participant player={player} platform={platform} fromMatch={fromMatch}/>
+            </span>
             <ParticipantDamage player={player}/>
-            <MatchRating player={player}/>
+            <span className={styles.ratingCell}><MatchRating player={player}/></span>
           </li>)}
         </ul>
       </div>
     ))}
   </div>;
+}
+
+function MatchDayHeader({ group }: { group: MatchDayGroup }) {
+  return <h3 className={styles.dayHeader}>
+    <span>{group.label}</span>
+    {group.winRate !== null && <span className={styles.dayRecord}>{group.wins}W–{group.losses}L · {group.winRate}% win rate</span>}
+  </h3>;
 }
 
 type MatchRowProps = {
@@ -180,8 +232,6 @@ function MatchRow({ match, patch, platform, lookupHref, expanded, discussion, ti
     ? `${Math.round(participation * 100)}% P/Kill` : null;
   return <div id={matchId} tabIndex={-1} className={`${styles.matchTarget} ${styles.game}`}>
     <MatchGlance match={match} patch={patch}/>
-    {reference && <Link className={styles.discuss} prefetch={false}
-      href={questionHref(reference, undefined, { discuss: true, fromMatch: matchPath })}>Discuss this match</Link>}
     <details className={styles.gameDetails} open={expanded || undefined}>
       <summary>Match details<span className="sr-only"> for {match.champion} · <MatchTime playedAt={match.playedAt}/></span></summary>
       <Teams match={match} platform={participantPlatform} fromMatch={fromMatch}/>
@@ -216,6 +266,8 @@ function MatchRow({ match, patch, platform, lookupHref, expanded, discussion, ti
       {reference && (timeline ? <ObjectiveTimeline reference={reference} returnHref={returnUrl.pathname + returnUrl.search + returnUrl.hash}/> :
         <Link className={styles.timelineLink} prefetch={false} href={timelineUrl.pathname + timelineUrl.search + timelineUrl.hash}>View objective timeline</Link>)}
     </details>
+    {reference && <Link className={styles.discuss} prefetch={false}
+      href={questionHref(reference, undefined, { discuss: true, fromMatch: matchPath })}>Discuss this match</Link>}
   </div>;
 }
 
@@ -240,8 +292,12 @@ export function LatestGames({ matches, patch, platform, riotId, persisted, looku
   lookupHref: string; queueFilter: string; championFilter: string; roleFilter?: string; rawMatch?: string; showTimeline?: boolean;
 }) {
   const base = matchFilterPath(lookupHref, queueFilter, championFilter, roleFilter);
-  return matches.slice(0, MATCH_DETAIL_LIMIT).map(match => <MatchRow key={match.matchId} match={match} patch={patch} platform={platform} lookupHref={base} expanded={rawMatch === match.matchId} timeline={showTimeline && rawMatch === match.matchId}
-    discussion={persisted && isPlatform(platform) ? { platform, riotId } : undefined}/>);
+  const groups = groupMatchesByDay(matches.slice(0, MATCH_DETAIL_LIMIT));
+  return groups.map(group => <div key={`${group.key}:${group.matches[0].matchId}`} className={styles.dayGroup}>
+    <MatchDayHeader group={group}/>
+    {group.matches.map(match => <MatchRow key={match.matchId} match={match} patch={patch} platform={platform} lookupHref={base} expanded={rawMatch === match.matchId} timeline={showTimeline && rawMatch === match.matchId}
+      discussion={persisted && isPlatform(platform) ? { platform, riotId } : undefined}/>)}
+  </div>);
 }
 
 export function OlderGames({ matches, patch, platform, riotId, persisted, lookupHref, rawPage, rawMatch, queueFilter, championFilter, roleFilter = "", showTimeline }: {
@@ -257,15 +313,18 @@ export function OlderGames({ matches, patch, platform, riotId, persisted, lookup
     {page.total > 0 && <details id="older-games" className={styles.archive} open={page.open || undefined} key={`archive:${key}`}>
       <summary>Show {gameCount(page.total)} more</summary>
       <p className={styles.archiveRange}>Older games {page.offset + 1}–{page.offset + page.matches.length} of {page.total}</p>
-      {page.matches.map(match => page.selected === match.matchId
-        ? <MatchRow key={match.matchId} match={match} patch={patch} platform={platform} lookupHref={olderMatchHref(base, page.page, match.matchId)} expanded timeline={showTimeline && rawMatch === match.matchId}
-          discussion={persisted && isPlatform(platform) ? { platform, riotId } : undefined}/>
-        : <div key={match.matchId} id={matchSectionId(match.matchId)} tabIndex={-1} className={`${styles.archiveRow} ${styles.matchTarget}`}>
-          <MatchGlance match={match} patch={patch}/>
-          <Link prefetch={false} href={olderMatchHref(base, page.page, match.matchId)} className={styles.archiveLink}>
-            Details<span className="sr-only"> for {match.champion} · <MatchTime playedAt={match.playedAt}/></span>
-          </Link>
-        </div>)}
+      {groupMatchesByDay(page.matches).map(group => <div key={`${group.key}:${group.matches[0].matchId}`} className={styles.dayGroup}>
+        <MatchDayHeader group={group}/>
+        {group.matches.map(match => page.selected === match.matchId
+          ? <MatchRow key={match.matchId} match={match} patch={patch} platform={platform} lookupHref={olderMatchHref(base, page.page, match.matchId)} expanded timeline={showTimeline && rawMatch === match.matchId}
+            discussion={persisted && isPlatform(platform) ? { platform, riotId } : undefined}/>
+          : <div key={match.matchId} id={matchSectionId(match.matchId)} tabIndex={-1} className={`${styles.archiveRow} ${styles.matchTarget}`}>
+            <MatchGlance match={match} patch={patch}/>
+            <Link prefetch={false} href={olderMatchHref(base, page.page, match.matchId)} className={styles.archiveLink}>
+              Details<span className="sr-only"> for {match.champion} · <MatchTime playedAt={match.playedAt}/></span>
+            </Link>
+          </div>)}
+      </div>)}
       {page.pages > 1 && <nav className={styles.archiveNav} aria-label="Older match pages">
         {page.page > 1 && <Link prefetch={false} href={olderMatchHref(base, page.page - 1)}>Newer games</Link>}
         {page.page < page.pages && <Link prefetch={false} href={olderMatchHref(base, page.page + 1)}>Older games</Link>}

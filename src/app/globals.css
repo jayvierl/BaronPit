@@ -117,6 +117,10 @@ input, select, textarea { font: inherit; color: inherit; }
 .primary-nav-link:is([href="/"], [href="/activity"])[aria-current] svg { fill: currentColor; }
 
 .page { min-width: 0; width: 100%; max-width: 660px; margin-inline: auto; background: var(--bg); }
+/* Player Stats widens its own content slot so the page surface and the stats
+   shell share one set of horizontal boundaries; the shell inside carries its
+   own inline padding. Every other route keeps the standard column. */
+.page:has(> .player-page) { max-width: 80rem; padding-inline: 0; }
 footer.site { max-width: 660px; margin: 12px auto 0; padding: 16px; font-size: .76rem; line-height: 1.5; color: var(--ink-soft); }
 footer.site .inner { display: grid; gap: 8px; }
 .footer-links { display: flex; flex-wrap: wrap; gap: 0 14px; }
