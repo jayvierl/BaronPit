@@ -37,6 +37,15 @@ function render(kind: string, data: Record<string, unknown>, status = "visible")
   );
 }
 describe("thread controls", () => {
+  it("renders both champion and item links in the feed body", () => {
+    const post = { ...base, id: 27, kind: "text", data: {}, body: "[[c:Jayce|Jayce]] with [[i:3031|Infinity Edge]]" };
+    const html = renderToStaticMarkup(createElement(PostCard, { post, signedIn: false, patch: "16.23.1" }));
+    expect(html).toContain('href="/champions/Jayce"');
+    expect(html).toContain('aria-label="Jayce, champion"');
+    expect(html).toContain('href="/items/3031"');
+    expect(html).toContain('aria-label="Infinity Edge, item"');
+    expect(html).not.toMatch(/\[\[[ci]:/);
+  });
   it("keeps the post author's avatar distinct from the signed-in player's composer avatar", () => {
     const photo = {kind:"upload",id:"e154c2e1-f001-4324-98f7-d5435281c421",hash:"9e".repeat(32)} as const;
     const photoPath = "/api/profile-photo/" + photo.id + "?v=" + photo.hash;

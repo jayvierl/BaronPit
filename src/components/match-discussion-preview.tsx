@@ -7,13 +7,17 @@ import styles from "./match-discussion.module.css";
 
 const riotTime = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
 
-export function MatchDiscussionPreview({ match, fromMatch, postId, composing = false }: {
-  match: MatchContext; fromMatch?: string; postId?: number; composing?: boolean;
+export function MatchDiscussionPreview({ match, fromMatch, postId, composing = false, reply = false }: {
+  match: MatchContext; fromMatch?: string; postId?: number; composing?: boolean; reply?: boolean;
 }) {
   const source = returnToMatch(fromMatch, match) ?? returnToMatch(match.matchHref, match);
   const url = source ? new URL(source, "https://match.invalid") : null;
   if (url && postId) url.searchParams.set("fromDiscussion", String(postId));
   const href = url && (url.pathname + url.search + url.hash);
+  if (reply) return <div role="group" aria-label="Referenced match" className={styles.replyCard}>
+    <span><strong>{match.champion}</strong> · {match.win ? "Victory" : "Defeat"} · {match.kills}/{match.deaths}/{match.assists}</span>
+    {href && <Link href={href} prefetch={false}>View thread’s match</Link>}
+  </div>;
   const title = composing ? "Public match preview" : "Public match";
   const region = PLATFORMS.find(platform => platform.id === match.region)?.label;
   const played = new Date(match.playedAt);

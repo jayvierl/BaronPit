@@ -1,6 +1,10 @@
 /** Pure helpers (no server imports) — shared by riot.ts, social.ts, and tests. */
 
+export type MatchBadge = "MVP" | "Team Ace" | "Shared MVP" | "Shared Team Ace";
+
 export interface MatchParticipantSummary {
+  performanceRating?: number;
+  ratingBadge?: MatchBadge;
   champion: string;
   name?: string;
   tag?: string;
@@ -42,11 +46,14 @@ export interface MatchSummary {
   teamKills?: number;
   /** Share of the team's kills in which the player participated, when known. */
   killParticipation?: number;
-  /** Baron Pit contribution placement among the ten in this ranked match. A unique first place is 10. */
+  /** Unrounded Baron Match Rating from the viewed participant in the versioned roster. */
   performanceRating?: number;
+  ratingBadge?: MatchBadge;
+  ratingReason?: string;
+  vision?: number;
   teams?: { allies: MatchParticipantSummary[]; opponents: MatchParticipantSummary[] };
-  /** Version 2 also checked whether full source evidence supports a performance rating. */
-  detailsVersion?: 1 | 2;
+  /** v3 contains role-matched ratings for both teams. */
+  detailsVersion?: 1 | 2 | 3;
 }
 
 type BaronData = { teamBaronKills?: unknown; baron?: unknown };

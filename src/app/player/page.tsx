@@ -5,6 +5,8 @@ import { Avatar } from "@/components/ui";
 import Link from "next/link";
 import Form from "next/form";
 import { MATCH_DETAIL_LIMIT, matchQueueName, matchSectionId, recentMatchHistory } from "@/lib/match-history";
+import { RATING_DESCRIPTION, RATING_VERSION } from "@/lib/match-performance";
+import { matchFilterPath } from "./older-match-page";
 import { LatestGames, OlderGames } from "./match-history-view";
 import styles from "./history.module.css";
 import profileStyles from "./profile.module.css";
@@ -54,7 +56,7 @@ export default async function PlayerPage({ searchParams }: {
       <div className={profileStyles.lookup}>
         {discussionLink || searchLink}
         <div>
-          <h1 className="page-title">Player lookup</h1>
+          <h1 className="page-title">Player Stats</h1>
           <p className="meta">{input ? "Enter the game name and tag from the Riot ID. For example, Jay Lewis#NA1." : "Search by Riot ID to see rank and recent games."}</p>
           {lookupForm}
         </div>
@@ -88,7 +90,7 @@ export default async function PlayerPage({ searchParams }: {
       <div className={profileStyles.lookup}>
         {discussionLink || searchLink}
         <div>
-          <h1 className="page-title">Lookup</h1>
+          <h1 className="page-title">Player Stats</h1>
           <div className="notice warn">{discussionId ? `This match link couldn’t open the player’s history. ${text}` : text}</div>
           {lookupForm}
           <Link className={styles.searchLink} href={searchHref("players", input, platform, true)}>Search saved player records</Link>
@@ -170,6 +172,12 @@ export default async function PlayerPage({ searchParams }: {
       <section className={styles.history} aria-labelledby="match-history">
         <div className={styles.historyHeader}>
           <h2 id="match-history" className={styles.heading}>Match history</h2>
+          {history.sampleSize > 0 && <nav aria-label="Quick queue filters" className={styles.quickFilters}>
+            {[["", "All"], ["ranked", "Ranked"]].map(([queue, label]) => (
+              <Link key={label} href={matchFilterPath(lookupHref, queue, history.champion) + "#match-history"}
+                aria-current={history.queue === queue ? "page" : undefined} prefetch={false}>{label}</Link>
+            ))}
+          </nav>}
           {history.sampleSize > 0 && <details className={styles.filterDisclosure} open={filtered || undefined}>
             <summary>Filters</summary>
               <Form action="/player#match-history" className={styles.filters} key={JSON.stringify([platform, player.gameName, player.tagLine, history.queue, history.champion])}>
@@ -183,7 +191,8 @@ export default async function PlayerPage({ searchParams }: {
                 {discussionId && <><input type="hidden" name="fromDiscussion" value={discussionId}/><input type="hidden" name="match" value={sp.match}/></>}
                 <label>Queue<select name="queue" defaultValue={history.queue}>
                   <option value="">All supported queues</option>
-                  {history.queue && !history.queues.includes(history.queue) && <option value={history.queue}>Outside this sample</option>}
+                  <option value="ranked">{matchQueueName("ranked")}</option>
+                  {history.queue && history.queue !== "ranked" && !history.queues.includes(history.queue) && <option value={history.queue}>Outside this sample</option>}
                   {history.queues.map(q => <option key={q} value={q}>{matchQueueName(q)}</option>)}
                 </select></label>
                 <label>Champion<select name="champion" defaultValue={history.champion}>
@@ -213,8 +222,8 @@ export default async function PlayerPage({ searchParams }: {
 
         {history.sampleSize > 0 && <details className={styles.ratingGuide}>
           <summary>How match ratings work</summary>
-          <p>We rank all ten players by kill participation, share of team champion damage, share of team vision score, and fewer deaths. Each measure weighs equally. Tied players split their places. Only a sole first-place player earns 10/10 and MVP.</p>
-          <p>Available for ranked Solo/Duo and Flex games of at least 15 minutes with complete Riot data. Remakes and early surrenders are excluded.</p>
+          <p>Baron Match Rating v{RATING_VERSION} · {RATING_DESCRIPTION}</p>
+          <p>Remakes, early surrenders and games with insufficient evidence are unrated.</p>
         </details>}
       </section>
 

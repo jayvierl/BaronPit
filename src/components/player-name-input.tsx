@@ -104,7 +104,7 @@ export function PlayerNameInput({ name, label, placeholder, value, onChange, sco
           const player = item.kind === "player";
           const text = player ? item.riotId : item.name;
           const tag = player ? text.lastIndexOf("#") : -1;
-          const detail = player ? PLATFORMS.find(p => p.id === item.platform)?.label ?? item.platform : "Community profile";
+          const detail = player ? `Riot player · ${PLATFORMS.find(p => p.id === item.platform)?.label ?? item.platform}` : "Community profile";
           return <li key={player ? `${item.platform}/${item.riotId}` : item.id} id={`${listId}-${index}`}
             role="option" aria-selected={active === index} className={styles.option}
             onPointerDown={event => { if (event.button === 0) event.preventDefault(); }} onClick={() => choose(item)}>

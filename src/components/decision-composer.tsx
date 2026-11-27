@@ -23,7 +23,7 @@ const observerStarter: Record<QuestionStarter["id"], string> = {
 const roleNames: Record<string, string> = {
   TOP: "Top", JUNGLE: "Jungle", MIDDLE: "Mid", BOTTOM: "Bot", UTILITY: "Support", TEAM: "Team",
 };
-export function DecisionComposer({ champions, match, starter, destination, signedIn, discuss = false, fromMatch }: {
+export function DecisionComposer({ champions, match: originalMatch, starter, destination, signedIn, discuss = false, fromMatch }: {
   champions: { id: string; name: string }[];
   match: Match | null;
   starter?: QuestionStarter;
@@ -32,6 +32,8 @@ export function DecisionComposer({ champions, match, starter, destination, signe
   discuss?: boolean;
   fromMatch?: string;
 }) {
+  const [detached, setDetached] = useState(false);
+  const match = detached ? null : originalMatch;
   const router = useRouter();
   const action = usePostAction();
   const hydrated = useHydrated();
@@ -42,7 +44,7 @@ export function DecisionComposer({ champions, match, starter, destination, signe
   const [posted, setPosted] = useState(false);
   const [storageBlocked, setStorageBlocked] = useState(false);
   const scope = "decision:" + destination;
-  const team = !!match && (match.role === "TEAM" || !match.role);
+  const team = !!originalMatch && (originalMatch.role === "TEAM" || !originalMatch.role);
   const [draft, setDraft] = useState<Record<"champion" | "opponent" | "role" | "topic" | "body", string>>(() => ({
     champion: match?.champion ?? "",
     opponent: match?.opponent ?? "",
@@ -57,17 +59,18 @@ export function DecisionComposer({ champions, match, starter, destination, signe
     if (!signedIn) return;
     return restoreAfterMount(scope, saved => {
       const champion = (value: unknown) => champions.find(c => c.id === value)?.id ?? "";
+      setDetached(!!originalMatch && saved.detached === true);
       setDraft(d => ({
-        champion: match?.champion ?? champion(saved.champion),
+        champion: originalMatch?.champion ?? champion(saved.champion),
         opponent: champion(saved.opponent),
         role: team ? "Team" : decisionRoles.find(r => r === saved.role) ?? d.role,
-        topic: match?.item ? "Build choice" : decisionTopics.find(t => t === saved.topic) ?? d.topic,
+        topic: originalMatch?.item ? "Build choice" : decisionTopics.find(t => t === saved.topic) ?? d.topic,
         body: typeof saved.body === "string" ? saved.body.slice(0, 1000) : d.body,
       }));
       if (discuss && saved.discussionKind === "perspective") setKind("perspective");
       setNotice("Your draft is ready. Review it before posting.");
     });
-  }, [scope, signedIn, champions, match, discuss, team]);
+  }, [scope, signedIn, champions, originalMatch, discuss, team]);
 
   function update(key: keyof typeof draft, value: string) {
     setDraft(d => ({ ...d, [key]: value }));
@@ -83,7 +86,7 @@ export function DecisionComposer({ champions, match, starter, destination, signe
   function continueSignIn() {
     try {
       const mode = action.authStep === "enrol" ? "enrol" : undefined;
-      router.push(beginDraftSignIn(window.localStorage, scope, destination, { ...draft, discussionKind: kind }, mode));
+      router.push(beginDraftSignIn(window.localStorage, scope, destination, { ...draft, detached, discussionKind: kind }, mode));
     } catch {
       setStorageBlocked(true);
       setNotice("Your browser couldn’t save this draft. Copy your text before signing in.");
@@ -99,7 +102,9 @@ export function DecisionComposer({ champions, match, starter, destination, signe
       if (needsSignIn) { continueSignIn(); return; }
       if (match && !acknowledged) { setNotice("Confirm the public match attachment before posting."); return; }
       setNotice("");
-      const result = await action.sendDraft("/api/questions", {
+      const result = detached
+        ? await action.sendDraft("/api/social/post", { kind: "text", body: draft.body, submitForReview: action.reconsider && confirm })
+        : await action.sendDraft("/api/questions", {
         ...draft,
         action: "ask",
         ...(perspective && { opponent: "", topic: "Teamfight" }),
@@ -116,10 +121,16 @@ export function DecisionComposer({ champions, match, starter, destination, signe
         ? match ? matchDiscussionThread(result.postId, match, fromMatch) : "/post/" + result.postId
         : "/me#submissions");
     }}>
-      {match && <MatchDiscussionPreview match={match} fromMatch={fromMatch} composing/>}
+      {match && <>
+        <MatchDiscussionPreview match={match} fromMatch={fromMatch} composing/>
+        <button type="button" className="text-btn" disabled={!hydrated || action.busy || posted}
+          onClick={() => { setDetached(true); setAcknowledged(false); setConfirm(false); setNotice(""); }}>Remove match</button>
+      </>}
+      {detached && <button type="button" className="text-btn" disabled={!hydrated || action.busy || posted}
+        onClick={() => { setDetached(false); setConfirm(false); }}>Reattach match</button>}
       {match?.item && <p className="meta">Item decision · {match.item.name}</p>}
       <fieldset className={discussionStyles.fields} disabled={!hydrated || action.busy || posted}>
-        {discuss && <fieldset className={discussionStyles.kind}>
+        {!detached && discuss && <fieldset className={discussionStyles.kind}>
           <legend>Discussion type</legend>
           {([ ["question", "Question"], ["perspective", "Perspective"] ] as const).map(([value, label]) => (
             <button className="btn small secondary" key={value} type="button" aria-pressed={kind === value}
@@ -127,17 +138,17 @@ export function DecisionComposer({ champions, match, starter, destination, signe
           ))}
         </fieldset>}
         <label htmlFor={bodyId}>
-          {perspective ? "Your perspective" : discuss ? "Your question" : observer ? "What are you asking about this match?" : "What were you deciding?"}
+          {detached ? "Your post" : perspective ? "Your perspective" : discuss ? "Your question" : observer ? "What are you asking about this match?" : "What were you deciding?"}
         </label>
         <TagFieldWrap>
           <textarea id={bodyId} ref={bodyRef} {...tags.fieldProps} value={tags.display}
-            onChange={e => tags.change(e.currentTarget)} rows={4} minLength={10} maxLength={tags.maxLength} required
+            onChange={e => tags.change(e.currentTarget)} rows={4} minLength={detached ? 1 : 10} maxLength={tags.maxLength} required
             placeholder={perspective ? "What stood out to you in this match?"
               : observer || discuss ? "Was rotating to dragon the best choice here?"
               : "Dragon spawned and our bot wave was pushing. Should I have stayed for the tower or rotated?"} />
           {tags.menu}
         </TagFieldWrap>
-        <div className={styles.filters}>
+        {!detached && <div className={styles.filters}>
           {!match && <label>Champion
             <select value={draft.champion}
               onChange={e => update("champion", e.target.value)} required>
@@ -163,7 +174,7 @@ export function DecisionComposer({ champions, match, starter, destination, signe
               {decisionTopics.map(t => <option key={t}>{t}</option>)}
             </select>
           </label>}
-        </div>
+        </div>}
         {match && !needsSignIn && <label className={discussionStyles.acknowledgement}>
           <input type="checkbox" checked={acknowledged} onChange={e => setAcknowledged(e.target.checked)} required/>
           <span>Attach this public match to my post.</span>
@@ -173,8 +184,8 @@ export function DecisionComposer({ champions, match, starter, destination, signe
         <div>
           <button type="submit" className="btn gold" formNoValidate={needsSignIn}>
             {action.busy ? "Sending…" : action.authStep === "enrol" ? "Confirm eligibility and return"
-              : needsSignIn ? discuss ? "Sign in to discuss" : "Sign in to ask"
-              : action.reconsider && confirm ? "Submit for moderator review" : discuss ? "Post discussion" : "Post question"}
+              : needsSignIn ? detached ? "Sign in to post" : discuss ? "Sign in to discuss" : "Sign in to ask"
+              : action.reconsider && confirm ? "Submit for moderator review" : detached ? "Post" : discuss ? "Post discussion" : "Post question"}
           </button>
         </div>
       </fieldset>

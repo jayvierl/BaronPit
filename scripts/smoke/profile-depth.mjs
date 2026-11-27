@@ -24,7 +24,7 @@ export async function checkPlayerDepth(journey) {
     "Role share", "Preferred classes", "Ranked W/L by champion · last 7 days",
     "Latest 20 games", "Previous 80 games", "75.0%", "50.0%", "+25.0 pp",
     "Kill participation", "65.0%", "Activity patterns", "Time of day", "Hour-by-hour results (UTC)",
-    "Avg. match rating", "8.0", "3 rated games",
+    "Avg. match rating", "7.5", "3 rated games · v2",
     "Champion mastery", "Nami", "109,842 points", "Level 18",
     "Show 97 games more", "Older games 1–10 of 97",
     "Summoner spells", "Flash", "Teleport", "Keystone: Press the Attack",
@@ -34,11 +34,14 @@ export async function checkPlayerDepth(journey) {
   assert.doesNotMatch(first, /\bdata-motion=|Ask the community about this game|Which item should I have bought|When should I have recalled|How should we play this matchup|Ask about an item/);
   assert.match(first, /How match ratings work/);
   const rows = first.split(/\bid="match-NA1_\d+"/).slice(1);
-  assert.match(rows[0], /aria-label="Match rating 10 out of 10"/);
-  assert.match(rows[0], />MVP<\/span>/);
-  assert.match(rows[1], /aria-label="Match rating 7\.5 out of 10"/);
-  assert.doesNotMatch(rows[1], />MVP<\/span>/);
-  assert.doesNotMatch(rows[2], /aria-label="Match rating |\bMVP<\/span>/);
+  const glance = row => row.split("<details")[0];
+  assert.match(glance(rows[0]), /aria-label="Baron Match Rating 8\.3 out of 10"/);
+  assert.match(glance(rows[0]), />MVP<\/span>/);
+  assert.match(glance(rows[1]), /aria-label="Baron Match Rating 7\.5 out of 10"/);
+  assert.doesNotMatch(glance(rows[1]), />MVP<\/span>/);
+  markers(glance(rows[1]), ["Duration 17m 31s", "Played 7h ago"]);
+  assert.doesNotMatch(rows[2], /aria-label="Baron Match Rating |\bMVP<\/span>/);
+  markers(glance(rows[2]), ["Not rated", "no current rating evidence"]);
   assert.match(first, /name="force" value="1"/);
   assert.match(first, /id="rank-history-title"/);
   if (first.includes("One recorded day")) {

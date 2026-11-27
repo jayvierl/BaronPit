@@ -1,5 +1,7 @@
 import { insertSubmission, priorSubmission, submissionHash, validSubmissionId, type SubmissionResult } from "./submissions";
 import { allMentionsVisible, readMentionBody, unavailableMention } from "./player-mentions";
+import { matchRegion } from "./match-context";
+import { publicQueueSql } from "./public-match-queues";
 import { plainBodyText } from "./game-tags";
 import { includesRoomLink, roomWriteError } from "./room-safety";
 import { inProbation } from "./account-policy";
@@ -166,13 +168,14 @@ export async function listComments(postId: number, viewer: User | null): Promise
   return readComments(postId, viewer?.id ?? null);
 }
 
-export async function addComment(user: User, postId: number, bodyRaw: string, parentId?: number, oneFix = false, submitForReview = false, key: string | null = null): Promise<CreateResult> {
+export async function addComment(user: User, postId: number, bodyRaw: string, parentId?: number, oneFix = false, submitForReview = false, key: string | null = null, matchRef: string | null = null): Promise<CreateResult> {
   if (!validId(postId) || (parentId != null && !validId(parentId))) return { ok: false, error: "Conversation unavailable." };
   const body = typeof bodyRaw === "string" ? bodyRaw.trim() : "";
   if (body.length < 1 || body.length > 1000) return { ok: false, error: "Comments are 1–1000 characters." };
+  if (matchRef !== null && !matchRegion(matchRef)) return { ok: false, error: "Choose the public match attached to this thread." };
   if (oneFix && parentId != null) return { ok: false, error: "Start a new One Fix directly on the game card." };
   if (key !== null && !validSubmissionId(key)) return badKey;
-  const hash = key ? submissionHash([postId,body,parentId ?? null,oneFix]) : null;
+  const hash = key ? submissionHash([postId,body,parentId ?? null,oneFix,...(matchRef ? [matchRef] : [])]) : null;
   const replay = await priorSubmission("comment",user.id,key,hash);
   if (replay) return replay;
   if (!(await rateLimit(user.id, "comment", 60, 60))) return { ok: false, error: "You're commenting too fast — slow down a little." };
@@ -199,10 +202,12 @@ export async function addComment(user: User, postId: number, bodyRaw: string, pa
     SELECT id FROM wp_comments WHERE id=$3::int AND post_id=$2
   ), ${visibleCommentsFor("candidateReplies")}, candidate AS MATERIALIZED (
     SELECT p.id,p.room_id FROM wp_posts p WHERE p.id=$2 AND ${visiblePostForInteraction} AND (NOT $6 OR p.kind='card')
+      AND ($14::text IS NULL OR (p.kind='card' AND p.card_validated
+        AND p.data#>>'{matchContext,matchId}'=$14 AND ${publicQueueSql("(p.data->'matchContext')")}))
       AND NOT p.replies_closed AND ($3::int IS NULL OR EXISTS (SELECT 1 FROM thread)) FOR SHARE OF p
   ), submitted AS (
-    INSERT INTO wp_comments(post_id,author_id,parent_id,body,status,one_fix,submission_id,submission_hash)
-    SELECT id,$1,$3::int,$4,$5,$6::boolean,$10::uuid,$11 FROM candidate
+    INSERT INTO wp_comments(post_id,author_id,parent_id,body,status,one_fix,submission_id,submission_hash,match_ref)
+    SELECT id,$1,$3::int,$4,$5,$6::boolean,$10::uuid,$11,$14 FROM candidate
     WHERE CASE WHEN EXISTS(SELECT 1 FROM wp_comments WHERE author_id=$1 AND submission_id=$10::uuid)
       OR NOT (SELECT allowed FROM mention_gate) THEN false ELSE wp_reserve_room_turn(room_id,$1,$9) END
     ON CONFLICT (author_id,submission_id) WHERE submission_id IS NOT NULL DO NOTHING
@@ -211,7 +216,7 @@ export async function addComment(user: User, postId: number, bodyRaw: string, pa
     INSERT INTO wp_mod_log (target_kind, target_id, author_id, score, action, detail)
     SELECT 'comment', id, $1, $7, CASE WHEN $5='held' THEN 'hold' ELSE 'flag' END, $8 FROM submitted WHERE $5 = 'held' OR $12
   ) SELECT id FROM submitted UNION ALL SELECT NULL AS id FROM mention_gate WHERE NOT allowed`,
-  [user.id, postId, parentId ?? null, body, status, oneFix, mod.score, mod.hits.join(","),includesRoomLink([mentions.text]),key,hash,flagged,JSON.stringify(mentions.targets)]),key,user.id);
+  [user.id, postId, parentId ?? null, body, status, oneFix, mod.score, mod.hits.join(","),includesRoomLink([mentions.text]),key,hash,flagged,JSON.stringify(mentions.targets),matchRef]),key,user.id);
   } catch(error) { return await priorSubmission("comment",user.id,key,hash) ?? {ok:false,error:roomWriteError(error)}; }
   if (rows[0]?.id === null) return {ok:false,error:unavailableMention};
   if (!rows.length) return await priorSubmission("comment",user.id,key,hash) ?? { ok: false, error: oneFix ? "One Fix needs an available game card." : "Replies are closed or this conversation is unavailable." };

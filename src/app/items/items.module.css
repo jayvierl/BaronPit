@@ -1,0 +1,9 @@
+.filters, .pages { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-block: 1rem; }
+.filters input { flex: 1 1 12rem; min-width: 0; }
+.filters :is(input, select, button) { min-height: 44px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); column-gap: 1rem; list-style: none; padding: 0; }
+.grid a { display: flex; align-items: center; gap: .65rem; height: 100%; min-height: 56px; padding: .55rem .2rem; border-bottom: 1px solid var(--border); color: var(--ink); overflow-wrap: anywhere; }
+.grid a:hover, .grid a:focus-visible { background: var(--field); }
+.grid small { display: block; color: var(--ink-mid); }
+.pages { justify-content: center; gap: 1rem; }
+.pages a { display: inline-flex; align-items: center; min-height: 44px; }

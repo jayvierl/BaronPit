@@ -1,3 +1,4 @@
+import { signInHref } from "@/lib/signin-return";
 import { recentSubmissions } from "@/lib/submissions";
 import { WithdrawSubmission } from "@/components/withdraw-submission";
 import { riotSignOnConfig } from "@/lib/riot-ownership";
@@ -24,7 +25,11 @@ export const dynamic = "force-dynamic";
 
 export default async function MePage({ searchParams }: { searchParams: Promise<{ welcome?: string; verification?: string; beforeSubmission?: string; updated?: string }> }) {
   const [sp,user] = await Promise.all([searchParams,getCurrentUser()]);
-  if (!user) redirect("/signin");
+  if (!user) {
+    const params = new URLSearchParams();
+    if (typeof sp.beforeSubmission === "string") params.set("beforeSubmission", sp.beforeSubmission);
+    redirect(signInHref(params.size ? "/me?" + params : "/me"));
+  }
   const [counts,reports,notices,linked,receipts] = await Promise.all([
     followCounts(user.id),myReports(user.id),myNotices(user.id),linkedPlayerIdentities(user.id),recentSubmissions(user.id,sp.beforeSubmission),
   ]);

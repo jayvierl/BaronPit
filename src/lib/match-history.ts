@@ -14,6 +14,7 @@ function queueKey(queueId: number): string {
   return Number.isSafeInteger(queueId) && queueId >= 0 ? String(queueId) : "unknown";
 }
 export function matchQueueName(key: string): string {
+  if (key === "ranked") return "Ranked (Solo/Duo and Flex)";
   return key === "unknown" ? "Queue unavailable" : queueNames[Number(key)] ?? `Queue ${key}`;
 }
 
@@ -22,11 +23,14 @@ export function recentMatchHistory(matches: MatchSummary[], rawQueue?: string, r
   const sample = matches.slice(0, 100);
   const queues = [...new Set(sample.map(m => queueKey(m.queueId)))].sort((a,b) => matchQueueName(a).localeCompare(matchQueueName(b)));
   const champions = [...new Set(sample.map(m => m.champion))].sort((a,b) => a.localeCompare(b));
-  const queue = typeof rawQueue === "string" && /^(?:[0-9]{1,6}|unknown)$/.test(rawQueue) ? rawQueue : "";
+  const queue = typeof rawQueue === "string" && /^(?:[0-9]{1,6}|unknown|ranked)$/.test(rawQueue) ? rawQueue : "";
   const requested = typeof rawChampion === "string" ? rawChampion.trim().slice(0,64) : "";
   const champion = champions.find(name => name.toLowerCase() === requested.toLowerCase())
     ?? (/^[a-z0-9]{1,40}$/i.test(requested) ? requested : "");
-  const filtered = sample.filter(m => (!queue || queueKey(m.queueId) === queue) && (!champion || m.champion === champion));
+  const filtered = sample.filter(match => {
+    const inQueue = queue === "ranked" ? match.queueId === 420 || match.queueId === 440 : !queue || queueKey(match.queueId) === queue;
+    return inQueue && (!champion || match.champion === champion);
+  });
   const wins = filtered.filter(m => m.win).length;
   return {queues, champions, queue, champion, sampleSize: sample.length, matches: filtered, wins,
     losses: filtered.length - wins, winRate: filtered.length ? Math.round(100 * wins / filtered.length) : null};

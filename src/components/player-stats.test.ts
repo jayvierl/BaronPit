@@ -67,7 +67,7 @@ it("labels the average of rated games in the recent sample and omits it below th
   const render = (ratings: (number | undefined)[]) => renderToStaticMarkup(createElement(PlayerStats, {
     variant: "profile", player: { ...player, snapshot: { ...EMPTY_SNAPSHOT, games: ratings.length,
       roles: {UTILITY: ratings.length}, champPool: [{champion:"Nami",wins:1,games:ratings.length,kda:2}],
-      matches: ratings.map((performanceRating, index) => ({ ...match, matchId: `NA1_${index + 1}`, performanceRating })) } },
+      matches: ratings.map((performanceRating, index) => ({ ...match, detailsVersion: 3 as const, matchId: `NA1_${index + 1}`, performanceRating })) } },
   }));
   const html = render([10, 6.5, 3, undefined]);
   for (const label of ["Latest 4 public games", "Support", "Nami", "Avg. match rating", "6.5", "3 rated games"]) expect(html).toContain(label);

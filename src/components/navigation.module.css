@@ -46,3 +46,7 @@
   .newThread { background: var(--field); color: var(--ink); border: 1px solid var(--border-strong); }
   .railExplore .destinations { inset: auto auto 22px 70px; max-height: calc(100dvh - 44px); }
 }
+
+.statsShortcut { align-content: center; gap: 1px; }
+.statsShortcut svg { width: 20px; height: 20px; }
+.statsLabel { font-size: .625rem; font-weight: 600; line-height: 1.2; text-align: center; }

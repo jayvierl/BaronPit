@@ -13,6 +13,7 @@ type Current = "page" | "location" | undefined;
 
 const home = { href: "/", label: "Home", path: "m3 10 9-7 9 7v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z" };
 const search = { href: "/search", label: "Search", path: "M17.5 10.5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Zm-1.6 5.4 4.8 4.8" };
+const playerStats = { href: "/player", label: "Player Stats", path: "M4 20h16M6 16v-5m6 5V4m6 12V8" };
 const duos = { href: "/lfg", label: "Duos", title: "Find a duo", path: "M12.4 8a3.4 3.4 0 1 1-6.8 0 3.4 3.4 0 0 1 6.8 0ZM2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5M16 5.3a3 3 0 0 1 0 5.6M17.5 15.4c2.1.5 3.6 2.1 4 4.6" };
 const activity = { href: "/activity", label: "Activity", path: "M20.3 5.7a5.2 5.2 0 0 0-7.3 0l-1 1-1-1a5.2 5.2 0 1 0-7.4 7.4l7.3 7.3a1.5 1.5 0 0 0 2.2 0l7.2-7.3a5.2 5.2 0 0 0 0-7.4Z" };
 const profile = { href: "/profile", label: "Profile", title: "My profile", path: "M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-2a5 5 0 0 1 5-5h6a5 5 0 0 1 5 5v2" };
@@ -116,6 +117,8 @@ export function PrimaryNavigation({ brand, explore }: { brand: string; explore: 
       <ComposeLink pathname={pathname} mobile/>
       {[activity, duos].map(destination => <NavigationLink key={destination.href} destination={destination}
         className={`primary-nav-link ${styles.link}`} textClass="sr-only" current={routeCurrent(pathname, destination.href)}/>)}
+      <NavigationLink destination={playerStats} current={routeCurrent(pathname, playerStats.href)}
+        className={`primary-nav-link ${styles.link} ${styles.statsShortcut}`} textClass={styles.statsLabel}/>
     </nav>
     <aside className={styles.rail} aria-label="Site shortcuts">
       <Link href="/" prefetch={false} className={styles.brand} title={brand}>
@@ -123,7 +126,7 @@ export function PrimaryNavigation({ brand, explore }: { brand: string; explore: 
         <span className="sr-only">{brand}</span>
       </Link>
       <nav className={styles.railGroup} aria-label="Primary desktop">
-        {[home, search, duos, activity, profile].map(destination =>
+        {[home, search, playerStats, duos, activity, profile].map(destination =>
           <NavigationLink key={destination.href} destination={destination} className={styles.railLink}
             textClass="sr-only" current={routeCurrent(pathname, destination.href)}/>)}
       </nav>

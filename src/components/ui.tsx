@@ -44,7 +44,7 @@ export function AvatarProfileLink({ userId, className, ...avatar }: Omit<AvatarP
   </Link>;
 }
 
-export function timeAgo(iso: string): string {
+export function timeAgo(iso: string, relativeDays = false): string {
   const ms = Date.now() - new Date(iso).getTime();
   const min = Math.floor(ms / 60000);
   if (min < 1) return "now";
@@ -52,7 +52,7 @@ export function timeAgo(iso: string): string {
   const h = Math.floor(min / 60);
   if (h < 24) return `${h}h`;
   const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d`;
+  if (relativeDays || d < 30) return `${d}d`;
   return new Date(iso).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric", timeZone:"UTC" });
 }
 

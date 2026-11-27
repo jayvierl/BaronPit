@@ -6,6 +6,7 @@ import { BuildsLink } from "@/components/builds-link";
 import { buildCatalog } from "@/lib/build-catalog";
 import { buildItemId, buildsHref } from "@/lib/build-sharing";
 import { readSearchReturn } from "@/lib/search-scopes";
+import { readItemDirectoryReturn } from "@/lib/item-navigation";
 import styles from "@/app/builds/builds.module.css";
 
 export default async function ItemPage({ params, searchParams }: {
@@ -15,12 +16,16 @@ export default async function ItemPage({ params, searchParams }: {
   const itemId = buildItemId(id);
   if (!itemId) notFound();
   const searchReturn = readSearchReturn(from);
+  const directory = readItemDirectoryReturn(from) ?? "/items";
   const catalog = await buildCatalog();
   const item = catalog.items.find((i) => i.id === itemId);
   if (!item) notFound();
   return (
     <div>
-      <Link className={styles.inlineLink} href={searchReturn ?? "/builds"}>{searchReturn ? "← Back to search" : "← Back to builds"}</Link>
+      <nav aria-label="Item navigation" className={styles.links}>
+        {searchReturn && <Link className={styles.inlineLink} href={searchReturn}>← Back to search</Link>}
+        <Link className={styles.inlineLink} href={directory}>{searchReturn ? "Browse items" : "← Back to items"}</Link>
+      </nav>
       <h1 className="page-title">{item.name}</h1>
       <section className="card">
         <GameAssetIcon size={56} name={item.name}

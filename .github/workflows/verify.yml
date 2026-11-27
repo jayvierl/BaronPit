@@ -41,3 +41,9 @@ jobs:
         run: |
           node scripts/smoke/tag-picker.mjs webkit
           node scripts/smoke/tag-picker.mjs chromium
+      - name: Exercise desktop and mobile player match review
+        run: node scripts/smoke/player-match-review.mjs
+      - name: Exercise sign-in and two-account match discussions
+        env:
+          SMOKE_SCREENSHOTS: ${{ runner.temp }}/match-discussion
+        run: node scripts/smoke/match-discussion-demo.mjs

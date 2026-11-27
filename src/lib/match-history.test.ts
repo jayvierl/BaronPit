@@ -32,3 +32,10 @@ it("uses stable fragment-safe anchors and skips malformed legacy match IDs", () 
     expect(matchSectionId(id)).toBeUndefined();
   }
 });
+
+it("filters ranked games across Solo/Duo and Flex while preserving champion selection", () => {
+  const sample = [game("a","Ashe",420), game("b","Ashe",450), game("c","Ashe",440,false), game("d","Vi",440)];
+  expect(recentMatchHistory(sample, "ranked", "ashe")).toMatchObject({
+    queue: "ranked", matches: [sample[0], sample[2]], wins: 1, losses: 1, winRate: 50,
+  });
+});

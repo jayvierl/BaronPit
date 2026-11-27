@@ -89,7 +89,7 @@ it("honors a publication pause and lets the ordinary cron recover", async () => 
 
 it("skips automatic publication on a newer schema generation even if the launch marker is absent", async () => {
   await clearLaunchFixture();
-  await postgres.exec("UPDATE wp_meta SET value='6' WHERE key='schema_generation'");
+  await postgres.exec("UPDATE wp_meta SET value='7' WHERE key='schema_generation'");
   await coldStart();
   expect(testQueries).toHaveLength(1);
   expect(await callCount()).toEqual([{ n: 0 }]);

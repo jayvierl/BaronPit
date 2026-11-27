@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { account, capture, fixtureContext, load, localPost, openFixtureBrowser, submit, visible } from "./browser-helpers.mjs";
+import { capture, fixtureContext, load, localPost, openFixtureBrowser, submit, visible } from "./browser-helpers.mjs";
 import { startFixtureServer } from "./fixture-server.mjs";
 import { depthMatchId, depthName, depthTag } from "./profile-depth-fixture.mjs";
 
@@ -44,10 +44,10 @@ async function matchRecord(page) {
   const details = match.locator("details").filter({ has: match.page().locator("summary").filter({ hasText: "Match details" }) }).first();
   const alreadyOpen = await details.evaluate(el => el.open);
   if (!alreadyOpen) await details.locator("summary").first().click();
-  await match.getByRole("group", { name: "Items", exact: true }).getByRole("link").nth(2).waitFor();
+  await match.getByRole("list", { name: "Final inventory", exact: true }).getByRole("link").nth(2).waitFor();
   const data = await match.evaluate(node => ({
     score: [...node.querySelectorAll(".sr-only")].map(text => text.textContent).find(text => /kills, .* assists$/.test(text)),
-    items: [...node.querySelectorAll('[aria-label="Items"] a')].map(link => link.getAttribute("aria-label")),
+    items: [...node.querySelectorAll('[aria-label="Final inventory"] a')].map(link => link.getAttribute("aria-label")),
     time: node.querySelector("time")?.getAttribute("datetime"),
     verdict: node.querySelector("[data-win]")?.textContent,
   }));
@@ -64,6 +64,19 @@ async function hiddenPost(page, origin, path) {
   const html = await response.text();
   assert.ok(response.status() === 404 || (response.status() === 200 && html.includes("NEXT_HTTP_ERROR_FALLBACK;404")));
   assert.ok(!html.includes(discussion));
+}
+
+async function confirmFixtureEmail(page, fixture, email) {
+  fixture.mailbox.delete(email);
+  await page.getByLabel("Email address", { exact: true }).fill(email);
+  await submit(page, page.getByRole("button", { name: "Email me a sign-in link" }), "/api/auth/request-link", 200);
+  const link = fixture.mailbox.get(email);
+  assert.ok(link, "The fixture intercepted the sign-in email");
+  const url = new URL(link);
+  assert.equal(url.origin, fixture.origin);
+  await load(page, fixture.origin, url.pathname + url.hash);
+  await page.getByRole("button", { name: "Sign in to my account" }).click();
+  await page.waitForURL(url => url.pathname !== "/signin/confirm");
 }
 
 async function main() {
@@ -139,23 +152,31 @@ async function main() {
     });
 
     await check("Unlinked author saves interests and returns to the public draft", async () => {
-      await account(mobile, origin, fixture.session);
-      await load(river, origin, "/?tab=following");
-      await (await visible(river.getByRole("link", { name: "Choose room interests", exact: true }).first())).click();
-      await river.waitForURL(url => url.pathname === "/rooms");
-      await river.getByRole("searchbox", { name: "Find a room", exact: true }).fill("Nami");
-      await (await visible(river.getByRole("link", { name: /Nami Mains/ }).first())).click();
-      await river.waitForURL(url => url.pathname === "/rooms/champ-nami");
-      await submit(river, await visible(river.getByRole("button", { name: "Join room", exact: true })),
-        "/api/social/room-join", 200);
-      await river.reload({ waitUntil: "domcontentloaded" });
-      await visible(river.getByRole("button", { name: "Joined ✓", exact: true }));
-      await load(river, origin, "/me");
-      await visible(river.getByText(/Link a Riot ID|No Riot IDs linked|None linked yet/).first());
-      await load(river, origin, signInReturn || previewPath);
-      const draft = river.locator("main textarea");
-      await draft.waitFor();
+      await confirmFixtureEmail(river, fixture, "demo-river@example.invalid");
+      assert.equal(new URL(river.url()).pathname, "/questions/new");
       await river.waitForFunction(text => document.querySelector("main textarea")?.value === text, discussion);
+      await visible(river.getByRole("region", { name: "Public match preview" }));
+      const detached = river.getByRole("button", { name: "Remove match", exact: true });
+      await detached.click();
+      assert.equal(await river.getByRole("textbox", { name: "Your post", exact: true }).inputValue(), discussion);
+      assert.equal(await river.getByRole("region", { name: "Public match preview" }).count(), 0);
+      await river.getByRole("button", { name: "Reattach match" }).click();
+      await visible(river.getByRole("region", { name: "Public match preview" }));
+      // Leave the restored draft open while checking the author's profile and room interests.
+      const accountPage = await mobile.newPage();
+      await load(accountPage, origin, "/?tab=following");
+      await (await visible(accountPage.getByRole("link", { name: "Choose room interests", exact: true }).first())).click();
+      await accountPage.waitForURL(url => url.pathname === "/rooms");
+      await accountPage.getByRole("searchbox", { name: "Find a room", exact: true }).fill("Nami");
+      await (await visible(accountPage.getByRole("link", { name: /Nami Mains/ }).first())).click();
+      await accountPage.waitForURL(url => url.pathname === "/rooms/champ-nami");
+      await submit(accountPage, await visible(accountPage.getByRole("button", { name: "Join room", exact: true })),
+        "/api/social/room-join", 200);
+      await accountPage.reload({ waitUntil: "domcontentloaded" });
+      await visible(accountPage.getByRole("button", { name: "Joined ✓", exact: true }));
+      await load(accountPage, origin, "/me");
+      await visible(accountPage.getByText(/Link a Riot ID|No Riot IDs linked|None linked yet/).first());
+      await accountPage.close();
     });
 
     await check("Publication requires consent and yields a stable public match discussion", async () => {
@@ -201,7 +222,11 @@ async function main() {
     });
 
     await check("An independent account finds the thread in the feed and matchup hub", async () => {
-      await account(desktop, origin, fixture.helperSession);
+      await lane.goto(origin + "/me");
+      await lane.waitForURL(url => url.pathname === "/signin");
+      assert.equal(new URL(lane.url()).searchParams.get("next"), "/me");
+      await confirmFixtureEmail(lane, fixture, "demo-lane@example.invalid");
+      assert.equal(new URL(lane.url()).pathname, "/me");
       await load(lane, origin, "/");
       await visible(lane.getByRole("article", { name: `Post by ${author}` }).getByText(discussion, { exact: true }));
       await load(lane, origin, "/questions?champion=Nami");
@@ -234,9 +259,23 @@ async function main() {
       assert.equal(await river.locator(`main a[href="${postPath}"]`).count(), 0, "Saving is private to Demo Lane");
       await load(lane, origin, postPath);
       assert.equal(await article.getByRole("button", { name: /^Like, 1 like$/ }).getAttribute("aria-pressed"), "true");
+      await desktop.clearCookies();
+      await load(lane, origin, postPath);
       await lane.getByLabel("Your reply", { exact: true }).fill(reply);
+      await lane.getByRole("button", { name: "Reference this match" }).click();
+      await visible(lane.getByRole("group", { name: "Referenced match" }));
+      await lane.getByRole("button", { name: "Remove match", exact: true }).click();
+      assert.equal(await lane.getByRole("group", { name: "Referenced match" }).count(), 0);
+      await lane.getByRole("button", { name: "Reference this match" }).click();
+      await lane.getByRole("button", { name: "Sign in to reply", exact: true }).click();
+      await lane.waitForURL(url => url.pathname === "/signin");
+      await confirmFixtureEmail(lane, fixture, "demo-lane@example.invalid");
+      assert.equal(new URL(lane.url()).pathname, postPath);
+      await lane.waitForFunction(text => document.querySelector('[aria-label="Your reply"]')?.value === text, reply);
+      await visible(lane.getByRole("group", { name: "Referenced match" }));
       const posted = await submit(lane, lane.locator("form").filter({ has: lane.getByLabel("Your reply", { exact: true }) })
         .getByRole("button", { name: "Reply", exact: true }), "/api/social/comments", 200);
+      assert.equal(posted.submitted.matchRef, matchId);
       replyPath = postPath + "#reply-" + posted.commentId;
       await visible(lane.getByText(reply, { exact: true }));
     });
@@ -250,6 +289,9 @@ async function main() {
       await river.waitForURL(url => url.pathname + url.hash === replyPath);
       await river.waitForFunction(hash => document.activeElement?.id === hash, replyPath.split("#")[1]);
       await visible(river.getByText(reply, { exact: true }));
+      const replyCard = river.locator("#" + replyPath.split("#")[1]).getByRole("group", { name: "Referenced match" });
+      const matchLink = await visible(replyCard.getByRole("link", { name: "View thread’s match" }));
+      assert.equal(new URL(await matchLink.getAttribute("href"), origin).hash, "#match-" + matchId);
       const profileLink = await visible(river.getByRole("link", { name: /^View (the )?match$/ }));
       await profileLink.click();
       await river.waitForURL(url => url.pathname === "/player" && url.hash === "#match-" + matchId);
@@ -283,8 +325,26 @@ async function main() {
       await visible(visitor.getByText(discussion, { exact: true }));
       await localPost(river, origin, "/api/social/withdraw", { kind: "post", id }, 200);
       await hiddenPost(visitor, origin, postPath);
+      await load(visitor, origin, "/");
+      assert.equal(await visitor.getByText(discussion, { exact: true }).count(), 0);
+      await load(visitor, origin, "/questions?champion=Nami");
+      assert.equal(await visitor.locator(`main a[href="${postPath}"]`).count(), 0);
       await load(river, origin, matchPath);
       assert.deepEqual(await matchRecord(river), firstRecord);
+    });
+
+    await check("Removing a match publishes only the author’s text", async () => {
+      await load(river, origin, previewPath);
+      const text = "I like to call the reset together so both laners can spend gold.";
+      await river.getByRole("textbox", { name: "Your question", exact: true }).fill(text);
+      await river.getByRole("button", { name: "Remove match", exact: true }).click();
+      const result = await submit(river, river.getByRole("button", { name: "Post", exact: true }), "/api/social/post", 200);
+      assert.equal(result.submitted.kind, "text");
+      assert.equal(result.submitted.data, undefined);
+      await river.waitForURL(url => url.pathname === "/post/" + result.postId);
+      assert.equal(await (await visible(river.locator("article .post-body"))).innerText(), text);
+      assert.equal(await river.getByRole("region", { name: "Public match" }).count(), 0);
+      assert.equal(await river.getByRole("button", { name: "Reference this match" }).count(), 0);
     });
 
     assert.deepEqual(clientErrors, []);

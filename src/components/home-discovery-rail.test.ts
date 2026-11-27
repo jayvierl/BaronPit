@@ -88,6 +88,14 @@ it("renders active conversations or reads champion activity for the same rail sl
   expect(trendingChampions).toHaveBeenCalledOnce();
 });
 
+it("links a readable preview to the thread when champion and item tags cross the excerpt limit", async () => {
+  const prose = " is hard to play. ".padEnd(69, "a");
+  const active = await renderRail([post(27, { body: `[[c:Jayce|Jayce]]${prose} [[i:3031|Infinity Edge]]` })], "everyone");
+  expect(active).toContain('href="/post/27"');
+  expect(active).toContain(`<strong>Jayce${prose} Infinity E…</strong>`);
+  expect(active).not.toMatch(/\[\[[ci]:/);
+});
+
 it("keeps champion activity usable when a room cannot be opened", async () => {
   vi.mocked(visibleChampionRoomSlugs).mockResolvedValueOnce([]);
   const html = await renderRail([], "everyone");
