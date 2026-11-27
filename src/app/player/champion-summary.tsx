@@ -8,16 +8,17 @@ const SUMMARY_COUNT = 5;
 
 /** Short champion summary for the desktop side column beside match history.
  * The full sortable table lives in the Champions section below. */
-export function ChampionSummary({ analytics, patch, partial, championsHref }: {
+export function ChampionSummary({ analytics, patch, partial, championsHref, className }: {
   analytics: PlayerAnalytics;
   patch: string;
   partial?: boolean;
   championsHref: string;
+  className?: string;
 }) {
   const champions = analytics.champions.slice(0, SUMMARY_COUNT);
   if (!champions.length) return null;
   return (
-    <aside className={styles.aside} aria-labelledby="champion-summary">
+    <aside className={className ? `${styles.aside} ${className}` : styles.aside} aria-labelledby="champion-summary">
       <h2 id="champion-summary" className={styles.heading}>Champion summary</h2>
       <p className={styles.meta}>
         {partial ? `${gameCount(analytics.sampleGames, "public")} available` : `Latest ${gameCount(analytics.sampleGames, "public")}`}

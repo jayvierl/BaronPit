@@ -32,6 +32,7 @@ import { safeReturnTo } from "@/lib/signin-return";
 import { validId } from "@/lib/ids";
 import { LinkPlayerButton, LookupForm } from "@/components/social-ui";
 import { PlayerStats } from "@/components/player-stats";
+import { PlayerRail } from "@/components/player-rail";
 import { RecentResults } from "@/components/player-overview";
 import { gameCount, earnedBadges } from "@/lib/pure";
 
@@ -182,7 +183,7 @@ export default async function PlayerPage({ searchParams }: {
   const duo = duoSynergy(insightWindow);
   const comparison = formComparison(matches);
   return (
-    <div className={profileStyles.profile}>
+    <div className={`player-page ${profileStyles.profile}`}>
       {user?.pilotActive && <PilotVisit kind="stats"/>}
       {discussionLink || searchLink || <Link className={styles.searchLink} href={searchHref("players", "", platform)}>Search for another player</Link>}
       <header className={profileStyles.header}>
@@ -206,7 +207,8 @@ export default async function PlayerPage({ searchParams }: {
         <RecentResults matches={history.matches} historyPath={formPath} partial={partial} />
       </div>
       <div className={profileStyles.layout}>
-      <section className={styles.history} aria-labelledby="match-history">
+      <PlayerRail analytics={analytics} partial={incompleteHistory} className={profileStyles.railCell} />
+      <section className={`${styles.history} ${profileStyles.historyCell}`} aria-labelledby="match-history">
         <div className={styles.historyHeader}>
           <h2 id="match-history" className={styles.heading}>Match history</h2>
           {history.sampleSize > 0 && <nav aria-label="Quick queue filters" className={styles.quickFilters}>
@@ -269,7 +271,7 @@ export default async function PlayerPage({ searchParams }: {
           <p>Remakes, early surrenders and games with insufficient evidence are unrated.</p>
         </details>}
       </section>
-      <ChampionSummary analytics={analytics} patch={patch} partial={incompleteHistory} championsHref={`${lookupHref}#player-champions`} />
+      <ChampionSummary analytics={analytics} patch={patch} partial={incompleteHistory} championsHref={`${lookupHref}#player-champions`} className={profileStyles.summaryCell} />
       </div>
 
       <details className={profileStyles.disclosure}>

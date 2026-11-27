@@ -1,0 +1,52 @@
+.panel { min-width: 0; margin-block-start: 1.2rem; }
+.panel + .panel { margin-block-start: 1.6rem; }
+.heading { margin: 0; letter-spacing: -.025em; font-size: 1.02rem; }
+.meta { margin: .35rem 0 .6rem; color: var(--ink-mid); font-size: .79rem; line-height: 1.45; }
+
+/* Recent activity: week columns of day cells, Monday first. Hue is the day's
+   result (violet win, gray loss, muted blend for mixed); depth is games. */
+.weeks { display: flex; gap: 3px; overflow-x: auto; padding-bottom: 2px; }
+.week { display: grid; grid-template-rows: 1rem repeat(7, 10px); gap: 3px; flex: none; }
+.month { font-size: .66rem; line-height: 1rem; color: var(--ink-soft); white-space: nowrap; }
+.cell { inline-size: 10px; block-size: 10px; border-radius: 2px; background: var(--field); }
+.cell[data-result="pad"] { background: transparent; }
+.cell[data-result="win"][data-level="1"] { background: color-mix(in srgb, var(--accent) 35%, var(--field)); }
+.cell[data-result="win"][data-level="2"] { background: color-mix(in srgb, var(--accent) 55%, var(--field)); }
+.cell[data-result="win"][data-level="3"] { background: color-mix(in srgb, var(--accent) 80%, var(--field)); }
+.cell[data-result="win"][data-level="4"] { background: var(--accent); }
+.cell[data-result="loss"][data-level="1"] { background: color-mix(in srgb, var(--ink) 20%, var(--field)); }
+.cell[data-result="loss"][data-level="2"] { background: color-mix(in srgb, var(--ink) 35%, var(--field)); }
+.cell[data-result="loss"][data-level="3"] { background: color-mix(in srgb, var(--ink) 50%, var(--field)); }
+.cell[data-result="loss"][data-level="4"] { background: color-mix(in srgb, var(--ink) 68%, var(--field)); }
+.cell[data-result="mixed"][data-level="1"] { background: color-mix(in srgb, var(--accent) 30%, var(--ink-soft)); }
+.cell[data-result="mixed"][data-level="2"] { background: color-mix(in srgb, var(--accent) 45%, var(--ink-soft)); }
+.cell[data-result="mixed"][data-level="3"] { background: color-mix(in srgb, var(--accent) 60%, var(--ink-soft)); }
+.cell[data-result="mixed"][data-level="4"] { background: color-mix(in srgb, var(--accent) 75%, var(--ink-soft)); }
+
+.legend { display: flex; flex-wrap: wrap; gap: .3rem .8rem; margin: .55rem 0 0; color: var(--ink-mid); font-size: .72rem; }
+.legend span { display: inline-flex; align-items: center; gap: .32rem; }
+.legend i { inline-size: 10px; block-size: 10px; border-radius: 2px; }
+.legend i[data-result="win"] { background: var(--accent); }
+.legend i[data-result="mixed"] { background: color-mix(in srgb, var(--accent) 75%, var(--ink-soft)); }
+.legend i[data-result="loss"] { background: color-mix(in srgb, var(--ink) 68%, var(--field)); }
+.legendNote { color: var(--ink-soft); }
+
+.totals { display: flex; flex-wrap: wrap; gap: .2rem 1rem; margin: .6rem 0 0; font-size: .85rem; }
+.totals strong { font-weight: 620; }
+
+/* Top roles: name + record on one line, split bar under it, scaled to the
+   most-played role (violet wins, quiet gray losses). */
+.roles { list-style: none; margin: .2rem 0 0; padding: 0; display: grid; gap: .8rem; }
+.roles li { display: grid; gap: .35rem; min-width: 0; }
+.roleLine { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; font-size: .85rem; }
+.roleName { font-weight: 620; min-width: 0; }
+.preferred {
+  margin-inline-start: .45rem; padding: .05rem .45rem; border: 1px solid var(--border);
+  border-radius: 99px; color: var(--accent-ink); font-size: .66rem; font-weight: 650;
+  letter-spacing: .03em; text-transform: uppercase; vertical-align: .1em; white-space: nowrap;
+}
+.roleRecord { color: var(--ink-mid); font-size: .78rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.track { display: flex; overflow: hidden; block-size: 7px; border-radius: 8px; background: var(--field); }
+.track i { display: block; }
+.wins { background: var(--accent); }
+.losses { background: var(--border-strong); }

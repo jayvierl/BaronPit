@@ -132,3 +132,27 @@ it("buckets only valid end timestamps by UTC hours and weekdays, leaving missing
   expect(sample.performance.latest.gameLength.count).toBe(3);
   expect(sample.performance.latest.killParticipation).toEqual({value:null,count:0});
 });
+
+it("builds a day calendar across the actual stored range, gaps included", () => {
+  const sample = buildPlayerAnalytics([
+    game(1, { playedAt: Date.parse("2026-11-26T15:14:00Z") }),
+    game(2, { playedAt: Date.parse("2026-11-26T18:55:00Z"), win: false }),
+    game(3, { playedAt: Date.parse("2026-11-24T00:03:00Z"), win: false, durationSec: 3600 }),
+    game(4, { playedAt: 0 }),
+  ], now);
+  expect(sample.calendar.start).toBe("2026-11-24");
+  expect(sample.calendar.end).toBe("2026-11-26");
+  expect(sample.calendar.days).toEqual([
+    { date: "2026-11-24", games: 1, wins: 0, losses: 1 },
+    { date: "2026-11-25", games: 0, wins: 0, losses: 0 },
+    { date: "2026-11-26", games: 2, wins: 1, losses: 1 },
+  ]);
+  expect(sample.calendar.totalGames).toBe(3);
+  // 30 + 30 minutes plus one 60-minute game = 2 hours over dated games.
+  expect(sample.calendar.totalHours).toBe(2);
+});
+
+it("leaves the calendar empty when no match carries a usable timestamp", () => {
+  const sample = buildPlayerAnalytics([game(1, { playedAt: 0 }), game(2, { playedAt: -5 })], now);
+  expect(sample.calendar).toEqual({ days: [], start: null, end: null, totalGames: 0, totalHours: 0 });
+});
