@@ -37,12 +37,12 @@ it("keeps champion splashes and actual member and post data", () => {
   expect(renderToStaticMarkup(createElement(RoomActivity, { name: "Off-Meta Lab", members: 0 }))).toContain("0 members · No posts yet");
 });
 
-it("gives item artwork an offline abbreviation and retains each named item link", () => {
+it("includes the visible offline abbreviation in the item link's accessible name", () => {
   const html = renderToStaticMarkup(createElement(ItemIcons, { ids:[1036], patch:"16.23.1",
     details:[{id:1036, name:"Long Sword", gold:350, effect:"10 Attack Damage"}],
   }));
   expect(html).toContain('href="/items/1036"');
-  expect(html).toContain('aria-label="Long Sword, 350 gold. View item details"');
+  expect(html).toContain('aria-label="Long Sword, 350 gold. View item details · LS"');
   expect(html).toContain("img/item/1036.png");
   expect(html).toContain(">LS</span>");
   expect(html).not.toContain("<img");
