@@ -42,9 +42,11 @@ export interface MatchSummary {
   teamKills?: number;
   /** Share of the team's kills in which the player participated, when known. */
   killParticipation?: number;
+  /** Baron Pit contribution placement among the ten in this ranked match. A unique first place is 10. */
+  performanceRating?: number;
   teams?: { allies: MatchParticipantSummary[]; opponents: MatchParticipantSummary[] };
-  /** This game has already been projected from Match-V5 with the rich fields. */
-  detailsVersion?: 1;
+  /** Version 2 also checked whether full source evidence supports a performance rating. */
+  detailsVersion?: 1 | 2;
 }
 
 type BaronData = { teamBaronKills?: unknown; baron?: unknown };

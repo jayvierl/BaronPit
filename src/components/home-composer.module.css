@@ -7,9 +7,9 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  min-height: 62px;
-  padding: 10px var(--post-row-inline, clamp(.75rem, 2.35vw, 1.2rem));
+  gap: 12px;
+  min-height: 66px;
+  padding: 12px var(--post-row-inline, 1rem);
   cursor: pointer;
   list-style: none;
 }
@@ -18,7 +18,7 @@
 .summary::marker { content: ""; }
 .summary:focus-visible { outline-offset: 0; border-radius: 8px; }
 .avatar { display: grid; }
-.prompt { min-width: 0; color: var(--ink-soft); font-size: .94rem; overflow-wrap: anywhere; }
+.prompt { min-width: 0; color: var(--ink-soft); font-size: 1rem; overflow-wrap: anywhere; }
 .summary:hover .prompt { color: var(--ink); }
 
 .guestAvatar {
@@ -42,8 +42,8 @@
   width: 32px;
   height: 32px;
   border-radius: 999px;
-  background: var(--ink);
-  color: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--ink);
 }
 
 .open { display: none; }

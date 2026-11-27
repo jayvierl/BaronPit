@@ -73,14 +73,18 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           <option value="">All regions</option>
           {PLATFORMS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
         </select>}
-        <button className="btn small" type="submit">Search</button>
+        <button className={styles.submit} type="submit" aria-label="Search" title="Search">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <circle cx="10.5" cy="10.5" r="6.8"/><path d="m16 16 4.7 4.7"/>
+          </svg>
+        </button>
       </div>
     </Form>
     <nav className={styles.scopes} aria-label="Search categories">
       {searchScopes.map(item => <Link key={item.id} href={searchHref(item.id, term, region, true)} scroll={false}
         prefetch={false} aria-current={scope === item.id ? "page" : undefined}>{item.label}</Link>)}
     </nav>
-    {playersOnly && <p className={styles.hint}>Search by name, or choose a region and enter a full Riot ID to open their League stats.</p>}
+    {playersOnly && !term && <p className={styles.hint}>For an exact lookup, choose a region and enter Name#Tag.</p>}
     {!term && (scope === "all" || scope === "league" || scope === "builds") && <nav className={styles.places} aria-label="Explore the community">
       <Link href="/champions">Champion hubs <span aria-hidden="true">→</span></Link>
       <Link href="/builds">Community builds <span aria-hidden="true">→</span></Link>
@@ -88,11 +92,6 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
       <Link href="/rooms">Browse rooms <span aria-hidden="true">→</span></Link>
       <Link href="/questions">Matchup Notebook <span aria-hidden="true">→</span></Link>
     </nav>}
-    {searched && (scope === "all" || scope === "posts") && !term.includes("#") && (
-      <p className={styles.hint}><Link className={styles.notebook} href={`/questions?${new URLSearchParams({ mode: "answered", q: term })}`}>
-        Search Matchup Notebook <span aria-hidden="true">→</span>
-      </Link></p>
-    )}
     {term && !searched && <p role="status" className={styles.hint}>Enter at least two characters.</p>}
     {wantsCatalog && !gameData && <p role="status" className="notice warn">The game catalog is temporarily unavailable.</p>}
     {wantsSocial && !results && <p className="notice warn" role="status">Search is temporarily unavailable. <Link href={withSearchReturn("/player", searchReturn)}>Look up a Riot ID</Link>.</p>}
@@ -126,6 +125,11 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
         {results.posts.map(p => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} viewerId={user?.id ?? null} viewerIdentity={viewerIdentity} fromSearch={searchReturn}/>)}
       </section>}
     </>}
+    {searched && (scope === "all" || scope === "posts") && !term.includes("#") && (
+      <p className={styles.hint}><Link className={styles.notebook} href={`/questions?${new URLSearchParams({ mode: "answered", q: term })}`}>
+        Search Matchup Notebook <span aria-hidden="true">→</span>
+      </Link></p>
+    )}
     {scope === "all" && <details key={searchReturn} className={styles.lookup} open={Boolean(term && (!results || (!term.startsWith("#") && term.includes("#"))))}>
       <summary>Look up a Riot ID</summary>
       <LookupForm initialRiotId={term.startsWith("#") ? "" : term} defaultPlatform={region} searchReturn={searchReturn}

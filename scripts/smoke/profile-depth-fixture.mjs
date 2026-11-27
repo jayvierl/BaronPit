@@ -22,6 +22,8 @@ function depthMatches(now) {
     const playedAt = now - (2 + index * 6) * hour;
     const durationSec = recent ? 1800 : 1920;
     const teammate = { champion: champion === "Ashe" ? "Sivir" : "Ashe", name: "Fixture Archer", tag: "NA1" };
+    // Keep an unrated legacy record beside rated, completed ranked matches.
+    const performanceRating = { 0: 10, 1: 7.5, 4: 6.5 }[index];
     return {
       matchId: depthMatchId(index), champion, role, queueId,
       win: recent ? index % 4 !== 3 : index % 2 === 0,
@@ -31,7 +33,7 @@ function depthMatches(now) {
       items: [3158, 3067, 3340], spellIds: [4, 12],
       runes: { keystone: 8005, primaryStyle: 8000, secondaryStyle: 8400 },
       championLevel: 14, teamKills: 20, killParticipation: recent ? 0.65 : 0.5,
-      teamBaronKills: index % 2, detailsVersion: 1,
+      teamBaronKills: index % 2, detailsVersion: performanceRating === undefined ? 1 : 2, performanceRating,
       teammates: [teammate],
       teams: {
         allies: [{ champion, isPlayer: true }, teammate,

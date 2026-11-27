@@ -10,40 +10,42 @@ import styles from "./rooms.module.css";
 
 export const dynamic = "force-dynamic";
 
-export default async function RoomsPage() {
-  const [user, patch] = await Promise.all([getCurrentUser(), currentPatch()]);
+export default async function RoomsPage({searchParams}: {searchParams: Promise<{q?: string; limit?: string}>}) {
+  const [user, patch, params] = await Promise.all([getCurrentUser(), currentPatch(), searchParams]);
   const asOf = new Date();
   const rooms = await listRooms(user?.id).catch(() => null);
   if (rooms === null) return <div className="empty"><h1>Rooms</h1><p>The room directory is temporarily unavailable. Please try again shortly.</p></div>;
+  const query = typeof params.q === "string" ? params.q.trim().slice(0, 80) : "";
+  const limit = typeof params.limit === "string" && /^\d{1,4}$/.test(params.limit)
+    ? Math.min(Number(params.limit), rooms.length) : 0;
   return (
     <div>
       <h1 className="page-title">Rooms</h1>
-      <p className="meta">Discuss a recent game, compare builds or <Link href="/questions">find a matchup question</Link>.</p>
-      <h2 className="section">Featured rooms</h2>
-      <div className="room-grid">
+      <section id="room-directory" className={styles.directory} tabIndex={-1} aria-label="Room directory">
+        <RoomDirectory key={JSON.stringify([query, limit])} rooms={rooms} patch={patch} signedIn={Boolean(user)} initialQuery={query} initialLimit={limit}/>
+      </section>
+      <h2 className={styles.heading}>Featured rooms</h2>
+      <div>
         {featuredRooms(rooms).map(room => (
-          <article key={room.id} className="card room-card">
-            <div className={styles.featuredRoom}>
+          <article key={room.id} className={styles.featuredRoom}>
               <RoomThumbnail slug={room.slug} asOf={asOf}/>
               <div className={styles.details}>
                 <h3><Link href={`/rooms/${room.slug}`}>{room.name}</Link></h3>
-                <p className="meta">{room.description}</p>
                 <RoomActivity name={room.name} members={room.members} latestPost={room.latestPost}/>
                 {room.host && <small className="meta">Hosted by <Link href={`/u/${room.host.id}`}>{room.host.name}</Link></small>}
               </div>
               {user && <JoinButton roomId={room.id} initial={room.joined}/>}
-            </div>
           </article>
         ))}
       </div>
-      <p><Link href="/pilot?from=community">Volunteer to answer player questions</Link></p>
-      <h2 id="room-directory" tabIndex={-1} className={`section ${styles.directoryAnchor}`}>Room directory</h2>
-      <p className="meta">Join rooms for champions and topics you like. Their posts appear in your Following feed.</p>
-      <p><Link prefetch={false} className="text-btn" href={user ? "/?tab=following" : signInHref("/rooms#room-directory")}>
-        {user ? "Open Following" : "Sign in to join rooms"}
-      </Link></p>
-      <RoomDirectory rooms={rooms} patch={patch} signedIn={Boolean(user)}/>
-      <p><Link href="/lfg">Find a duo</Link></p>
+      <nav className={styles.related} aria-label="More in the community">
+        <Link prefetch={false} href={user ? "/?tab=following" : signInHref("/rooms#room-directory")}>
+          {user ? "Open Following" : "Sign in to join rooms"}
+        </Link>
+        <Link href="/questions">Match questions</Link>
+        <Link href="/lfg">Find a duo</Link>
+        <Link href="/pilot?from=community">Volunteer to answer</Link>
+      </nav>
     </div>
   );
 }

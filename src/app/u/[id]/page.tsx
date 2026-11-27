@@ -14,7 +14,9 @@ import { currentPatch } from "@/lib/riot";
 import { feedByAuthor, followCounts, isFollowing, endorsementCounts, dailyHighlight, ENDORSE_KINDS } from "@/lib/social";
 import { earnedBadges } from "@/lib/pure";
 import { linkedPlayers as readLinkedPlayers, publicProfile } from "@/lib/player-insights";
-import { playerStatsHref } from "@/lib/platforms";
+import { isPlatform, playerStatsHref } from "@/lib/platforms";
+import { matchContextHref } from "@/lib/match-context";
+import { matchSectionId } from "@/lib/match-history";
 import { pageCursor } from "@/lib/discussion-library";
 import { decisionCursor } from "@/lib/decisions-input";
 import { profileMatchDiscussions } from "@/lib/decisions";
@@ -82,6 +84,11 @@ export default async function ProfilePage({ params, searchParams }: {
   if (profile.featured && player?.verified) badges.unshift("Hand of Baron · featured today");
   const highlight = activeTab === "posts" && player?.verified ? dailyHighlight(player, today) : null;
   const lookupHref = player && withSearchReturn(playerStatsHref(player.platform, `${player.gameName}#${player.tagLine}`), searchReturn);
+  const highlightHref = highlight && player && isPlatform(player.platform) && matchSectionId(highlight.matchId) ? withSearchReturn(
+    matchContextHref({ platform: player.platform, riotId: `${player.gameName}#${player.tagLine}`, matchId: highlight.matchId }),
+    searchReturn,
+  ) : null;
+  const visibleEndorsements = ENDORSE_KINDS.filter(k => endorsements[k.id] > 0);
   const isSelf = viewer?.id === userId;
 
   return (
@@ -97,7 +104,7 @@ export default async function ProfilePage({ params, searchParams }: {
             </div>
             {player && <p className={styles.riotId}>{player.gameName}#{player.tagLine}
               <span> · {player.verified ? "Verified Riot link" : "Unverified Riot link"}</span></p>}
-            {player?.verified && activeTab === "replies" && <Link href={statsHref} className={styles.identityRank} scroll={false}>
+            {player?.verified && <Link href={statsHref} className={styles.identityRank} scroll={false}>
               <RankBadge tier={placedRank(player).tier}>{socialRankLabel(player)}</RankBadge>
             </Link>}
             {!player && isSelf && activeTab === "replies" && <Link href="/me" className={styles.link}>Link a Riot ID</Link>}
@@ -121,22 +128,22 @@ export default async function ProfilePage({ params, searchParams }: {
           <ShareLink path={profilePath} kind="profile"/>
           {!isSelf && (viewer ? <UserSafetyMenu userId={userId}/> : <SafetyReport kind="user" targetId={userId}/>)}
         </div>
-        {badges.length > 0 && <div className={styles.badges}>
-          {badges.map(b => <span key={b} className="chip badge">{b}</span>)}
-        </div>}
-        {ENDORSE_KINDS.some(k => endorsements[k.id] > 0) && <div className={styles.endorsements}>
-          <span>Teammate endorsements · last 90 days</span>
-          {ENDORSE_KINDS.filter(k => endorsements[k.id] > 0).map(k => <span key={k.id} className="chip">{k.label} · {endorsements[k.id]}</span>)}
-        </div>}
-        {viewer && !isSelf && <details className={styles.endorse}>
-          <summary>Endorse a teammate</summary>
-          <EndorseRow userId={userId}/>
+        {(badges.length > 0 || visibleEndorsements.length > 0 || (viewer && !isSelf)) && <details className={styles.endorse}>
+          <summary>Teammate details</summary>
+          {badges.length > 0 && <ul className={styles.badges} aria-label="Earned badges">
+            {badges.map(b => <li key={b}>{b}</li>)}
+          </ul>}
+          {visibleEndorsements.length > 0 && <div className={styles.endorsements}>
+            <span>Endorsements · last 90 days</span>
+            {visibleEndorsements.map(k => <strong key={k.id}>{k.label} · {endorsements[k.id]}</strong>)}
+          </div>}
+          {viewer && !isSelf && <EndorseRow userId={userId}/>}
         </details>}
       </header>
-      <nav aria-label="Profile sections" className="tabs">
+      <nav aria-label="Profile sections" className={styles.tabs}>
         {([["posts","Posts"], ["replies","Replies"], ["discussions","Match discussions"], ["stats","Player stats"]] as const).map(([id,label]) =>
           <Link key={id} href={tabHref(id)}
-            prefetch={false} scroll={false} aria-current={activeTab === id ? "page" : undefined} className={activeTab === id ? "active" : ""}>{label}</Link>)}
+            prefetch={false} scroll={false} aria-current={activeTab === id ? "page" : undefined}>{label}</Link>)}
       </nav>
 
       {activeTab === "replies" && (
@@ -163,28 +170,24 @@ export default async function ProfilePage({ params, searchParams }: {
       )}
       {activeTab === "posts" && <>
         {player?.verified && lookupHref ? (
-          <PlayerOverview player={player} statsPath={statsHref} historyPath={lookupHref} />
+          <details className={styles.leagueForm}>
+            <summary>
+              <span>League form</span>
+              {player.snapshot.games > 0 && <small>{player.snapshot.wins}W · {player.snapshot.losses}L in {player.snapshot.games} recent public {player.snapshot.games === 1 ? "game" : "games"}</small>}
+            </summary>
+            <PlayerOverview player={player} statsPath={statsHref} historyPath={lookupHref} />
+          </details>
         ) : lookupHref && player ? (
           <p className={styles.lookupPrompt}><Link className={styles.link} href={lookupHref}>View stats for {player.gameName}#{player.tagLine} <span aria-hidden="true">→</span></Link></p>
         ) : (
           <p className={styles.lookupPrompt}>{isSelf ? null : <span>No Riot account linked · </span>}<Link className={styles.link} href={isSelf ? "/me" : withSearchReturn("/player", searchReturn)}>{isSelf ? "Link a Riot ID" : "Look up a player"}</Link></p>
         )}
-        {highlight && player && (
-          <div className="highlight-row">
-            <ChampionPortrait id={highlight.champion} patch={patch} size={46} compact />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, color: "var(--accent-ink)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                Today’s highlight
-              </div>
-              <div style={{ fontSize: 15 }}>
-                <strong>{highlight.champion}</strong> —{" "}
-                <span className={highlight.win ? "win" : "loss"}>{highlight.win ? "Victory" : "Defeat"}</span>{" "}
-                · <span className="kda">{highlight.kills} / {highlight.deaths} / {highlight.assists}</span>
-                <span className="meta"> · {highlight.cs} CS</span>
-              </div>
-              <div className="meta">Selected daily from recent games.</div>
-            </div>
-          </div>
+        {highlight && highlightHref && (
+          <Link className={styles.highlight} href={highlightHref} prefetch={false}>
+            <ChampionPortrait id={highlight.champion} patch={patch} size={38} compact />
+            <span><small>Today’s highlight</small><strong>{highlight.champion}</strong> · {highlight.win ? "Victory" : "Defeat"} · {highlight.kills}/{highlight.deaths}/{highlight.assists} <span className="sr-only">KDA</span></span>
+            <span aria-hidden="true">↗</span>
+          </Link>
         )}
 
         {posts === null ? (

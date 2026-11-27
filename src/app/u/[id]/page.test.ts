@@ -11,6 +11,7 @@ vi.mock("@/lib/player-insights", () => ({ publicProfile, linkedPlayers }));
 vi.mock("@/lib/social", () => ({
   feedByAuthor, ENDORSE_KINDS: [], followCounts: async () => ({ followers: 0, following: 0 }),
   endorsementCounts: async () => ({}),
+  dailyHighlight: (p: { snapshot: { matches: unknown[] } }) => p.snapshot.matches[0],
 }));
 vi.mock("@/lib/decisions", () => ({ profileMatchDiscussions }));
 
@@ -79,6 +80,17 @@ describe("profile tab queries", () => {
     await visit();
     expect(feedByAuthor).toHaveBeenCalledWith(42, null, 20);
     expect(profileMatchDiscussions).not.toHaveBeenCalled();
+  });
+  it("keeps detailed League form collapsed and opens the exact highlight from a verified profile", async () => {
+    const match = { matchId: "NA1_123", champion: "Nami", role: "UTILITY", queueId: 420,
+      win: true, kills: 1, deaths: 2, assists: 11, cs: 23 };
+    linkedPlayers.mockResolvedValue([{ ...player, verified: true, snapshot: { matches: [match], games: 1,
+      wins: 1, losses: 0, kda: 6, champPool: [{ champion: "Nami", games: 1, wins: 1, kda: 6 }], roles: { UTILITY: 1 } } }]);
+    const html = renderToStaticMarkup(await visit(undefined, undefined, "/search?q=Player"));
+    expect(html).toMatch(/<details(?![^>]*\bopen\b)[^>]*><summary><span>League form<\/span>/);
+    expect(html).toContain("1W · 0L in 1 recent public game");
+    expect(html).toContain("Today’s highlight");
+    expect(html).toContain('href="/player?platform=na1&amp;riotId=Player%23NA1&amp;match=NA1_123&amp;from=%2Fsearch%3Fq%3DPlayer#match-NA1_123"');
   });
   it("links an unverified community member’s published evidence without promoting their Riot claim", async () => {
     profileMatchDiscussions.mockResolvedValue({entries:[{postId:22,body:"How should I approach dragon?",topic:"Objective",
