@@ -144,3 +144,17 @@ X returned HTTP 403 to a direct signed-out request from the research environment
 | 10. Personalized For You | Let players opt into more posts about chosen roles and champions, show the reason for a recommendation, and preserve chronological Following. | [X timelines](https://help.x.com/en/using-x/x-timeline) |
 
 Pinned lists and duo reminders are the first two candidates for a pilot because both help two players get from a promising conversation to a second game together.
+
+## Engagement pack
+
+Post to the Pit is the shared composer action, and Safety Center uses US spelling throughout. Private duo pins now live on eligible community profiles and under Saved → Duos. An accepted, scheduled duo invitation in Activity or Duo Finder can export a ten-minute calendar reminder. Each participant chooses independently. Imported events are local copies.
+
+The five Muse additions use existing surfaces. All five featured rooms get art and visible activity. The main room changes to winter art in December UTC. The ward marks empty states, the daily objective, the Call and missing pages. The Daily Call opens a real poll in the general room, pins a link under Around the community and posts the previous vote result. A delayed or retried run cannot create duplicate polls. Win-streak chips use fresh, verified recent form. Tonight in the pit counts observed player results separately from distinct games and switches to a labeled seven-day sample below ten games that day. Match cards select a six-second victory or defeat loop from the server-stored result. Only the three newest matches on a player lookup get this treatment.
+
+The original suggested media was unavailable during implementation. The replacement artwork and video sources are documented in the [art notes](art/engagement-art.md). Riot snapshots continue to hold up to 20 recent matches per player.
+
+### Threads parity check
+
+The mobile captures place the public Threads feed alongside a seeded Baron Pit build in both themes. Seeded posts illustrate the layout. The first conversation begins at 170 px on a 390 × 844 phone. Five primary destinations remain. The duo controls sit beside existing player and invitation actions. The community summaries stay inside the existing disclosure. Room banners and video posters reserve their dimensions. Motion respects reduced-motion preferences and Data Saver.
+
+[Mobile comparison](engagement-parity.webp)

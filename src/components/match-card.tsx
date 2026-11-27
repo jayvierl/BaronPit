@@ -1,15 +1,18 @@
 import { MatchQuestionLinks } from "./match-question-links";
 import Image from "next/image";
 import { ItemIcons } from "./item-icons";
+import { GameCardArt } from "./game-card-art";
 import type { CardItem } from "@/lib/build-catalog";
+import { gameCardMotion } from "@/lib/game-card-motion";
 import type { MatchSummary } from "@/lib/pure";
 import { TeamBaronTag } from "./team-baron-tag";
 
 export function MatchCard({ data, patch, itemPatch=patch, itemDetails }: { data: Record<string, unknown>; patch: string; itemPatch?:string; itemDetails?:CardItem[] }) {
   const m = data.match as Pick<MatchSummary, "champion" | "win" | "kills" | "deaths" | "assists" | "cs" | "items" | "teamBaronKills" | "baron"> | undefined;
-  if (!m) return <p className="meta">Match details are unavailable for this shared game.</p>;
+  if (!m || typeof m.win !== "boolean") return <p className="meta">Match details are unavailable for this shared game.</p>;
   return (
     <div className={`match-card ${m.win ? "win" : "loss"}`}>
+      <GameCardArt motion={gameCardMotion(m.win)} />
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap:"wrap" }}>
         <Image
           unoptimized

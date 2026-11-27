@@ -1,6 +1,7 @@
 import { profilePhotoSchema } from "./profile-photo-schema";
 import { submissionSchema } from "./submission-schema";
 import { communityObjectiveSchema } from "./community-objective-schema";
+import { DAILY_CALL_LAUNCH_KEY, dailyCallSchema } from "./daily-call-schema";
 import { APP_NAME } from "./brand";
 import { PATCH_PUBLISHER } from "./patch-notes";
 import { spotlightSchema } from "./spotlight-schema";
@@ -28,7 +29,7 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 type Sql = NeonQueryFunction<false, false>;
 // Keep the deployed pre-generation bundle from replaying old DDL during a rolling release.
 const LEGACY_SCHEMA_REVISION = "baron-profile-avatar-20261126-1";
-const SCHEMA_GENERATION = 1;
+const SCHEMA_GENERATION = 2;
 let client: Sql | undefined;
 let ready: Promise<void> | undefined;
 
@@ -49,10 +50,30 @@ export async function getSql(): Promise<Sql> {
   return client;
 }
 
+function readSchemaGeneration(sql: Sql) {
+  return sql`SELECT g.value::bigint AS generation, EXISTS (
+    SELECT 1 FROM wp_meta WHERE key=${DAILY_CALL_LAUNCH_KEY}
+  ) AS daily_call_launched FROM wp_meta g WHERE g.key='schema_generation'`;
+}
+
+async function maybeSeedDailyCall(sql: Sql, generation: number, launched = false) {
+  if (SCHEMA_GENERATION !== 2 || generation !== 2 || launched || process.env.VERCEL_ENV !== "production") return;
+  try {
+    const { seedFirstDailyCall } = await import("./daily-call");
+    await seedFirstDailyCall(sql);
+  } catch {
+    console.warn("Daily Call launch publication did not finish. The scheduled job will retry.");
+  }
+}
+
 async function initialize(sql: Sql) {
   try {
-    const rows = await sql`SELECT value::bigint >= ${SCHEMA_GENERATION} AS current FROM wp_meta WHERE key='schema_generation'`;
-    if (rows[0]?.current === true) return;
+    const [schema] = await readSchemaGeneration(sql);
+    const generation = Number(schema?.generation);
+    if (generation >= SCHEMA_GENERATION) {
+      await maybeSeedDailyCall(sql, generation, schema.daily_call_launched === true);
+      return;
+    }
   } catch (error) {
     // An empty database has no metadata table. Other errors require a retry.
     if ((error as {code?: string}).code !== "42P01") throw error;
@@ -62,7 +83,13 @@ async function initialize(sql: Sql) {
   } catch (error) {
     // Another cold start finished while this request waited for the migration lock.
     if ((error as {code?: string}).code !== "BP001") throw error;
+    if (process.env.VERCEL_ENV === "production") {
+      const [schema] = await readSchemaGeneration(sql);
+      await maybeSeedDailyCall(sql, Number(schema?.generation), schema?.daily_call_launched === true);
+    }
+    return;
   }
+  await maybeSeedDailyCall(sql, SCHEMA_GENERATION);
 }
 
 export async function q(
@@ -137,6 +164,7 @@ export function schemaStatements(sql: Sql, checkAfterLock = false) {
     fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
     sql`CREATE INDEX IF NOT EXISTS wp_players_name_idx ON wp_players (lower(game_name), lower(tag_line), platform)`,
+    sql`CREATE INDEX IF NOT EXISTS wp_players_fetched_at_idx ON wp_players (fetched_at)`,
   // Account <-> Riot player links. verified stays false until RSO ships.
     sql`CREATE TABLE IF NOT EXISTS wp_links (
     user_id INT NOT NULL REFERENCES wp_users(id) ON DELETE CASCADE,
@@ -283,7 +311,14 @@ export function schemaStatements(sql: Sql, checkAfterLock = false) {
       WHERE email=${PATCH_PUBLISHER} AND safety_status='visible'
         AND (display_name,avatar_hue) IS DISTINCT FROM (${APP_NAME},265)`,
     ...duoSchema(sql),
-    ...[...ownershipSchema, ...decisionSchema, ...librarySchema, ...pilotSchema, ...duoExtraSchema, ...duoFitSchema, ...reviewHourSchema, ...communityObjectiveSchema, ...spotlightSchema].map(text => sql(text, [])),
+    sql`CREATE TABLE IF NOT EXISTS wp_duo_shortlist (
+      owner_id integer NOT NULL REFERENCES wp_users(id) ON DELETE CASCADE,
+      player_id integer NOT NULL REFERENCES wp_users(id) ON DELETE CASCADE,
+      pinned_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (owner_id, player_id), CHECK (owner_id <> player_id)
+    )`,
+    sql`CREATE INDEX IF NOT EXISTS wp_duo_shortlist_player_idx ON wp_duo_shortlist(player_id)`,
+    ...[...ownershipSchema, ...decisionSchema, ...librarySchema, ...pilotSchema, ...duoExtraSchema, ...duoFitSchema, ...reviewHourSchema, ...communityObjectiveSchema, ...spotlightSchema, ...dailyCallSchema].map(text => sql(text, [])),
     sql`CREATE TABLE IF NOT EXISTS wp_safety_page_delivery (receipt uuid PRIMARY KEY, opened_at timestamptz NOT NULL,
       attempts integer NOT NULL DEFAULT 0, next_attempt timestamptz NOT NULL DEFAULT now(), lease_id uuid, delivered_at timestamptz)`,
     ...profilePhotoSchema(sql),

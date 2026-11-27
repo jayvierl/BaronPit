@@ -1,5 +1,6 @@
 import { buildCatalog } from "./build-catalog";
 import { clipLink } from "./clip-link";
+import { gameCardMotion } from "./game-card-motion";
 import { hasBaronCallOptions } from "./poll";
 import { scoreContent } from "./moderation";
 import { teamBaronFields } from "./pure";
@@ -60,8 +61,8 @@ export async function preparePost(input: CreatePostInput): Promise<Draft | Probl
       if (typeof d.puuid !== "string" || d.puuid.length > 120 || typeof d.matchId !== "string" || d.matchId.length > 70) return invalid("Choose a recent match.");
       const player = await getCachedPlayer(d.puuid);
       const m = player?.snapshot.matches.find(match => match.matchId === d.matchId);
-      if (!player || !m) return invalid("That match is outside the player’s recent form.");
-      return {...base, data: {puuid: player.puuid, matchId: m.matchId, riotId: player.gameName + "#" + player.tagLine,
+      if (!player || !m || typeof m.win !== "boolean") return invalid("That match result is unavailable in the player’s recent form.");
+      return {...base, data: {puuid: player.puuid, matchId: m.matchId, riotId: player.gameName + "#" + player.tagLine, motion: gameCardMotion(m.win),
         match: {champion:m.champion, win:m.win, kills:m.kills, deaths:m.deaths, assists:m.assists, cs:m.cs, items:m.items, ...teamBaronFields(m)}}, fields:[body]};
     }
     case "clip": {

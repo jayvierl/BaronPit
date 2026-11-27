@@ -1,0 +1,11 @@
+.mascot { display: block; flex: none; object-fit: contain; }
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: .5rem;
+  padding: 1.5rem .75rem;
+  text-align: center;
+  color: var(--ink-mid);
+}
+.empty :is(h1, p) { margin: 0; overflow-wrap: anywhere; }
+.empty a { text-decoration: underline; text-underline-offset: .18em; }

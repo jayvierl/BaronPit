@@ -1,0 +1,50 @@
+.frame {
+  position: relative;
+  height: clamp(4.5rem, 14vw, 6rem);
+  margin-block-end: .65rem;
+  overflow: clip;
+  isolation: isolate;
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg));
+  border-radius: .5rem;
+}
+
+.still, .video, .playing {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 28%;
+}
+
+.frame[data-motion="defeat"] :is(.still, .video, .playing) { object-position: center 66%; }
+.video { visibility: hidden; }
+
+.control {
+  position: absolute;
+  inset-inline-end: 0;
+  inset-block-end: 0;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  place-items: center;
+  background: transparent;
+  color: white;
+  cursor: pointer;
+}
+
+.control svg {
+  box-sizing: content-box;
+  padding: .42rem;
+  background: rgb(16 12 22 / .84);
+  border: 1px solid rgb(255 255 255 / .38);
+  border-radius: 50%;
+}
+
+.control:focus-visible { outline-offset: -4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .playing, .control { display: none; }
+}

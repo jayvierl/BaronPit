@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChampionPortrait } from "@/components/champion-portrait";
@@ -9,12 +8,14 @@ import { PostCard } from "@/components/post-card";
 import { SafetyReport } from "@/components/safety-report";
 import { ShareLink } from "@/components/share-link";
 import { JoinButton } from "@/components/social-ui";
+import { RoomBanner } from "@/components/room-artwork";
+import { WardEmptyState } from "@/components/ward-mascot";
 import { getCurrentUser } from "@/lib/auth";
 import { publicAvatarIdentity } from "@/lib/author-identity";
 import { publicPatch } from "@/lib/patch-notes";
 import { playerStatsHref, PLATFORMS } from "@/lib/platforms";
 import { championRoomPulse } from "@/lib/player-insights";
-import { gameCount, splashUrl } from "@/lib/pure";
+import { gameCount } from "@/lib/pure";
 import { currentPatch, championList } from "@/lib/riot";
 import { readRoomFeed, roomFeedFromParam, roomFeedHref, roomFeeds } from "@/lib/room-feed";
 import { getRoom } from "@/lib/rooms";
@@ -43,14 +44,7 @@ export default async function RoomPage({ params, searchParams }: {
   return (
     <div>
       {user?.pilotActive && <PilotVisit kind="social"/>}
-      {room.championId ? (
-        <Image unoptimized width={1215} height={717} className={`room-banner ${styles.cover}`} src={splashUrl(room.championId)} alt="" />
-      ) : room.slug === "general" && (
-        <picture>
-          <source media="(max-width: 480px)" srcSet="/baron-room-480.webp 1x, /baron-room-960.webp 2x" />
-          <Image unoptimized width={960} height={536} className={`room-banner room-banner-pit ${styles.cover}`} src="/baron-room-960.webp" alt="" />
-        </picture>
-      )}
+      <RoomBanner slug={room.slug} championId={room.championId}/>
 
       <header className={styles.header}>
         <div className={styles.byline}>
@@ -77,7 +71,7 @@ export default async function RoomPage({ params, searchParams }: {
           {room.championId && <p className="meta">
             {champInfo && <>{champInfo.tags.join(" / ")} · </>}
             <Link href={`/questions?champion=${encodeURIComponent(room.championId)}`}>Browse {champInfo?.name || room.championId} questions</Link>
-            {" · "}<Link href="/rooms/patch-meta">Discuss patch {publicPatch(patch) || patch}</Link>
+            {" · "}<Link href="/rooms/patch-meta">Discuss patch {publicPatch(patch) ?? "notes"}</Link>
           </p>}
           {brief && <>
             <h2>{room.championId} room pulse</h2>
@@ -111,10 +105,9 @@ export default async function RoomPage({ params, searchParams }: {
           aria-current={key === view.key ? "page" : undefined}>{label}</Link>)}
       </nav>
       {posts === null ? <p className="empty" role="status">Room posts are temporarily unavailable. Refresh to try again.</p> : posts.length === 0
-        ? <div className={`empty ${styles.empty}`}>
-            {view.key === "all" ? <>No threads in this room yet.<br/><a href="#compose">Start the first thread</a></>
-              : <>No {view.label.toLowerCase()} in this room yet.<br/><Link href={roomFeedHref(room.slug, "all")} scroll={false}>See all threads</Link></>}
-          </div>
+        ? <WardEmptyState text={view.key === "all" ? "No threads in this room yet." : `No ${view.label.toLowerCase()} in this room yet.`}
+            action={view.key === "all" ? <a href="#compose">Start the first thread</a>
+              : <Link href={roomFeedHref(room.slug, "all")} scroll={false}>See all threads</Link>}/>
         : posts.map(p => <PostCard key={p.id} post={p} patch={patch} signedIn={Boolean(user)} viewerId={viewerId} viewerIdentity={viewerIdentity} />)}
     </div>
   );

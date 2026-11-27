@@ -1,8 +1,9 @@
 import { cache } from "react";
 import { APP_NAME } from "./brand";
-import { q, dbAvailable } from "./db";
+import { q, dbAvailable, queryRows } from "./db";
 import { championCatalog } from "./riot";
 import { validId } from "./ids";
+import { HIDDEN_AUTHORS, visiblePostForInteraction } from "./community-queries";
 
 export interface Room {
   id: number;
@@ -12,11 +13,12 @@ export interface Room {
   championId: string | null;
   description: string;
   members: number;
+  latestPost?: { id: number; createdAt: string };
   host: { id: number; name: string } | null;
 }
 /* ---------------------------------- rooms --------------------------------- */
 
-const featuredSlugs = ["new-players", "off-meta-lab", "patch-meta", "general"];
+const featuredSlugs = ["new-players", "off-meta-lab", "patch-meta", "general", "lfg-lobby"];
 export function featuredRooms<T extends Pick<Room, "slug">>(rooms: T[]): T[] {
   return featuredSlugs.flatMap(slug => rooms.filter(room => room.slug === slug));
 }
@@ -110,24 +112,34 @@ function roomFromRow(r: Record<string, unknown>) {
     members: Number(r.members),
     host: r.host_id == null ? null : { id: Number(r.host_id), name: String(r.host_name) },
     joined: r.joined === true,
+    ...(r.latest_post_id != null ? { latestPost: { id: Number(r.latest_post_id), createdAt: String(r.latest_post_at) } } : {}),
     raidUntil: r.raid_until && new Date(String(r.raid_until)).getTime() > Date.now() ? String(r.raid_until) : null,
   };
 }
 
 async function readRooms(userId: number | undefined, limit: number, slug: string | null, featuredOnly = false, nameContains: string | null = null) {
   await ensureRooms();
-  const rows = await q`SELECT r.*,h.id AS host_id,h.display_name AS host_name,count(m.user_id)::int AS members,
-    coalesce(bool_or(m.user_id=${userId ?? null}::int),false) AS joined FROM wp_rooms r
-    LEFT JOIN wp_room_members m ON m.room_id=r.id
-    LEFT JOIN wp_users h ON h.id=((${JSON.stringify(namedHosts())}::jsonb)->>r.slug)::int AND h.age_band='adult' AND h.safety_status='visible'
-      AND (h.banned_until IS NULL OR h.banned_until<=now())
-      AND NOT EXISTS (SELECT 1 FROM wp_blocks b WHERE
-        (b.blocked_id=h.id AND b.blocker_id=${userId ?? null}) OR (b.blocker_id=h.id AND b.blocked_id=${userId ?? null}))
-      AND NOT EXISTS (SELECT 1 FROM wp_mutes m WHERE m.muted_id=h.id AND m.muter_id=${userId ?? null})
-    WHERE r.safety_status='visible' AND (${slug}::text IS NULL OR r.slug=${slug})
-      AND (${nameContains}::text IS NULL OR strpos(lower(r.name), lower(${nameContains}::text)) > 0)
-      AND (NOT ${featuredOnly} OR r.slug=ANY(${featuredSlugs}::text[]))
-    GROUP BY r.id,h.id ORDER BY r.kind DESC,r.name LIMIT ${limit}`;
+  const includeActivity = slug === null && nameContains === null;
+  // Search keeps the text and member lookup only. Featured room rows also get their latest visible post.
+  const rows = await queryRows(`WITH ${HIDDEN_AUTHORS}, rooms AS (
+    SELECT r.* FROM wp_rooms r WHERE r.safety_status='visible' AND ($3::text IS NULL OR r.slug=$3)
+      AND ($4::text IS NULL OR strpos(lower(r.name),lower($4)) > 0)
+      AND (NOT $5::boolean OR r.slug=ANY($6::text[]))
+    ORDER BY r.kind DESC,r.name,r.id LIMIT $7
+  ) SELECT r.*,h.id AS host_id,h.display_name AS host_name,m.members,m.joined
+    ${includeActivity ? ",activity.id AS latest_post_id,activity.created_at AS latest_post_at" : ""}
+    FROM rooms r
+    LEFT JOIN wp_users h ON h.id=(($2::jsonb)->>r.slug)::int AND h.age_band='adult' AND h.id NOT IN (SELECT id FROM hidden)
+    CROSS JOIN LATERAL (
+      SELECT count(*) FILTER (WHERE m.user_id NOT IN (SELECT id FROM hidden))::int AS members,
+        coalesce(bool_or(m.user_id=$1::int),false) AS joined
+      FROM wp_room_members m WHERE m.room_id=r.id
+    ) m
+    ${includeActivity ? `LEFT JOIN LATERAL (
+      SELECT p.id,p.created_at FROM wp_posts p WHERE r.slug=ANY($6::text[]) AND p.room_id=r.id
+        AND ${visiblePostForInteraction} ORDER BY p.created_at DESC,p.id DESC LIMIT 1
+    ) activity ON TRUE` : ""}
+    ORDER BY r.kind DESC,r.name,r.id`, [userId ?? null, JSON.stringify(namedHosts()), slug, nameContains, featuredOnly, featuredSlugs, limit]);
   return rows.map(roomFromRow);
 }
 

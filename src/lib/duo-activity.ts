@@ -9,6 +9,7 @@ export interface DuoActivityItem {
   listingEnded: boolean;
   expiresAt: string;
   canCancel?: true;
+  reminderStart?: string;
 }
 
 export async function hasIncomingDuoRequest(userId: number): Promise<boolean> {
@@ -29,6 +30,7 @@ export async function privateDuoActivity(userId: number): Promise<DuoActivityIte
     duoActivityPairsCte +
       `
     SELECT p.id,p.sender_id<>$1 AS incoming,p.can_cancel,
+      CASE WHEN p.can_cancel AND p.session_start>now() THEN p.session_start END AS reminder_start,
       CASE WHEN p.status='pending' THEN coalesce(p.session_start,p.expires_at) ELSE p.expires_at END AS expires_at,
       p.cancelled_at IS NOT NULL OR (p.status='pending' AND coalesce(p.session_start,p.expires_at)<=now()) OR p.expires_at<=now() OR l.status='closed' AS listing_ended,
       CASE WHEN p.cancelled_at IS NOT NULL THEN 'cancelled'
@@ -45,6 +47,7 @@ export async function privateDuoActivity(userId: number): Promise<DuoActivityIte
     state: row.state as DuoActivityItem["state"],
     listingEnded: row.listing_ended === true,
     expiresAt: new Date(String(row.expires_at)).toISOString(),
+    ...(row.reminder_start ? { reminderStart: new Date(String(row.reminder_start)).toISOString() } : {}),
     ...(row.can_cancel === true ? { canCancel: true as const } : {}),
   }));
 }

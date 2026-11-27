@@ -1,3 +1,4 @@
+import { publicPatch } from "@/lib/patch-notes";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { currentPatch } from "@/lib/riot";
@@ -60,8 +61,8 @@ export default async function ComparePage({
         build, then adjust either side.
       </p>
       <p className="meta">
-        Shop costs and effects from Riot Data Dragon {catalog.patch}.
-        {catalog.patch !== patch && ` The latest catalog for ${patch} is unavailable.`}
+        Shop costs and effects from Riot for patch {publicPatch(catalog.patch) ?? "unavailable"}.
+        {catalog.patch !== patch && " The latest catalog is unavailable."}
       </p>
       {community === null && (
         <p className="notice">

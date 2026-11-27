@@ -1,0 +1,5 @@
+.featuredRoom { display: flex; align-items: center; gap: .7rem; }
+.details { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.details p { margin: .2rem 0 .25rem; }
+.details small { display: block; }
+.details small a:hover { text-decoration: underline; }

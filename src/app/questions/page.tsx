@@ -3,6 +3,7 @@ import { SafetyReport } from "@/components/safety-report";
 import { getCurrentUser } from "@/lib/auth";
 import { dbAvailable } from "@/lib/db";
 import { DecisionPreference } from "@/components/decision-preference";
+import { WardEmptyState } from "@/components/ward-mascot";
 import { signInHref } from "@/lib/signin-return";
 import { decisions, questionPreference, type DecisionFilter } from "@/lib/decisions";
 import { decisionRoles, decisionTopics, knownDecisionTopic, trialOutcomes } from "@/lib/decisions-input";
@@ -137,12 +138,8 @@ export default async function Questions({ searchParams }: { searchParams: Promis
       {mode === "mine" && !saved ? null : rows === null ? (
         <p role="status">Community questions are temporarily unavailable.</p>
       ) : rows.length === 0 ? (
-        <p>
-          {mode === "answered"
-            ? "No answered matchups here yet. A question joins this notebook when its author chooses a helpful reply."
-            : "No questions awaiting a helpful answer here."}{" "}
-          <Link href="/questions/new">Ask about a decision.</Link>
-        </p>
+        <WardEmptyState text={mode === "answered" ? "No answered matchups here yet." : "No questions awaiting a helpful answer here."}
+          action={<Link href="/questions/new">Ask about a decision</Link>}/>
       ) : (
         rows.slice(0, 20).map((d) => (
           <article key={d.postId} className={styles.entry}>

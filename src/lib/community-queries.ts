@@ -14,7 +14,12 @@ export const HIDDEN_AUTHORS = `hidden AS (
 // Older uploads were copied from public storage and never received private screening.
 export const visibleContentKind = "p.kind <> 'media' AND (p.kind <> 'clip' OR (p.clip_review_required IS TRUE AND p.status = 'visible'))";
 export const canDisplayPost = `p.withdrawn_at IS NULL AND ${visibleContentKind} AND p.author_id NOT IN (SELECT id FROM hidden)
-  AND (p.room_id IS NULL OR EXISTS (SELECT 1 FROM wp_rooms room WHERE room.id = p.room_id AND room.safety_status = 'visible'))`;
+  AND (p.room_id IS NULL OR EXISTS (SELECT 1 FROM wp_rooms room WHERE room.id = p.room_id AND room.safety_status = 'visible'))
+  AND (NOT (p.kind='text' AND p.data ? 'dailyCallPayoff') OR EXISTS (
+    SELECT 1 FROM wp_daily_calls d JOIN wp_posts ballot ON ballot.id=d.post_id
+    WHERE d.payoff_post_id=p.id AND ballot.status='visible' AND ballot.withdrawn_at IS NULL
+      AND ballot.author_id=p.author_id AND ballot.room_id=p.room_id
+  ))`;
 export const visiblePostForInteraction = `p.status = 'visible' AND ${canDisplayPost}`;
 
 const visibleComment = "c.status = 'visible' AND c.withdrawn_at IS NULL AND c.author_id NOT IN (SELECT id FROM hidden)";

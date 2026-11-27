@@ -18,8 +18,6 @@
   color: var(--ink-mid); text-decoration: none; font-size: .9rem; font-weight: 600; border-bottom: 2px solid transparent; }
 .roomTabs a:hover { color: var(--ink); }
 .roomTabs a[aria-current="page"] { border-color: var(--ink); color: var(--ink); }
-.empty a { display: inline-block; margin-top: .4rem; }
 @media (max-width: 600px) {
-  .cover:global(.room-banner) { height: 84px; margin: 0; border-radius: .65rem; }
   .byline h1 { font-size: 1.25rem; }
 }

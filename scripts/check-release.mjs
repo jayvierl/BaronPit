@@ -2,9 +2,10 @@
 import assert from "node:assert/strict";
 
 const origin = new URL(process.argv[2] || "https://baronpit.com").origin;
+const pitBanner = new Date().getUTCMonth() === 11 ? "baron-pit-winter-960.webp" : "baron-room-960.webp";
 const routes = [
   ["/", ["Feed selection", "Post to the Pit", 'aria-label="Discover"', "Find your duo", "Match questions", "Lobby rally clock", "community objective"]],
-  ["/rooms/general", ["The Baron Pit", "baron-room-960.webp"]],
+  ["/rooms/general", ["The Baron Pit", pitBanner]],
   ["/questions", ["Matchup notebook"]],
   ["/lfg", ["Find a duo", "Thanking a teammate after a game"]],
   ["/lfg/thanks", ["Thank your duo"]],

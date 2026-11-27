@@ -2,6 +2,7 @@ import { cache } from "react";
 import { q, queryRows } from "./db";
 import { HIDDEN_AUTHORS, BLOCKED_AUTHORS } from "./community-queries";
 import { playerFlair, readRankedEntries } from "./player-summary";
+import { currentWinStreak } from "./current-win-streak";
 import { playerFromRow, type Player } from "./riot";
 import { fnvHash } from "./pure";
 import { publicAvatar } from "./avatar";
@@ -28,8 +29,10 @@ export async function linkedPlayers(userId: number) {
   const rows = await linkedRows(userId, true);
   return rows.map(row => {
     const player = playerFromRow(row);
+    const verified = row.verified === true;
     return { ...player, primary: row.is_primary === true, verified: row.verified === true,
-      flair: row.verified === true ? playerFlair(player, row.main) : null };
+      flair: verified ? playerFlair(player, row.main) : null,
+      winStreak: verified ? currentWinStreak(row.snapshot, player.fetchedAt) : null };
   });
 }
 

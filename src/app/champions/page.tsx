@@ -1,3 +1,4 @@
+import { publicPatch } from "@/lib/patch-notes";
 import { ChampionDirectory } from "@/components/champion-directory";
 import { championCatalog } from "@/lib/riot";
 import { visibleChampionRoomSlugs } from "@/lib/rooms";
@@ -10,7 +11,7 @@ export default async function ChampionsPage() {
     <div>
       <h1 className="page-title">Champions</h1>
       <p className="meta">
-        {catalog.current ? "Current patch" : "Last available Data Dragon catalog"} {catalog.patch} ·{" "}
+        {catalog.current ? "Current patch" : "Last available Data Dragon catalog"} {publicPatch(catalog.patch) ?? "unavailable"} ·{" "}
         {catalog.list.length} champions.
       </p>
       <ChampionDirectory champions={catalog.list} patch={catalog.patch} roomSlugs={roomSlugs} />

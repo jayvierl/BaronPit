@@ -128,7 +128,7 @@ async function requestPage(initial, root, cache, cookie) {
     if (result.status !== 200 || result.html.includes("NEXT_HTTP_ERROR_FALLBACK;404")) {
       throw new Error(`HTTP ${result.html.includes("NEXT_HTTP_ERROR_FALLBACK;404") ? "200 with streamed 404" : result.status} at ${key}`);
     }
-    if (result.document?.heading === "This page is temporarily unavailable" || /NEXT_HTTP_ERROR_FALLBACK;5\d\d/.test(result.html)) {
+    if (result.document?.heading === "The pit is quiet here." || /NEXT_HTTP_ERROR_FALLBACK;5\d\d/.test(result.html)) {
       throw new Error(`page error boundary at ${key}`);
     }
     if (!result.document && !(current.pathname === "/review-hour/calendar" && result.type.includes("text/calendar"))) {

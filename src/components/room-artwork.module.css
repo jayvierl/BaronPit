@@ -1,0 +1,25 @@
+.banner {
+  display: block;
+  inline-size: 100%;
+  aspect-ratio: 10 / 3;
+  max-block-size: 175px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: .75rem;
+  background: #2c2141;
+}
+.banner img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 43%; }
+.champion { max-block-size: 132px; }
+.champion img { object-position: center 20%; }
+.thumbnail {
+  display: block;
+  width: 58px;
+  height: 42px;
+  flex: none;
+  object-fit: cover;
+  object-position: center 43%;
+  border: 1px solid var(--border);
+  border-radius: .5rem;
+  background: #2c2141;
+}
+@media (max-width: 600px) { .banner { max-block-size: 104px; } .champion { max-block-size: 84px; } }

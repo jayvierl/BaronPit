@@ -1,4 +1,5 @@
 "use client";
+import { publicPatch } from "@/lib/patch-notes";
 import { useId, useState } from "react";
 import Link from "next/link";
 import type { RuneChoice, ShopItem } from "@/lib/build-catalog";
@@ -188,7 +189,7 @@ function PathEditor({
       </label>
       <p>{path.rationale || "The author shared no rationale."}</p>
       {path.post && (
-        <Link href={`/post/${path.post}`}>Read the original build{path.patch ? ` · ${path.patch}` : ""}</Link>
+        <Link href={`/post/${path.post}`}>Read the original build{publicPatch(path.patch) ? ` · Patch ${publicPatch(path.patch)}` : ""}</Link>
       )}
       <p className={styles.cost}>
         <strong>{pathCost(path.items, catalog).toLocaleString("en-US")}g</strong> · {path.items.length}/6

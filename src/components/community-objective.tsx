@@ -2,6 +2,7 @@ import Link from "next/link";
 import { dbAvailable } from "@/lib/db";
 import { readCommunityObjective } from "@/lib/community-objective";
 import { signInHref } from "@/lib/signin-return";
+import { WardMascot } from "./ward-mascot";
 import styles from "./community-objective.module.css";
 
 export async function CommunityObjective({ viewerId }: { viewerId: number | null }) {
@@ -9,7 +10,10 @@ export async function CommunityObjective({ viewerId }: { viewerId: number | null
   const signInForBuild = viewerId === null && objective?.kind === "builds";
   return (
     <section className={styles.objective} aria-labelledby="community-objective-title">
-      <h2 id="community-objective-title">Today’s community objective</h2>
+      <div className={styles.heading}>
+        <WardMascot size={36} compact/>
+        <h2 id="community-objective-title">Today’s community objective</h2>
+      </div>
       {objective ? (
         <>
           <p><strong>{objective.label}</strong></p>

@@ -39,10 +39,15 @@ describe("public post payloads", () => {
     riot.championCatalog.mockResolvedValue({current:false,patch:"16.22.1",list:[{name:"Ashe",id:"Ashe"}]});
     expect((await preparePost({kind:"build",body:"Catalog expired",data:{champion:"Ashe",items:[3006]}})).ok).toBe(false);
   });
-  it("derives match cards from the snapshot without persisting extra fields",async()=>{
-    riot.getCachedPlayer.mockResolvedValue({gameName:"Example",tagLine:"NA1",puuid:"player",snapshot:{matches:[{matchId:"NA1_1",kills:3,champion:"Ashe",items:[],teamBaronKills:2}]}});
-    const result = await preparePost({kind:"card",body:"Last match",data:{puuid:"player",matchId:"NA1_1",match:{kills:100,teamBaronKills:99},extra:"private"}});
-    expect(result).toMatchObject({ok:true,data:{riotId:"Example#NA1",match:{kills:3,teamBaronKills:2}}});
+  it.each([[true, "victory", "defeat"], [false, "defeat", "victory"]] as const)(
+    "derives %s cards and motion from the snapshot without persisting client overrides", async (win, motion, supplied) => {
+    riot.getCachedPlayer.mockResolvedValue({gameName:"Example",tagLine:"NA1",puuid:"player",snapshot:{matches:[{matchId:"NA1_1",kills:3,champion:"Ashe",win,items:[],teamBaronKills:2}]}});
+    const result = await preparePost({kind:"card",body:"Last match",data:{puuid:"player",matchId:"NA1_1",motion:supplied,match:{win:!win,kills:100,teamBaronKills:99},extra:"private"}});
+    expect(result).toMatchObject({ok:true,data:{riotId:"Example#NA1",motion,match:{win,kills:3,teamBaronKills:2}}});
     if(result.ok) expect(result.data).not.toHaveProperty("extra");
+  });
+  it("does not assign motion to an incomplete match record", async () => {
+    riot.getCachedPlayer.mockResolvedValue({snapshot:{matches:[{matchId:"NA1_1",champion:"Ashe"}]}});
+    expect(await preparePost({kind:"card",body:"Last match",data:{puuid:"player",matchId:"NA1_1",motion:"victory"}})).toMatchObject({ok:false});
   });
 });

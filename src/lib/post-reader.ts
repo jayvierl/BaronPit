@@ -1,10 +1,12 @@
 import { buildCatalog, cardItems } from "./build-catalog";
 import { clipLink } from "./clip-link";
+import { gameCardMotion } from "./game-card-motion";
 import { hasBaronCallOptions } from "./poll";
 import { briefingText, PATCH_PUBLISHER, publicPatch, storedNotesUrl } from "./patch-notes";
 import { queryRows } from "./db";
 import { HIDDEN_AUTHORS, canDisplayPost, visibleCommentsFor } from "./community-queries";
-import { placedRank, playerFlair, readRankedEntries } from "./player-summary";
+import { placedRank, PLAYER_CACHE_TTL_MS, playerFlair, readRankedEntries } from "./player-summary";
+import { currentWinStreak } from "./current-win-streak";
 import { playerStatsHref } from "./platforms";
 import { publicAvatar } from "./avatar";
 import { teamBaronFields } from "./pure";
@@ -48,6 +50,7 @@ function publicPostData(kind: unknown, raw: unknown): Record<string, unknown> {
         ...(typeof d.matchId === "string" && d.matchId.length <= 70 ? { matchId: d.matchId } : {}),
         ...(typeof d.puuid === "string" && d.puuid.length <= 120 ? { puuid: d.puuid } : {}),
         riotId: typeof d.riotId === "string" ? d.riotId : null,
+        motion: gameCardMotion(m.win),
         match: { champion: m.champion, win: m.win, kills: m.kills, deaths: m.deaths, assists: m.assists, cs: m.cs, items: itemIds(m.items, 7), ...teamBaronFields(m) }};
     }
     case "clip": {
@@ -134,25 +137,35 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
             AND split_part(older.data->>'patch','.',1)=split_part(p.data->>'patch','.',1)
             AND split_part(older.data->>'patch','.',2)=split_part(p.data->>'patch','.',2))))
     ORDER BY sort_at DESC, p.id DESC LIMIT $10
+    ), flair AS MATERIALIZED (
+      SELECT authors.author_id, player.* FROM (SELECT DISTINCT author_id FROM chosen) authors
+      LEFT JOIN LATERAL (
+        SELECT jsonb_build_array(pl.rank_tier, pl.rank_div, pl.snapshot #> '{champPool,0,champion}', pl.snapshot->'rankedEntries', pl.fetched_at) AS label,
+          pl.platform, pl.game_name || '#' || pl.tag_line AS riot_id,
+          CASE WHEN pl.fetched_at > now() - (${PLAYER_CACHE_TTL_MS} * interval '1 millisecond') AND jsonb_typeof(pl.snapshot->'matches')='array' THEN (
+            SELECT jsonb_agg(jsonb_build_object('matchId', m->'matchId', 'playedAt', m->'playedAt', 'win', m->'win') ORDER BY pos)
+            FROM jsonb_array_elements(pl.snapshot->'matches') WITH ORDINALITY AS recent(m,pos) WHERE pos <= 20
+          ) END AS streak_matches
+        FROM wp_links l JOIN wp_players pl ON pl.puuid = l.puuid WHERE l.user_id = authors.author_id AND l.verified
+          AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.puuid = l.puuid AND other.verified AND other.user_id <> l.user_id)
+        ORDER BY l.is_primary DESC, l.created_at, l.puuid LIMIT 1
+      ) player ON TRUE
     )
     SELECT p.id, p.author_id, p.kind, p.room_id, p.answered_at, p.reply_id, ${postDataProjection} AS data, p.body, p.status, p.created_at,
+      ballot.closes_at, ballot.tally AS daily_tally, ballot.closes_at <= now() AS daily_closed, payoff.post_id AS payoff_for,
       p.sharer,p.shared_at,sh.display_name AS sharer_name,
       (p.status='visible' AND p.author_id IS DISTINCT FROM $1 AND ${repostableContent("$11")}) AS can_repost,
       EXISTS (SELECT 1 FROM wp_reposts r WHERE r.user_id=$1 AND r.post_id=p.id AND r.active) AS my_repost,
       u.email=$11 AS is_publisher, rm.champion_id AS room_champion,
       EXISTS (SELECT 1 FROM wp_decisions d WHERE d.post_id=p.id) AS is_question,
       u.display_name AS author_name, u.avatar_hue AS author_hue, u.avatar_ref, rm.slug AS room_slug, rm.name AS room_name,
-      flair.label, flair.platform, flair.riot_id
+      flair.label, flair.platform, flair.riot_id, flair.streak_matches
     FROM chosen p JOIN wp_users u ON u.id = p.author_id
     LEFT JOIN wp_users sh ON sh.id=p.sharer
     LEFT JOIN wp_rooms rm ON rm.id = p.room_id
-    LEFT JOIN LATERAL (
-      SELECT jsonb_build_array(pl.rank_tier, pl.rank_div, pl.snapshot #> '{champPool,0,champion}', pl.snapshot->'rankedEntries', pl.fetched_at) AS label,
-        pl.platform, pl.game_name || '#' || pl.tag_line AS riot_id
-      FROM wp_links l JOIN wp_players pl ON pl.puuid = l.puuid WHERE l.user_id = p.author_id AND l.verified
-        AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.puuid = l.puuid AND other.verified AND other.user_id <> l.user_id)
-      ORDER BY l.is_primary DESC, l.created_at, l.puuid LIMIT 1
-    ) flair ON TRUE
+    LEFT JOIN wp_daily_calls ballot ON ballot.post_id=p.id
+    LEFT JOIN wp_daily_calls payoff ON payoff.payoff_post_id=p.id
+    LEFT JOIN flair ON flair.author_id = p.author_id
     ORDER BY p.sort_at DESC, p.id DESC`,
     [viewerId, filter.roomId ?? null, filter.authorId ?? null, filter.postId ?? null,
       Boolean(filter.following), filter.builds ? "build" : filter.kind ?? null, filter.builds?.champion || null,
@@ -178,30 +191,40 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
     pollCounts.set(id, options);
     if (row.mine) myVotes.set(id, index);
   }
+  const streaks = new Map<number, number | null>();
+  const asOf = Date.now();
   return rows.map(r => {
     const id = Number(r.id), raw = record(r.data);
+    const authorId = Number(r.author_id);
     const version = r.is_publisher && r.kind === "text" && raw.briefing === true &&
       typeof raw.patch === "string" && publicPatch(raw.patch) ? raw.patch : null;
     const data = version
       ? { briefing: true, patch: version, notesUrl: storedNotesUrl(version, raw.notesUrl) }
       : publicPostData(r.kind, raw);
+    const dailyTally = Array.isArray(r.daily_tally) ? r.daily_tally.map(Number) : null;
     const flair = r.label as [string | null, string | null, unknown, unknown, string?] | null;
     const rankFields = flair && {rankTier:flair[0], rankDiv:flair[1], rankedEntries:readRankedEntries(flair[3]), fetchedAt:flair[4]};
+    if (!streaks.has(authorId)) streaks.set(authorId, flair?.[4] ? currentWinStreak({ matches: r.streak_matches }, flair[4], asOf) : null);
+    const authorWinStreak = streaks.get(authorId);
     return {
-      id, authorId: Number(r.author_id), authorName: String(r.author_name), authorHue: Number(r.author_hue),
+      id, authorId, authorName: String(r.author_name), authorHue: Number(r.author_hue),
       authorAvatar: publicAvatar(r.avatar_ref),
       isQuestion:r.is_question === true,
       canRepost: r.can_repost === true, myRepost: r.my_repost === true,
       ...(r.sharer != null ? {repostedBy: {id: Number(r.sharer), name: String(r.sharer_name), at: String(r.shared_at)}} : {}),
       authorFlair: flair && rankFields ? playerFlair(rankFields, flair[2]) : null,
+      ...(authorWinStreak ? { authorWinStreak } : {}),
       authorTier: rankFields ? placedRank(rankFields).tier : null,
       ...(flair && r.platform && r.riot_id ? {authorStatsHref:playerStatsHref(String(r.platform), String(r.riot_id))} : {}),
       ...(r.answered_at && r.reply_id ? { lastReplyAt: String(r.answered_at), lastReplyId: Number(r.reply_id) } : {}),
+      ...(r.closes_at ? { dailyCall: { closesAt: new Date(String(r.closes_at)).toISOString(),
+        closed: r.daily_closed === true || dailyTally !== null, finalized: dailyTally !== null } } : {}),
+      ...(r.payoff_for != null ? { dailyCallPayoffFor: Number(r.payoff_for) } : {}),
       ...(catalog && (r.kind === "card" || r.kind === "build") ? {itemPatch:catalog.patch,itemDetails:cardItems(catalog,r.kind === "card" ? record(data.match).items : data.items)} : {}),
       kind: String(r.kind), body: version ? briefingText(version, r.room_champion as string | null) : String(r.body), data, status: String(r.status), createdAt: String(r.created_at),
       roomId: r.room_id == null ? null : Number(r.room_id), roomSlug: r.room_slug as string | null, roomName: r.room_name as string | null,
       ...(groups.get(id) ?? { reactions: {}, myReactions: [] }), commentCount: commentCounts.get(id) ?? 0,
-      pollResults: r.kind === "poll" && Array.isArray(data?.options) ? data.options.map((_, i) => pollCounts.get(id)?.get(i) ?? 0) : null,
+      pollResults: dailyTally ?? (r.kind === "poll" && Array.isArray(data?.options) ? data.options.map((_, i) => pollCounts.get(id)?.get(i) ?? 0) : null),
       myVote: myVotes.get(id) ?? null,
     };
   });

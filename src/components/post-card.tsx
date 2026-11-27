@@ -1,7 +1,7 @@
 "use client";
 
 import { signInHref } from "@/lib/signin-return";
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { ItemIcons } from "./item-icons";
 import { useRouter } from "next/navigation";
@@ -20,10 +20,12 @@ import { CommentSection } from "./comment-section";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SafetyReport } from "./safety-report";
 import { RankBadge } from "./rank-badge";
+import { WinStreak } from "./win-streak";
 import { ThreadIcon } from "./thread-icon";
 import styles from "./thread.module.css";
 
 const reactionNames: Record<string, string> = { "🔥": "Fire", "❤️": "Like", "👏": "Applause", "🎯": "On target", "💜": "Purple heart", GG: "Good game" };
+const cutoffTime = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
 
 function closeDisclosure(event: KeyboardEvent<HTMLDetailsElement>) {
   if (event.key !== "Escape" || !event.currentTarget.open) return;
@@ -62,6 +64,17 @@ export function PostCard({
   const action = usePostAction();
   const [myVote, setMyVote] = useState(post.myVote);
   const [pollResults, setPollResults] = useState(post.pollResults);
+  const [elapsedCutoff, setElapsedCutoff] = useState<string | null>(null);
+  const callCutoff = post.dailyCall?.closesAt;
+  const callClosed = !!post.dailyCall && (post.dailyCall.closed || elapsedCutoff === callCutoff);
+  useEffect(() => {
+    if (!callCutoff || post.dailyCall?.closed) return;
+    const timer = window.setTimeout(() => {
+      setElapsedCutoff(callCutoff);
+      router.refresh();
+    }, Math.max(0, Date.parse(callCutoff) - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [callCutoff, post.dailyCall?.closed, router]);
   const [buildPatch, setBuildPatch] = useState<string | null>(
     typeof post.data.patch === "string" ? post.data.patch : null,
   );
@@ -84,7 +97,11 @@ export function PostCard({
       router.push(signInHref(threadHref));
       return;
     }
-    if (myVote === idx || !(await action.send("/api/social/vote", { postId: post.id, optionIdx: idx }))) return;
+    if (callClosed || myVote === idx) return;
+    if (!(await action.send("/api/social/vote", { postId: post.id, optionIdx: idx }))) {
+      if (callCutoff) router.refresh();
+      return;
+    }
     setPollResults(
       (counts) => counts?.map((n, i) => Math.max(0, n + Number(i === idx) - Number(i === myVote))) ?? null,
     );
@@ -98,14 +115,15 @@ export function PostCard({
   const likeCount = reactions["❤️"] ?? 0;
   const replyCount = post.commentCount + addedReplies;
   const otherReactionCount = REACTION_EMOJIS.reduce((n, emoji) => emoji === "❤️" ? n : n + (reactions[emoji] ?? 0), 0);
-  const pollTotal = pollResults?.reduce((a, b) => a + b, 0) ?? 0;
+  const shownResults = post.dailyCall?.closed ? post.pollResults : pollResults;
+  const pollTotal = shownResults?.reduce((a, b) => a + b, 0) ?? 0;
 
   if (withdrawn) return <p role="status">You withdrew this post. <a href="/me#submissions">View my submissions</a></p>;
   return (
     <article className={`thread-post ${styles.post}${threadPage ? ` ${styles.detailPost}` : ""}`} aria-label={`Post by ${post.authorName}`}>
       <div className="thread-rail">
         <AvatarProfileLink userId={post.authorId} className={styles.avatarLink}
-          name={post.authorName} hue={post.authorHue} avatar={post.authorAvatar} size={44} />
+          name={post.authorName} hue={post.authorHue} avatar={post.authorAvatar} size={44} mascot={post.dailyCallPayoffFor != null} />
         {showComments && <span className="line" aria-hidden="true" />}
       </div>
       <div className="thread-main">
@@ -118,6 +136,7 @@ export function PostCard({
             <Link className="post-author" href={`/u/${post.authorId}`}>
               {post.authorName}
             </Link>
+            <WinStreak wins={post.authorWinStreak}/>
             {post.roomName && post.roomSlug && <span className={styles.topic}>
               <span aria-hidden="true">›</span> <Link href={`/rooms/${post.roomSlug}`}>{post.roomName}</Link>
             </span>}
@@ -147,6 +166,9 @@ export function PostCard({
           </div>
         )}
         {post.body && <RichBody body={post.body} threadHref={threadPage ? undefined : threadHref} threadLinkClassName={styles.bodyLink}/>}
+        {post.dailyCallPayoffFor && <p className={styles.discussionLinks}>
+          <Link href={`/post/${post.dailyCallPayoffFor}`} prefetch={false}>Read the original Daily Call</Link>
+        </p>}
         {post.kind === "build" && (
           <div className={styles.buildAttachment}>
             <div className={styles.attachmentHeading}>
@@ -154,7 +176,7 @@ export function PostCard({
               <div>
                 <strong>{String(d.champion ?? "")} build</strong>
                 <div className="meta">
-                  Patch {buildPatch ?? patch}
+                  Patch {publicPatch(buildPatch ?? patch) ?? "unavailable"}
                   {d.offMeta ? (
                     <>
                       {" "}
@@ -166,7 +188,7 @@ export function PostCard({
                       {" "}
                       ·{" "}
                       <span className="stale-tag">
-                        Outdated — unconfirmed for patch {patch.split(".").slice(0, 2).join(".")}
+                        Outdated — unconfirmed for patch {publicPatch(patch) ?? "unavailable"}
                       </span>
                       {visible && viewerId != null && viewerId === post.authorId && (
                         <button
@@ -205,11 +227,19 @@ export function PostCard({
 
         {post.kind === "poll" && Array.isArray(d.options) && (
           <div>
-            {d.call === true && <p className="chip badge">Make the Call</p>}
+            {callCutoff ? <p className={styles.callStatus}><strong>Daily Call</strong>{" · "}{callClosed
+              ? post.dailyCall?.finalized ? "Final tally" : "Voting closed. Tally pending."
+              : <>Vote until <time dateTime={callCutoff}>{cutoffTime.format(new Date(callCutoff))}</time></>}</p>
+              : d.call === true && <p className="chip badge">Make the Call</p>}
             {(d.options as string[]).map((opt, i) => {
-              const n = pollResults?.[i] ?? 0;
+              const n = shownResults?.[i] ?? 0;
               const pct = pollTotal ? Math.round((n / pollTotal) * 100) : 0;
               if (!visible) return <p key={i} className="meta">{opt}</p>;
+              const outcome = <>
+                <span className="poll-fill" style={{ width: `${pct}%` }} />
+                <span>{opt}{myVote === i ? " ✓" : ""} — {n} vote{n === 1 ? "" : "s"} ({pct}%)</span>
+              </>;
+              if (callClosed) return <div key={i} className={`poll-option ${styles.closedOption}`}>{outcome}</div>;
               return (
                 <button
                   key={i}
@@ -219,11 +249,7 @@ export function PostCard({
                   className="poll-option"
                   onClick={() => vote(i)}
                 >
-                  <span className="poll-fill" style={{ width: `${pct}%` }} />
-                  <span>
-                    {opt}
-                    {myVote === i ? " ✓" : ""} — {n} vote{n === 1 ? "" : "s"} ({pct}%)
-                  </span>
+                  {outcome}
                 </button>
               );
             })}

@@ -13,6 +13,7 @@ import { visibleChampionRoomSlugs } from "@/lib/rooms";
 import { ChampionPortrait } from "./champion-portrait";
 import { HomePlayerSuggestions } from "./home-player-suggestions";
 import { JoinButton } from "./social-ui";
+import { RoomActivity, RoomThumbnail } from "./room-artwork";
 import styles from "./home-discovery-rail.module.css";
 
 type Props = {
@@ -53,7 +54,7 @@ export function HomeDiscoveryRail({ posts, activeTab, asOf, roomsRead, patch, vi
       </section>
 
       <Suspense fallback={null}><HomePlayerSuggestions viewerId={viewerId} /></Suspense>
-      <Suspense fallback={null}><FeaturedRooms roomsRead={roomsRead} patch={patch} viewerId={viewerId} /></Suspense>
+      <Suspense fallback={null}><FeaturedRooms roomsRead={roomsRead} asOf={asOf} viewerId={viewerId} /></Suspense>
     </aside>
   );
 }
@@ -110,19 +111,20 @@ async function ChampionActivity({ patch }: Pick<Props, "patch">) {
   );
 }
 
-async function FeaturedRooms({ roomsRead, patch, viewerId }: Pick<Props, "roomsRead" | "patch" | "viewerId">) {
+async function FeaturedRooms({ roomsRead, asOf, viewerId }: Pick<Props, "roomsRead" | "asOf" | "viewerId">) {
   const rooms = await roomsRead;
+  const date = new Date(asOf);
 
   return (
     <section className={styles.section} aria-labelledby="discovery-rooms-title">
       <h2 id="discovery-rooms-title">Featured rooms</h2>
       {rooms.length > 0 && <ul className={styles.list}>
         {rooms.map(room => <li className={styles.room} key={room.id}>
-          {room.championId && <ChampionPortrait compact id={room.championId} patch={patch} size={28} />}
+          <RoomThumbnail slug={room.slug} asOf={date}/>
           <div className={styles.identity}>
             <Link href={`/rooms/${room.slug}`} className={styles.roomLink} prefetch={false}>{room.name}</Link>
-            <small>{room.host ? <>Hosted by <Link href={`/u/${room.host.id}`} prefetch={false}>{room.host.name}</Link></>
-              : `${number.format(room.members)} ${room.members === 1 ? "member" : "members"}`}</small>
+            <RoomActivity name={room.name} members={room.members} latestPost={room.latestPost}/>
+            {room.host && <small>Hosted by <Link href={`/u/${room.host.id}`} prefetch={false}>{room.host.name}</Link></small>}
           </div>
           {viewerId !== null && <JoinButton roomId={room.id} initial={room.joined} />}
         </li>)}

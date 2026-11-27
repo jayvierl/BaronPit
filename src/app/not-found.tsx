@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { WardEmptyState } from "@/components/ward-mascot";
 
 export default function MissingPage() {
-  return <section className="card" data-page-unavailable><h1 className="page-title">This page is unavailable</h1>
-    <p>It may have moved, been removed, or be private to another player.</p>
-    <Link href="/search">Search the community</Link></section>;
+  return <section data-page-unavailable>
+    <WardEmptyState page text="The pit is quiet here." action={<Link href="/">Return home</Link>}/>
+  </section>;
 }

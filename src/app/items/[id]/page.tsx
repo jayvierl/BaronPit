@@ -1,3 +1,4 @@
+import { publicPatch } from "@/lib/patch-notes";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -22,7 +23,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
           alt=""
         />
         <p>
-          <strong>{item.gold.toLocaleString("en-US")} gold</strong> · Data Dragon {catalog.patch}
+          <strong>{item.gold.toLocaleString("en-US")} gold</strong> · Patch {publicPatch(catalog.patch) ?? "unavailable"}
         </p>
         <p style={{ whiteSpace: "pre-line" }}>
           {item.effect || "Riot lists no effect text for this item on this patch."}

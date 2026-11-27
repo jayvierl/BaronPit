@@ -106,20 +106,32 @@ export async function getPost(postId: number, viewer: User | null): Promise<Post
   return post ?? null;
 }
 
-export async function votePoll(user: User, postId: number, optionIdx: number): Promise<boolean> {
-  if (!validId(postId) || !Number.isInteger(optionIdx) || optionIdx < 0 || optionIdx > 3) return false;
-  const rows = await queryRows(`WITH ${HIDDEN_AUTHORS}
-    INSERT INTO wp_poll_votes (post_id, user_id, option_idx)
-    SELECT p.id, $1, $3::int FROM wp_posts p WHERE p.id = $2 AND p.kind = 'poll' AND ${visiblePostForInteraction}
+export async function castPollVote(user: User, postId: number, optionIdx: number): Promise<"recorded" | "closed" | "unavailable"> {
+  if (!validId(postId) || !Number.isInteger(optionIdx) || optionIdx < 0 || optionIdx > 3) return "unavailable";
+  const rows = await queryRows(`WITH ${HIDDEN_AUTHORS}, eligible AS MATERIALIZED (
+    SELECT p.id,d.opens_at,d.closes_at,d.tally FROM wp_posts p LEFT JOIN wp_daily_calls d ON d.post_id=p.id
+    WHERE p.id = $2 AND p.kind = 'poll' AND ${visiblePostForInteraction}
       AND CASE WHEN jsonb_typeof(p.data->'options') = 'array' THEN
         jsonb_array_length(p.data->'options') BETWEEN 2 AND 4
         AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(p.data->'options') v(option)
           WHERE jsonb_typeof(v.option) <> 'string' OR length(v.option #>> '{}') NOT BETWEEN 1 AND 60)
         AND $3 < jsonb_array_length(p.data->'options')
         ELSE FALSE END
-    ON CONFLICT (post_id, user_id) DO UPDATE SET option_idx = EXCLUDED.option_idx RETURNING post_id`,
+  ), recorded AS (
+    INSERT INTO wp_poll_votes (post_id, user_id, option_idx)
+    SELECT id,$1,$3::int FROM eligible WHERE closes_at IS NULL
+      OR (tally IS NULL AND opens_at<=clock_timestamp() AND closes_at>clock_timestamp())
+    ON CONFLICT (post_id, user_id) DO UPDATE SET option_idx = EXCLUDED.option_idx RETURNING post_id
+  ) SELECT CASE WHEN EXISTS (SELECT 1 FROM recorded) THEN 'recorded'
+    WHEN EXISTS (SELECT 1 FROM eligible WHERE tally IS NOT NULL OR closes_at<=clock_timestamp()) THEN 'closed'
+    ELSE 'unavailable' END AS result`,
   [user.id, postId, optionIdx]);
-  return rows.length > 0;
+  const result = rows[0]?.result;
+  return result === "recorded" || result === "closed" ? result : "unavailable";
+}
+
+export async function votePoll(user: User, postId: number, optionIdx: number): Promise<boolean> {
+  return await castPollVote(user, postId, optionIdx) === "recorded";
 }
 
 /* --------------------------------- comments -------------------------------- */
@@ -212,6 +224,8 @@ export async function setBlock(userId: number, otherId: number, block: boolean):
   // End any legacy connections before removing a block. A no-op unblock must leave connections alone.
   const closeConnections = [
     sql`DELETE FROM wp_follows WHERE ((follower_id=${userId} AND followee_id=${otherId}) OR (follower_id=${otherId} AND followee_id=${userId}))
+      AND EXISTS (SELECT 1 FROM wp_blocks WHERE blocker_id=${userId} AND blocked_id=${otherId})`,
+    sql`DELETE FROM wp_duo_shortlist WHERE (owner_id,player_id) IN ((${userId},${otherId}),(${otherId},${userId}))
       AND EXISTS (SELECT 1 FROM wp_blocks WHERE blocker_id=${userId} AND blocked_id=${otherId})`,
     sql`UPDATE wp_duo_requests r SET status='declined' FROM wp_lfg l WHERE l.id=r.listing_id AND r.status IN ('pending','accepted','held','removed')
       AND ((r.sender_id=${userId} AND l.user_id=${otherId}) OR (r.sender_id=${otherId} AND l.user_id=${userId}))

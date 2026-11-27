@@ -102,6 +102,8 @@
 .runes { color: var(--ink-mid); font-size: .82rem; overflow-wrap: anywhere; }
 .discussionLinks { display:flex; flex-wrap:wrap; gap:.28rem .8rem; margin:.35rem 0; font-size:.82rem; }
 .discussionLinks a { color:var(--ink-mid); }
+.callStatus { color:var(--ink-soft); font-size:.82rem; margin:.35rem 0 .2rem; }
+.closedOption:global(.poll-option) { cursor:default; }
 .clip { display:flex; gap:.7rem; align-items:center; min-height:48px; width:fit-content; max-width:100%;
   margin:.5rem 0; padding:.3rem .65rem; border:1px solid var(--border); border-radius:.65rem; color:var(--ink); font-weight:580; }
 .clip .play { display:grid; width:30px; height:30px; flex-shrink:0; place-items:center; border-radius:50%;
