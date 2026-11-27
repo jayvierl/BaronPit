@@ -37,6 +37,10 @@ Enabling native quotes changed the database planner’s estimate for the newest 
 
 These are ten warm samples on shared local hardware and an in-memory PostgreSQL fixture. They time application database readers. End-user latency on Neon and Vercel includes different network, compute and rendering costs. The fixture returned the same 30-post page shape using four queries, had zero duplicate post IDs across pages, and made zero outbound vendor calls. To inspect the query plan, run `CAPACITY_PLAN=feed npx vitest run --config scripts/capacity/vitest.config.ts`. [Harness and data distribution](../match-discussion/capacity.md)
 
+## Verified candidate
+
+The optimized candidate passed 419 tests in 88 Vitest files, production build and art checks, TypeScript, ESLint, 237 built-app HTTP journeys and 16 Chromium journeys. Both the original two-account match workflow and the new champion/item/build workflow ran against fresh, isolated fixture databases. Independent checks covered 28 narrow-screen views in light and dark themes with zero detected WCAG-tagged axe failures or horizontal overflow. Separate JavaScript-disabled checks verified readable names, real local artwork and working links when the Riot CDN was unreachable. [Browser screenshots](demo.md) · [Independent checks and limits](review.md)
+
 ## Review and rollout
 
 1. Reproduce the optimized app with the local isolated PostgreSQL fixture. Run type checking, Vitest, lint, the production build, built-app HTTP smoke and the browser walkthrough. The reference player, email sessions and published content in the walkthrough are synthetic. [Walkthrough and screenshots](demo.md) · [CHECKER findings](review.md) · [CHALLENGER findings](challenger.md)
