@@ -47,6 +47,21 @@ describe("private discussion library", () => {
     expect((await savedPlaybook(3, null)).entries).toEqual([]);
     expect(await changeLibrary(1, "post", 11, "save", true)).toBe(false);
   });
+  it("decodes complete item and player tags before truncating saved, activity and shared previews", async () => {
+    const prefix = "x".repeat(200) + " ";
+    const tagged = prefix + "[[i:1058|Needlessly Large Rod]] with [[p:na1.1234567890abcdef1234567890abcdef|@Fixture Support#WAVE]]";
+    await q`UPDATE wp_posts SET body=${tagged} WHERE id=10`;
+    await changeLibrary(1, "post", 10, "save", true);
+    await changeLibrary(1, "post", 10, "watch", true);
+    await q`INSERT INTO wp_comments(id,post_id,author_id,body) VALUES(24,10,3,${tagged})`;
+    const visible = (prefix + "Needlessly Large Rod").slice(0, 220);
+    expect((await savedPlaybook(1, null)).entries[0].excerpt).toBe(visible);
+    expect((await watchedDiscussions(1, null)).entries[0].excerpt).toBe(visible);
+    expect((await replyActivity(1, null)).entries[0].excerpt).toBe(visible);
+    await q`UPDATE wp_posts SET body='Review [[i:1058|Needlessly Large Rod]] with [[p:na1.1234567890abcdef1234567890abcdef|@Fixture Support#WAVE]] tonight.' WHERE id=10`;
+    expect((await discussionMetadata("10")).description).toBe("Review Needlessly Large Rod with tonight.");
+    expect((await savedPlaybook(1, null)).entries[0].excerpt).toContain("@Fixture Support#WAVE");
+  });
   it("tracks only new visible replies from other players and lets the recipient mark them read", async () => {
     await changeLibrary(1, "post", 10, "watch", true);
     expect((await replyActivity(1, null)).entries).toEqual([]);

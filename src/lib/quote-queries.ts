@@ -14,7 +14,7 @@ export async function quoteSourceRoom(viewerId: number, postId: number) {
 /** The original text is read under the current viewer's audience on every render. */
 export const quoteProjectionJoin = `LEFT JOIN wp_quote_posts quoted ON quoted.post_id=p.id
   LEFT JOIN LATERAL (
-    SELECT original.id,original.author_id,author.display_name,left(original.body,180) AS excerpt,room.name AS room_name
+    SELECT original.id,original.author_id,author.display_name,original.body AS excerpt,room.name AS room_name
     FROM (
       SELECT p.id,p.author_id,p.body,p.room_id FROM wp_posts p WHERE p.id=quoted.original_post_id
         AND p.author_id=quoted.original_author_id AND ${quoteSourceVisible("$11")}

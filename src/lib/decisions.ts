@@ -1,3 +1,4 @@
+import { plainBodyText } from "./game-tags";
 import { priorSubmission, submissionHash, validSubmissionId } from "./submissions";
 import { HIDDEN_AUTHORS, visiblePostForInteraction } from "./community-queries";
 import { publicPatch } from "./patch-notes";
@@ -26,7 +27,7 @@ export async function askDecision(user: User, input: Record<string, unknown>) {
   const selectedRole = decisionRoles.find(r => r === input.role);
   if (
     typeof input.body !== "string" ||
-    input.body.trim().length < 10 ||
+    plainBodyText(input.body).trim().length < 10 ||
     input.body.length > 1000 ||
     (!selectedRole && (!attached || (input.role != null && input.role !== "Team"))) ||
     !knownDecisionTopic(input.topic)
@@ -202,7 +203,7 @@ export async function decisions(viewerId: number | null, f: DecisionFilter = {})
     postId: Number(r.id),
     authorId: Number(r.author_id),
     authorName: String(r.display_name),
-    body: String(r.body),
+    body: plainBodyText(String(r.body)),
     champion: String(r.champion),
     opponent: r.opponent as string | null,
     role: String(r.role),
@@ -212,7 +213,7 @@ export async function decisions(viewerId: number | null, f: DecisionFilter = {})
       ? {
           id: Number(r.answer_id),
           authorId: Number(r.answer_author),
-          body: String(r.answer_body),
+          body: plainBodyText(String(r.answer_body)),
           name: String(r.answer_name),
         }
       : null,

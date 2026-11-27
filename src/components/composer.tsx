@@ -238,7 +238,7 @@ export function Composer({
                   ? "What should the room vote on?"
                   : kind === "clip"
                     ? "What happened in the clip?"
-                    : "What’s on your mind?"
+                    : "What’s on your mind? Tag a player with @."
             }
             value={tagSuggest.display}
             onChange={e => tagSuggest.change(e.currentTarget)}

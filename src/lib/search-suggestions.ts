@@ -1,12 +1,13 @@
 import { queryRows } from "./db";
+import { mentionKey } from "./player-mentions";
 import { HIDDEN_AUTHORS } from "./community-queries";
 import { isPlatform, PLATFORMS, type PlatformId } from "./platforms";
 
 export type SearchSuggestion =
-  | { kind: "player"; riotId: string; platform: PlatformId }
+  | { kind: "player"; riotId: string; platform: PlatformId; mentionKey?: string }
   | { kind: "person"; id: number; name: string };
 
-export type SuggestionScope = "all" | "players" | "people";
+export type SuggestionScope = "all" | "players" | "people" | "mentions";
 
 // '!' is the explicit LIKE escape character in both prefix queries.
 function prefixPattern(input: string) {
@@ -33,16 +34,16 @@ export async function searchNameSuggestions(term: string, scope: SuggestionScope
         AND p.platform = ANY($6::text[]) AND p.tag_line <> ''
       ORDER BY lower(p.game_name), lower(p.tag_line), p.platform, p.fetched_at DESC, p.puuid
     ), candidates AS (
-      SELECT 'player' AS kind, p.game_name AS name, p.tag_line, p.platform, NULL::int AS person_id
+      SELECT 'player' AS kind, p.game_name AS name, p.tag_line, p.platform, NULL::int AS person_id,p.puuid
       FROM players p WHERE NOT EXISTS (
         SELECT 1 FROM wp_links l WHERE l.puuid=p.puuid AND l.verified AND l.user_id IN (SELECT id FROM hidden)
       )
       UNION ALL
-      SELECT 'person', u.display_name, NULL, NULL, u.id FROM wp_users u
-      WHERE $5 <> 'players' AND $4 IS NULL AND lower(u.display_name) LIKE lower($3) ESCAPE '!'
+      SELECT 'person', u.display_name, NULL, NULL, u.id, NULL FROM wp_users u
+      WHERE $5 IN ('people','all') AND $4 IS NULL AND lower(u.display_name) LIKE lower($3) ESCAPE '!'
         AND u.safety_status='visible' AND u.id NOT IN (SELECT id FROM hidden)
     )
-    SELECT kind, name, tag_line, platform, person_id FROM candidates
+    SELECT kind, name, tag_line, platform, person_id, CASE WHEN $5='mentions' THEN puuid END AS mention_puuid FROM candidates
     ORDER BY (lower(name) = lower($2)) DESC, (lower(tag_line) = lower($7)) DESC NULLS LAST,
       lower(name), (kind='player') DESC, lower(tag_line), platform, person_id
     LIMIT 6`, [viewerId, name, pattern, tag === undefined ? null : prefixPattern(tag), scope,
@@ -51,7 +52,8 @@ export async function searchNameSuggestions(term: string, scope: SuggestionScope
   for (const row of rows) {
     if (row.kind === "person") suggestions.push({ kind: "person", id: Number(row.person_id), name: String(row.name) });
     else if (typeof row.platform === "string" && isPlatform(row.platform)) {
-      suggestions.push({ kind: "player", riotId: `${row.name}#${row.tag_line}`, platform: row.platform });
+      suggestions.push({ kind: "player", riotId: `${row.name}#${row.tag_line}`, platform: row.platform,
+        ...(typeof row.mention_puuid === "string" && {mentionKey:mentionKey(row.mention_puuid)}) });
     }
   }
   return suggestions;

@@ -1,3 +1,4 @@
+import { tagExcerpt } from "./tag-excerpt";
 import type { NeonQueryPromise } from "@neondatabase/serverless";
 import { HIDDEN_AUTHORS, visibleCommentsFor, visiblePostForInteraction } from "./community-queries";
 import { createHash } from "node:crypto";
@@ -78,7 +79,7 @@ export async function recentSubmissions(authorId: number, before?: string) {
   function source(kind: Kind) {
     return `(SELECT '${kind}'::text AS kind,id,${kind === "post" ? "id" : "post_id"} AS post_id,created_at,withdrawn_at,
          CASE WHEN withdrawn_at IS NOT NULL THEN 'withdrawn' ELSE status END AS status,
-         CASE WHEN withdrawn_at IS NULL AND status='visible' THEN left(body,90) END AS excerpt
+         CASE WHEN withdrawn_at IS NULL AND status='visible' THEN body END AS excerpt
        FROM ${table[kind]} WHERE author_id=$1 AND ($2::numeric IS NULL OR
          (extract(epoch FROM created_at)*1000000,id,'${kind}'::text)<($2::numeric,$3::int,$4::text))
        ORDER BY created_at DESC,id DESC LIMIT 21)`;
@@ -102,7 +103,7 @@ export async function recentSubmissions(authorId: number, before?: string) {
     createdAt: new Date(String(row.created_at)).toISOString(),
     status: row.status as SubmissionStatus,
     canOpen: row.can_open === true,
-    excerpt: row.can_open === true && typeof row.excerpt === "string" ? row.excerpt : "",
+    excerpt: row.can_open === true && typeof row.excerpt === "string" ? tagExcerpt(row.excerpt, 90) : "",
   }));
   const last = rows[19];
   const next = rows.length > 20 ? [last.micros, last.id, last.kind].join(".") : null;

@@ -1,4 +1,6 @@
 "use client";
+
+import { tagExcerpt } from "@/lib/tag-excerpt";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { trialOutcomes, type TrialOutcome } from "@/lib/decisions-input";
@@ -41,7 +43,7 @@ export function DecisionAuthorControls({ postId, acceptedId, choices, games, out
               <option value="">Choose a reply</option>
               {choices.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} · {c.body.slice(0, 120)}
+                  {c.name} · {tagExcerpt(c.body, 120)}
                 </option>
               ))}
             </select>

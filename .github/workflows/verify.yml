@@ -35,3 +35,9 @@ jobs:
         run: npx --no-install tsc --noEmit --incremental false
       - name: Exercise the production build with synthetic data
         run: npm run smoke
+      - name: Install browsers for the tag picker regression
+        run: npx --no-install playwright install --with-deps webkit chromium
+      - name: Exercise touch and keyboard tagging
+        run: |
+          node scripts/smoke/tag-picker.mjs webkit
+          node scripts/smoke/tag-picker.mjs chromium

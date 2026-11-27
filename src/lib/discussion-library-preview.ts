@@ -14,7 +14,7 @@ export async function discussionMetadata(rawId: string, viewerId: number | null 
   const context = [post.champion, post.role].filter(Boolean).join(" ");
   const kind = post.discussionKind === "perspective" ? "perspective" : "question";
   const title = context ? `${shareExcerpt(context)} ${kind} · ${APP_NAME}` : `${room} discussion · ${APP_NAME}`;
-  const question = post.kind === "clip" ? "" : shareExcerpt(post.body);
+  const question = post.kind === "clip" ? "" : post.body;
   const description = [question, post.match].filter(Boolean).join(" — ") || `Read the discussion in ${room} and join the replies.`;
   return shareMetadata("/post/" + id, title, description, "article");
 }

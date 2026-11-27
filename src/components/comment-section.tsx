@@ -387,7 +387,7 @@ export function CommentSection({
             {signedIn && viewerIdentity && <Avatar {...viewerIdentity} size={32} />}
             {decisionQuestion ? (
               <TagFieldWrap>
-                <textarea ref={setInputRef} {...tagSuggest.fieldProps} className={styles.replyInput} aria-label="Your reply" rows={3}
+                <textarea ref={setInputRef} {...(signedIn ? tagSuggest.fieldProps : {})} className={styles.replyInput} aria-label="Your reply" rows={3}
                   disabled={action.busy} placeholder="What would you try in this game?" value={signedIn ? tagSuggest.display : undefined}
                   onChange={signedIn ? e => tagSuggest.change(e.currentTarget) : undefined} maxLength={tagSuggest.maxLength} />
                 {tagSuggest.menu}
@@ -395,10 +395,10 @@ export function CommentSection({
             ) : <TagFieldWrap>
               <input
                 ref={setInputRef}
-                {...tagSuggest.fieldProps}
+                {...(signedIn ? tagSuggest.inputProps : {})}
                 disabled={action.busy}
                 aria-label="Your reply"
-                placeholder={oneFix ? "What would you change, and why?" : "Add your reply…"}
+                placeholder={oneFix ? "What would you change, and why?" : signedIn ? "Reply or @ a player…" : "Add your reply…"}
                 value={signedIn ? tagSuggest.display : undefined}
                 onChange={signedIn ? e => tagSuggest.change(e.currentTarget) : undefined}
                 maxLength={tagSuggest.maxLength}

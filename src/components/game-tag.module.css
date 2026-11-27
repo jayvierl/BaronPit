@@ -122,3 +122,10 @@
   text-transform: uppercase;
   color: var(--ink-soft);
 }
+
+.player {
+  color: var(--accent-ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.player:is(:hover, :focus-visible) { text-decoration: underline; }

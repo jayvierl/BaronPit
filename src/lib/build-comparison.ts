@@ -1,3 +1,4 @@
+import { plainBodyText } from "./game-tags";
 import type { RuneChoice, ShopItem } from "./build-catalog";
 import type { PostView } from "./post-types";
 import { buildKeystone } from "./build-sharing";
@@ -72,7 +73,7 @@ export function pathFromPost(
     key: String(post.id),
     post: post.id,
     title: `${post.data.champion || "Community"} · ${post.authorName}`,
-    rationale: post.body,
+    rationale: plainBodyText(post.body),
     items,
     runes: availableKeystone ? [keystone.id] : [],
     unavailableKeystone: keystone && !availableKeystone ? keystone.name : undefined,

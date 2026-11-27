@@ -1,5 +1,6 @@
 "use client";
 
+import { tagExcerpt } from "@/lib/tag-excerpt";
 import { signInHref } from "@/lib/signin-return";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
@@ -195,7 +196,7 @@ export function PostCard({
                     ))}
                   </div>
                 </details>
-                {post.canQuote && <QuoteControl original={{ postId:post.id, author:post.authorName, body:post.body.slice(0,180), room:post.roomName }}
+                {post.canQuote && <QuoteControl original={{ postId:post.id, author:post.authorName, body:tagExcerpt(post.body, 180), room:post.roomName }}
                   signedIn={signedIn} viewerId={viewerId}/>}
               </>}
               {visible && signedIn && viewerId === post.authorId &&

@@ -5,10 +5,10 @@ export async function openFixtureBrowser() {
   return chromium.launch({ executablePath: process.env.SMOKE_CHROMIUM || undefined });
 }
 
-export async function fixtureContext(browser, origin, width, javaScriptEnabled = true, hasTouch = false) {
+export async function fixtureContext(browser, origin, width, javaScriptEnabled = true, hasTouch = false, isMobile = false) {
   const context = await browser.newContext({
     viewport: { width, height: width < 800 ? 844 : 960 },
-    colorScheme: "light", reducedMotion: "reduce", javaScriptEnabled, hasTouch,
+    colorScheme: "light", reducedMotion: "reduce", javaScriptEnabled, hasTouch, isMobile,
   });
   await context.route("**/*", route => {
     const url = new URL(route.request().url());

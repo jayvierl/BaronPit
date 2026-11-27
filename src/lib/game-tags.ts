@@ -1,3 +1,5 @@
+import { isPlatform, type PlatformId } from "./platforms";
+import { safeMatchRiotId } from "./match-context";
 import bundledChampions from "./champion-catalog.json";
 
 /**
@@ -5,6 +7,7 @@ import bundledChampions from "./champion-catalog.json";
  *
  * A tag is stored as a compact token in the body text:
  *   [[c:Ahri|Ahri]]            champion (Data Dragon id + display name)
+ *   [[p:platform.mentionKey|@Game Name#TAG]]  saved public player
  *   [[i:3031|Infinity Edge]]   item (numeric Data Dragon id + display name)
  *
  * The id makes rendering exact (name, icon and card data come from the
@@ -14,15 +17,11 @@ import bundledChampions from "./champion-catalog.json";
  * render unchanged.
  */
 
-export type TagKind = "champion" | "item";
+export type TagKind = "champion" | "item" | "player";
 
-export interface TagRef {
-  kind: TagKind;
-  /** Champion Data Dragon id ("Ahri") or item id as a string ("3031"). */
-  id: string;
-  /** Display name captured when the tag was inserted. */
-  name: string;
-}
+export type TagRef =
+  | { kind: "champion" | "item"; id: string; name: string }
+  | { kind: "player"; id: PlatformId; name: string; key: string };
 
 export type BodySegment =
   | { type: "text"; text: string }
@@ -53,9 +52,15 @@ export interface TagCatalog {
 /** Patch of the bundled fallback catalogs; Data Dragon keeps old versions live. */
 export const FALLBACK_PATCH: string = bundledChampions.patch;
 
-const TOKEN = /\[\[(c|i):([A-Za-z0-9]+)\|([^\[\]|]{1,80})\]\]/g;
+const TOKEN = /\[\[(c|i|p):([A-Za-z0-9]+(?:\.[a-f0-9]{32})?)\|([^\[\]|]{1,80})\]\]/g;
+
+export function playerTagRef(riotId: string, platform: string, key: unknown): Extract<TagRef, { kind: "player" }> | null {
+  if (!isPlatform(platform) || typeof key !== "string" || !/^[a-f0-9]{32}$/.test(key) || /[[\]|]/.test(riotId) || safeMatchRiotId(riotId, platform) !== riotId) return null;
+  return { kind: "player", id: platform, key, name: "@" + riotId };
+}
 
 export function formatTagToken(tag: TagRef): string {
+  if (tag.kind === "player") return `[[p:${tag.id}.${tag.key}|${tag.name}]]`;
   return `[[${tag.kind === "champion" ? "c" : "i"}:${tag.id}|${tag.name}]]`;
 }
 
@@ -65,15 +70,20 @@ export function parseBodySegments(body: string): BodySegment[] {
   let last = 0;
   for (const match of body.matchAll(TOKEN)) {
     const index = match.index ?? 0;
+    const [, kind, id, rawName] = match;
+    const name = rawName.trim();
+    let tag: TagRef;
+    if (kind === "p") {
+      const [platform, key] = id.split(".");
+      const player = rawName === name && name.startsWith("@") ? playerTagRef(name.slice(1), platform, key) : null;
+      if (!player) continue;
+      tag = player;
+    } else {
+      if (id.includes(".")) continue;
+      tag = { kind: kind === "c" ? "champion" : "item", id, name };
+    }
     if (index > last) segments.push({ type: "text", text: body.slice(last, index) });
-    segments.push({
-      type: "tag",
-      tag: {
-        kind: match[1] === "c" ? "champion" : "item",
-        id: match[2],
-        name: match[3].trim(),
-      },
-    });
+    segments.push({ type: "tag", tag });
     last = index + match[0].length;
   }
   if (last < body.length) segments.push({ type: "text", text: body.slice(last) });
@@ -81,12 +91,13 @@ export function parseBodySegments(body: string): BodySegment[] {
 }
 
 export function hasTagTokens(body: string): boolean {
-  return /\[\[(?:c|i):[A-Za-z0-9]+\|[^\[\]|]{1,80}\]\]/.test(body);
+  return parseBodySegments(body).some(segment => segment.type === "tag");
 }
 
 /** Body as a reader would say it: tokens become their display names. */
 export function plainBodyText(body: string): string {
-  return body.replace(TOKEN, (_whole, _kind, _id, name: string) => name.trim());
+  if (!body.includes("[[")) return body;
+  return parseBodySegments(body).map(segment => segment.type === "tag" ? segment.tag.name : segment.text).join("");
 }
 
 /** Same normalization the global game search uses: case/accents/punctuation folded away. */
@@ -195,8 +206,7 @@ export function pickSuggestion(catalog: TagCatalog, text: string, caret: number)
   const candidates = wordStarts
     .slice(-3)
     .map((offset) => ({ start: runStart + offset, phrase: run.slice(offset).replace(/\s+/g, " ").trim() }))
-    .filter((c) => c.phrase.length > 0)
-    .reverse();
+    .filter((c) => c.phrase.length > 0);
 
   let end = caret;
   while (end < text.length && WORD_CHAR.test(text[end])) end += 1;
@@ -221,7 +231,7 @@ export function pickSuggestion(catalog: TagCatalog, text: string, caret: number)
  * the token and one separating space — added when the following text does
  * not already start with whitespace, reused when it does.
  */
-export function applyTag(text: string, suggestion: Suggestion, tag: TagRef): { value: string; caret: number } {
+export function applyTag(text: string, suggestion: Pick<Suggestion, "start" | "end">, tag: TagRef): { value: string; caret: number } {
   const token = formatTagToken(tag);
   const rest = text.slice(suggestion.end);
   const addSpace = rest === "" || /[A-Za-z0-9]/.test(rest[0]);

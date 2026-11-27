@@ -1,3 +1,4 @@
+import { plainBodyText } from "./game-tags";
 import { validId } from "./ids";
 import type { PostView } from "./post-types";
 
@@ -20,7 +21,7 @@ export function activeConversations(posts: readonly ConversationPost[], asOf: nu
     const activityAt = lastReplyAt >= createdAt && lastReplyAt <= asOf ? lastReplyAt : createdAt;
     if (activityAt < asOf - week) return [];
 
-    const body = post.body.replace(/\s+/gu, " ").trim();
+    const body = plainBodyText(post.body).replace(/\s+/gu, " ").trim();
     if (!/[\p{L}\p{N}\p{S}\p{P}]/u.test(body)) return [];
     const characters = Array.from(body);
     const preview = characters.length > previewLimit

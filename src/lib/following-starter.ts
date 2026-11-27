@@ -1,3 +1,4 @@
+import { plainBodyText } from "./game-tags";
 import { questionDecisionPost } from "./match-card-projection";
 import { queryRows } from "./db";
 import { HIDDEN_AUTHORS, visiblePostForInteraction } from "./community-queries";
@@ -18,7 +19,7 @@ export async function followingStarter(userId: number) {
     ORDER BY (d.role=coalesce(pref.role,CASE WHEN fit.role='ADC' THEN 'Bot' ELSE fit.role END)) DESC NULLS LAST,
       (pref.champion=d.champion) DESC NULLS LAST,p.created_at DESC,p.id DESC
     LIMIT 1`, [userId, PATCH_PUBLISHER]);
-  return question ? {id: Number(question.id), body: String(question.body), author: String(question.author),
+  return question ? {id: Number(question.id), body: plainBodyText(String(question.body)), author: String(question.author),
     authorId: Number(question.author_id), role: String(question.role), champion: String(question.champion)} : null;
 }
 

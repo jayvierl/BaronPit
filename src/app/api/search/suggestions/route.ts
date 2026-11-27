@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   const term = params.get("q") ?? "";
   const scope = params.get("scope") ?? "all";
   const region = params.get("region") || undefined;
-  if ((scope !== "all" && scope !== "players" && scope !== "people") ||
+  if ((scope !== "all" && scope !== "players" && scope !== "people" && scope !== "mentions") ||
       (region !== undefined && !isPlatform(region)) || term.length > 80) {
     return Response.json({ error: "Invalid suggestion search." }, { status: 400, headers });
   }

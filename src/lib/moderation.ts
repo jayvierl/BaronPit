@@ -55,7 +55,7 @@ export interface ModResult {
   linkCount: number;
 }
 
-export function scoreContent(raw: string, opts: { lowTrust?: boolean } = {}): ModResult {
+export function scoreContent(raw: string, opts: { lowTrust?: boolean; contactText?: string } = {}): ModResult {
   const text = raw ?? "";
   const folded = fold(text);
   const hits: string[] = [];
@@ -93,7 +93,7 @@ export function scoreContent(raw: string, opts: { lowTrust?: boolean } = {}): Mo
   }
   if (opts.lowTrust) { score += 15; hits.push("probation"); }
 
-  const hasContactHandle = CONTACT_PATTERNS.some((re) => re.test(text.normalize("NFKC").replace(/[\u200B-\u200D\uFEFF]/g, "")));
+  const hasContactHandle = CONTACT_PATTERNS.some((re) => re.test((opts.contactText ?? text).normalize("NFKC").replace(/[\u200B-\u200D\uFEFF]/g, "")));
   if (hasContactHandle) { score += 20; hits.push("contact-handle"); }
 
   const action = score >= 60 ? "block" : score >= 30 ? "hold" : "publish";
@@ -113,7 +113,7 @@ export type PublishOutcome = "block" | "hold" | "publish" | "publish-flagged";
  * holds for a reviewer no matter who wrote it, matching the posture callers
  * already apply to that hit.
  */
-export function publishOutcome(mod: ModResult, opts: { lowTrust?: boolean } = {}): PublishOutcome {
+export function publishOutcome(mod: ModResult, opts: { lowTrust?: boolean; contactText?: string } = {}): PublishOutcome {
   if (mod.action === "block") return "block";
   if (mod.action === "publish") return "publish";
   if (mod.hits.includes("screening-unavailable")) return "hold";
