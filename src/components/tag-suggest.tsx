@@ -56,10 +56,10 @@ function findCandidate(body: string, display: string, selection: Range, catalog:
 
 type PlayerReply = { query: string; options: TagOption[]; unavailable: boolean };
 
-function useMentionResults(query: string) {
+function useMentionResults(query: string | null) {
   const [reply, setReply] = useState<PlayerReply | null>(null);
   useEffect(() => {
-    if (Array.from(query.split("#")[0]).length < 2) return;
+    if (query === null) return;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
@@ -97,7 +97,7 @@ export function useTagSuggest({ inputRef, value, apply, enabled = true, limit }:
   const display = plainBodyText(value);
   const candidate = useMemo(() => enabled && anchor && selection ? findCandidate(value, display, selection, catalog) : null,
     [value, display, selection, catalog, anchor, enabled]);
-  const query = candidate?.kind === "player" ? candidate.query : "";
+  const query = candidate?.kind === "player" ? candidate.query : null;
   const players = useMentionResults(query);
   const options = candidate?.kind === "game" ? candidate.options : players?.options ?? [];
   const current = Math.min(active, options.length - 1);
@@ -157,8 +157,7 @@ export function useTagSuggest({ inputRef, value, apply, enabled = true, limit }:
   const open = Boolean(anchor && candidate);
   let status = "";
   if (candidate?.kind === "player" && !options.length) {
-    status = Array.from(query.split("#")[0]).length < 2 ? "Type at least two letters of a Riot ID."
-      : !players ? "Searching Riot IDs…" : players.unavailable ? "Player search is unavailable." : "No matching Riot IDs.";
+    status = !players ? "Searching Riot IDs…" : players.unavailable ? "Player search is unavailable." : "No matching Riot IDs.";
   }
   const menu = <>
     {open && anchor && <TagPickerMenu anchor={anchor} id={id} options={options} active={current} status={status}

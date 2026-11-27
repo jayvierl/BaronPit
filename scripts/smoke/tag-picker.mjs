@@ -47,7 +47,9 @@ async function highlightedChampion(page, field) {
 }
 
 async function taggedPerson(page, field) {
-  await field.pressSequentially("@Jade", { delay: 45 });
+  await field.press("@");
+  await visible(page.getByRole("option").first());
+  await field.pressSequentially("Jade", { delay: 45 });
   const option = getOption(page, riotId);
   await visible(option);
   await option.tap();

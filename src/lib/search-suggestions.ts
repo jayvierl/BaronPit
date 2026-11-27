@@ -14,15 +14,15 @@ function prefixPattern(input: string) {
   return input.replace(/[!%_]/g, "!$&") + "%";
 }
 
-export function canSuggestNames(term: string) {
-  return term.length <= 80 && Array.from(term.trim().split("#", 1)[0].trim()).length >= 2 &&
+export function canSuggestNames(term: string, scope: SuggestionScope = "all") {
+  return term.length <= 80 && (scope === "mentions" && !term.includes("#") || Array.from(term.trim().split("#", 1)[0].trim()).length >= 2) &&
     !Array.from(term).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) &&
     term.indexOf("#") === term.lastIndexOf("#");
 }
 
 export async function searchNameSuggestions(term: string, scope: SuggestionScope, viewerId: number | null,
   region?: PlatformId): Promise<SearchSuggestion[]> {
-  if (!canSuggestNames(term)) return [];
+  if (!canSuggestNames(term, scope)) return [];
   const [name, tag] = term.trim().split("#").map(part => part.trim());
   const pattern = prefixPattern(name);
   const rows = await queryRows(`WITH ${HIDDEN_AUTHORS}, players AS (

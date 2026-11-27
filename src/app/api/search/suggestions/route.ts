@@ -13,7 +13,7 @@ export async function GET(request: Request) {
       (region !== undefined && !isPlatform(region)) || term.length > 80) {
     return Response.json({ error: "Invalid suggestion search." }, { status: 400, headers });
   }
-  if (!canSuggestNames(term)) return Response.json({ suggestions: [] }, { headers });
+  if (!canSuggestNames(term, scope)) return Response.json({ suggestions: [] }, { headers });
   try {
     const viewer = await getCurrentUser();
     const suggestions = await searchNameSuggestions(term, scope, viewer?.id ?? null, region);
