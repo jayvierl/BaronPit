@@ -1,4 +1,5 @@
 import catalog from "./champion-catalog.json";
+import { isEarlySurrender, validRating } from "./match-performance";
 import type { MatchSummary } from "./pure";
 
 const MAX_MATCHES = 100;
@@ -64,9 +65,49 @@ function championRecord(id: string, name: string, matches: readonly MatchSummary
   const validCS = matches.filter(match => measuredCount(match.cs) && measuredCount(match.durationSec) && match.durationSec > 0);
   const minions = validCS.reduce((total, match) => total + match.cs, 0);
   const minutes = validCS.reduce((total, match) => total + match.durationSec / 60, 0);
+  const ratings = matches.flatMap(match => validRating(match.performanceRating) ? [match.performanceRating] : []);
+  const shares = matches.flatMap(match => typeof match.teamDamageShare === "number" && Number.isFinite(match.teamDamageShare) &&
+    match.teamDamageShare >= 0 && match.teamDamageShare <= 1 ? [match.teamDamageShare] : []);
   return { id, name, ...gameRecord(matches.filter(match => match.win).length, matches.length),
-    kda: performance(matches).kda, csPerMinute: { value: minutes ? minions / minutes : null, count: validCS.length } };
+    kda: performance(matches).kda, csPerMinute: { value: minutes ? minions / minutes : null, count: validCS.length },
+    rating: { value: ratings.length ? ratings.reduce((total, rating) => total + rating, 0) / ratings.length : null, count: ratings.length },
+    // Newest-first input: keep the last 20 rated games, displayed oldest to newest.
+    ratingSeries: ratings.slice(0, 20).reverse(),
+    damageShare: { value: shares.length ? shares.reduce((total, share) => total + share, 0) / shares.length : null, count: shares.length } };
 }
+
+export type FormSide = {
+  games: number;
+  winRate: Metric;
+  kda: Metric;
+  csPerMinute: Metric;
+  rating: Metric;
+};
+
+function formSide(matches: readonly MatchSummary[]): FormSide {
+  const validCS = matches.filter(match => measuredCount(match.cs) && measuredCount(match.durationSec) && match.durationSec > 0);
+  const minutes = validCS.reduce((total, match) => total + match.durationSec / 60, 0);
+  const ratings = matches.flatMap(match => validRating(match.performanceRating) ? [match.performanceRating] : []);
+  const base = performance(matches);
+  return {
+    games: matches.length, winRate: base.winRate, kda: base.kda,
+    csPerMinute: { value: minutes ? validCS.reduce((total, match) => total + match.cs, 0) / minutes : null, count: validCS.length },
+    rating: { value: ratings.length ? ratings.reduce((total, rating) => total + rating, 0) / ratings.length : null, count: ratings.length },
+  };
+}
+
+/** Recent form vs the previous block of the same size, remakes excluded.
+ * With 40+ counted games this is last 20 vs previous 20; below that it splits
+ * what is available into two halves so both sides stay comparable. */
+export function formComparison(matches: readonly MatchSummary[]) {
+  const counted = matches.filter(match => !isEarlySurrender(match));
+  const half = counted.length >= 40 ? 20 : Math.ceil(counted.length / 2);
+  const latest = formSide(counted.slice(0, half));
+  const earlier = formSide(counted.slice(half, half * 2));
+  return { latest, earlier };
+}
+
+export type FormComparison = ReturnType<typeof formComparison>;
 
 function sortedShares(counts: Map<string, number>): Share[] {
   return [...counts].map(([name, count]) => ({ name, count })).sort((a,b) => b.count - a.count || a.name.localeCompare(b.name));
@@ -97,15 +138,21 @@ function timeKnown(value: unknown, now: number): value is number {
   return measuredCount(value) && value > 0 && value <= Math.min(now, 8.64e15);
 }
 
-export function buildPlayerAnalytics(matches: readonly MatchSummary[], now = Date.now()) {
+export function buildPlayerAnalytics(matches: readonly MatchSummary[], now = Date.now(),
+  options?: { excludeEarlySurrenders?: boolean }) {
   // Keep chronology from Riot's newest-first list. A malformed row or duplicate should never inflate a metric.
   const ids = new Set<string>();
   const sample = matches.slice(0, MAX_MATCHES).filter(match => {
     if (!match || typeof match.matchId !== "string" || !match.matchId || typeof match.win !== "boolean" || ids.has(match.matchId)) return false;
     ids.add(match.matchId);
+    // Opt-in: remakes and early surrenders flagged by the rating evidence do
+    // not count toward form, win rates or per-champion records.
+    if (options?.excludeEarlySurrenders && isEarlySurrender(match)) return false;
     return true;
   });
   const roles = new Map<string, number>();
+  const roleGames = new Map<string, MatchSummary[]>();
+  const matchupGames = new Map<string, { wins: number; games: number }>();
   const classShares = new Map<string, number>();
   const championGames = new Map<string, { name: string; matches: MatchSummary[] }>();
   const rankedWeek = new Map<string, { id: string; name: string; wins: number; games: number }>();
@@ -117,6 +164,15 @@ export function buildPlayerAnalytics(matches: readonly MatchSummary[], now = Dat
     if (role) {
       knownRoles++;
       addShare(roles, role, 1);
+      const list = roleGames.get(role) ?? [];
+      list.push(match);
+      roleGames.set(role, list);
+    }
+    if (typeof match.opponentChampion === "string" && match.opponentChampion) {
+      const matchup = matchupGames.get(match.opponentChampion) ?? { wins: 0, games: 0 };
+      matchup.games++;
+      if (match.win) matchup.wins++;
+      matchupGames.set(match.opponentChampion, matchup);
     }
     if (typeof match.champion !== "string" || !match.champion || match.champion.length > 64) continue;
     const info = championsByName.get(champKey(match.champion));
@@ -140,9 +196,17 @@ export function buildPlayerAnalytics(matches: readonly MatchSummary[], now = Dat
   }
 
   const byGames = (a: { games: number; name: string }, b: { games: number; name: string }) => b.games - a.games || a.name.localeCompare(b.name);
+  const roleRecords = [...roleGames].map(([name, games]) => {
+    const ratings = games.flatMap(match => validRating(match.performanceRating) ? [match.performanceRating] : []);
+    return { name, ...gameRecord(games.filter(match => match.win).length, games.length),
+      rating: { value: ratings.length ? ratings.reduce((total, rating) => total + rating, 0) / ratings.length : null, count: ratings.length } };
+  }).sort(byGames).map((record, index) => ({ ...record, preferred: index === 0 && record.games > 0 }));
   return {
     sampleGames: sample.length,
-    roles: sortedShares(roles), knownRoles,
+    roles: sortedShares(roles), knownRoles, roleRecords,
+    // Head-to-head mini-records need at least two meetings to say anything.
+    matchups: [...matchupGames].map(([name, record]) => ({ name, ...gameRecord(record.wins, record.games) }))
+      .filter(record => record.games >= 2).sort(byGames),
     classes: sortedShares(classShares), knownClasses,
     champions: [...championGames].map(([id, champion]) => championRecord(id, champion.name, champion.matches)).sort(byGames),
     rankedWeek: [...rankedWeek.values()].map(({ id, name, wins, games }) => ({ id, name, ...gameRecord(wins, games) })).sort(byGames),

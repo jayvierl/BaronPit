@@ -131,6 +131,7 @@
 .unrated { color: var(--ink-mid); font-size: .74rem; }
 .finalItems { display: flex; flex-wrap: wrap; gap: .2rem; padding: 0; margin: .2rem 0 0; list-style: none; }
 .finalItems a { display: inline-flex; align-items: center; min-height: 32px; }
+.participantDamage { color: var(--ink-mid); font-size: .72rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .teamMembers li[data-viewed] { background: var(--field); border-radius: .4rem; }
 .teamMembers li { padding-inline: .3rem; }
 .teamMembers .rating { margin-inline-start: auto; }

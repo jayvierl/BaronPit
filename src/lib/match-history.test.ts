@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { matchSectionId, recentMatchHistory, matchQueueName } from "./match-history";
+import { EARLY_SURRENDER_REASON } from "./match-performance";
 import type { MatchSummary } from "./pure";
 
 function game(matchId: string, champion: string, queueId: number, win = true): MatchSummary {
@@ -31,6 +32,31 @@ it("uses stable fragment-safe anchors and skips malformed legacy match IDs", () 
   for (const id of ["", "no spaces", "bad#fragment", "bad%escape", "x".repeat(81)]) {
     expect(matchSectionId(id)).toBeUndefined();
   }
+});
+
+it("filters by role only when the position is a real Riot role present in the sample", () => {
+  const games = [
+    { ...game("5", "Ashe", 420), role: "BOTTOM" },
+    { ...game("4", "Ashe", 420, false), role: "UTILITY" },
+    { ...game("3", "Vi", 420), role: "JUNGLE" },
+    { ...game("2", "Vi", 450), role: "" },
+  ];
+  const stats = recentMatchHistory(games, "", "", "BOTTOM");
+  expect(stats).toMatchObject({ role: "BOTTOM", roles: ["JUNGLE", "BOTTOM", "UTILITY"], wins: 1, losses: 0, winRate: 100 });
+  expect(stats.matches.map(m => m.matchId)).toEqual(["5"]);
+  expect(recentMatchHistory(games, "", "", "MIDDLE")).toMatchObject({ role: "MIDDLE", matches: [] });
+  expect(recentMatchHistory(games, "", "", "BOTTOM ")).toMatchObject({ role: "" });
+  expect(recentMatchHistory(games, "", "", " fill")).toMatchObject({ role: "" });
+});
+
+it("keeps remakes and early surrenders listed but out of the record and win rate", () => {
+  const remake = { ...game("9", "Ashe", 420, false), ratingReason: EARLY_SURRENDER_REASON, durationSec: 200 };
+  const games = [game("5", "Ashe", 420), remake, game("2", "Ashe", 420, false)];
+  const stats = recentMatchHistory(games, "420", "Ashe");
+  expect(stats.matches.map(m => m.matchId)).toEqual(["5", "9", "2"]);
+  expect(stats).toMatchObject({ wins: 1, losses: 1, winRate: 50, excluded: 1 });
+  const onlyRemake = recentMatchHistory([remake], "420", "Ashe");
+  expect(onlyRemake).toMatchObject({ wins: 0, losses: 0, winRate: null, excluded: 1 });
 });
 
 it("filters ranked games across Solo/Duo and Flex while preserving champion selection", () => {

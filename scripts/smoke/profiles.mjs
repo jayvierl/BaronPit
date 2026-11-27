@@ -100,8 +100,8 @@ export async function checkPlayerProfiles(journey) {
     const verified = await journey(linkFrom(feed, /^Fixture Other$/), options);
     assert.match(verified, /Verified Riot link/);
     const overview = sectionFrom(verified, "League overview");
-    checkMarkers(overview, ["Ranked Solo/Duo", "Platinum III · 64 LP", "80% win rate", "Ranked Flex", "Silver IV · 11 LP", "10% win rate", "Latest 3 public games", "Top role Support · 2 games", "Top champion Nami · 2 games"], "League overview");
-    assert.equal(visibleText(overview).match(/Latest 3 public games/g)?.length, 1);
+    checkMarkers(overview, ["Ranked Solo/Duo", "Platinum III · 64 LP", "80% win rate", "Ranked Flex", "Silver IV · 11 LP", "10% win rate", "Last 3 games", "Top role Support · 2 games", "Top champion Nami · 2 games"], "League overview");
+    assert.equal(visibleText(overview).match(/Last 3 games/g)?.length, 1);
     const form = sectionFrom(overview, "Recent form");
     assert.match(form, /aria-label="W · Victory on Nami, game 1"/);
     assert.match(form, /aria-label="L · Defeat on Nami, game 2"/);

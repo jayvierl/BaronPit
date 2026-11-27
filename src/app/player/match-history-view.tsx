@@ -87,6 +87,7 @@ function MatchGlance({ match, patch }: { match: MatchSummary; patch: string }) {
     <p className={styles.matchNumbers}>
       <span>{duration ? `Duration ${Math.floor(duration / 60)}m ${duration % 60}s` : "Duration unavailable"}</span>
       <MatchTime playedAt={match.playedAt} relative/>
+      {Number.isFinite(match.cs) && <span>{match.cs} CS</span>}
       {kp != null && kp >= 0 && kp <= 1 && <span>{Math.round(kp * 100)}% KP</span>}
       {role === "Support" && match.vision != null
         ? <span>{match.vision} vision</span>
@@ -121,6 +122,14 @@ function Participant({ player, platform, fromMatch }: { player: MatchParticipant
   </>;
 }
 
+function ParticipantDamage({ player }: { player: MatchParticipantSummary }) {
+  if (player.damage == null) return <span className={styles.participantDamage} aria-label="Damage unavailable">—</span>;
+  return <span className={styles.participantDamage}>
+    {(player.damage / 1000).toFixed(1)}k dmg
+    {player.damageShare != null && <> · {Math.round(player.damageShare * 100)}%<span className="sr-only"> of team damage</span></>}
+  </span>;
+}
+
 function Teams({ match, platform, fromMatch }: { match: MatchSummary; platform: string; fromMatch: string }) {
   if (!match.teams || match.queueId === 0) return <p className="meta">Full team details unavailable for this match.</p>;
   const teams = [{ label: "Allied team", players: match.teams.allies }, { label: "Opposing team", players: match.teams.opponents }];
@@ -131,6 +140,7 @@ function Teams({ match, platform, fromMatch }: { match: MatchSummary; platform: 
         <ul className={styles.teamMembers}>
           {players.map((player, index) => <li key={index} data-viewed={player.isPlayer || undefined}>
             <Participant player={player} platform={platform} fromMatch={fromMatch}/>
+            <ParticipantDamage player={player}/>
             <MatchRating player={player}/>
           </li>)}
         </ul>
@@ -174,15 +184,19 @@ function MatchRow({ match, patch, platform, lookupHref, expanded, discussion, ti
       href={questionHref(reference, undefined, { discuss: true, fromMatch: matchPath })}>Discuss this match</Link>}
     <details className={styles.gameDetails} open={expanded || undefined}>
       <summary>Match details<span className="sr-only"> for {match.champion} · <MatchTime playedAt={match.playedAt}/></span></summary>
+      <Teams match={match} platform={participantPlatform} fromMatch={fromMatch}/>
+      {match.performanceRating !== undefined && <p className={styles.scoreReason}><strong>Why this score?</strong> {ratingExplanation(match)}</p>}
       <p className={styles.matchNumbers}>
         {match.championLevel != null && <span>Level {match.championLevel}</span>}
         <span>{match.deaths > 0 ? `${((match.kills + match.assists) / match.deaths).toFixed(2)} KDA` : "No deaths"}</span>
         <span>{match.cs} CS{duration ? ` (${(match.cs * 60 / duration).toFixed(1)} CS/m)` : ""}</span>
         {killParticipation && <span>{killParticipation}<span className="sr-only"> · Kill participation</span></span>}
         {match.gold != null && <span>{(match.gold / 1000).toFixed(1)}k gold</span>}
+        {match.damage != null && <span>{(match.damage / 1000).toFixed(1)}k damage{match.teamDamageShare != null ? ` (${Math.round(match.teamDamageShare * 100)}% of team)` : ""}</span>}
+        {match.damageTaken != null && <span>{(match.damageTaken / 1000).toFixed(1)}k damage taken</span>}
+        {match.vision != null && <span>{match.vision} vision</span>}
         <TeamBaronTag match={match}/>
       </p>
-      {match.performanceRating !== undefined && <p className={styles.scoreReason}><strong>Why this score?</strong> {ratingExplanation(match)}</p>}
       {legacyTeam.length > 0 && <div className={styles.legacyTeam}>
         <span className="meta">Played with</span>
         <ul>{legacyTeam.map((player, index) => <li key={index}>
@@ -201,7 +215,6 @@ function MatchRow({ match, patch, platform, lookupHref, expanded, discussion, ti
       </p>}
       {reference && (timeline ? <ObjectiveTimeline reference={reference} returnHref={returnUrl.pathname + returnUrl.search + returnUrl.hash}/> :
         <Link className={styles.timelineLink} prefetch={false} href={timelineUrl.pathname + timelineUrl.search + timelineUrl.hash}>View objective timeline</Link>)}
-      <Teams match={match} platform={participantPlatform} fromMatch={fromMatch}/>
     </details>
   </div>;
 }
@@ -222,21 +235,21 @@ async function MatchItems({ ids, catalog }: { ids: number[]; catalog: Catalog })
   </ul>;
 }
 
-export function LatestGames({ matches, patch, platform, riotId, persisted, lookupHref, queueFilter, championFilter, rawMatch, showTimeline }: {
+export function LatestGames({ matches, patch, platform, riotId, persisted, lookupHref, queueFilter, championFilter, roleFilter = "", rawMatch, showTimeline }: {
   matches: MatchSummary[]; patch: string; platform: string; riotId: string; persisted: boolean;
-  lookupHref: string; queueFilter: string; championFilter: string; rawMatch?: string; showTimeline?: boolean;
+  lookupHref: string; queueFilter: string; championFilter: string; roleFilter?: string; rawMatch?: string; showTimeline?: boolean;
 }) {
-  const base = matchFilterPath(lookupHref, queueFilter, championFilter);
+  const base = matchFilterPath(lookupHref, queueFilter, championFilter, roleFilter);
   return matches.slice(0, MATCH_DETAIL_LIMIT).map(match => <MatchRow key={match.matchId} match={match} patch={patch} platform={platform} lookupHref={base} expanded={rawMatch === match.matchId} timeline={showTimeline && rawMatch === match.matchId}
     discussion={persisted && isPlatform(platform) ? { platform, riotId } : undefined}/>);
 }
 
-export function OlderGames({ matches, patch, platform, riotId, persisted, lookupHref, rawPage, rawMatch, queueFilter, championFilter, showTimeline }: {
+export function OlderGames({ matches, patch, platform, riotId, persisted, lookupHref, rawPage, rawMatch, queueFilter, championFilter, roleFilter = "", showTimeline }: {
   matches: MatchSummary[]; patch: string; platform: string; riotId: string; persisted: boolean; lookupHref: string; rawPage?: string; rawMatch?: string; showTimeline?: boolean;
-  queueFilter: string; championFilter: string;
+  queueFilter: string; championFilter: string; roleFilter?: string;
 }) {
   const page = olderMatchPage(matches, rawPage, rawMatch);
-  const base = matchFilterPath(lookupHref, queueFilter, championFilter);
+  const base = matchFilterPath(lookupHref, queueFilter, championFilter, roleFilter);
   const key = `${base}:${page.page}:${page.selected ?? ""}`;
   const unavailable = typeof rawMatch === "string" && Boolean(matchSectionId(rawMatch)) && !matches.some(match => match.matchId === rawMatch);
   return <>

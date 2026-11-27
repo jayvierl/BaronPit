@@ -26,9 +26,10 @@ export function olderMatchHref(base: string, page: number, matchId?: string) {
   return url.pathname + url.search + url.hash;
 }
 
-export function matchFilterPath(base: string, queue: string, champion: string) {
+export function matchFilterPath(base: string, queue: string, champion: string, role = "") {
   const url = new URL(base, "https://profile.invalid");
   if (queue) url.searchParams.set("queue", queue);
   if (champion) url.searchParams.set("champion", champion);
+  if (role) url.searchParams.set("role", role);
   return url.pathname + url.search;
 }

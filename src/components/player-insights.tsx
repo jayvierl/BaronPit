@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { matchSectionId } from "@/lib/match-history";
+import type { FormComparison } from "@/lib/player-analytics";
 import type { DimensionScore, FormCurve, PerformanceIndex, PersonalBest } from "@/lib/performance-index";
 import styles from "./player-insights.module.css";
 
@@ -99,7 +100,7 @@ export function PerformanceIndexCard({ index, bests, bestBaseHref, partial }: {
               <span>{dimension.label}</span>
               <span className={styles.track} aria-hidden="true"><i style={{ width: `${dimension.score}%` }} /></span>
               <strong>{dimension.score}</strong>
-              <small>{DIMENSION_FORMAT[dimension.key](dimension.playerAvg)} · sample {DIMENSION_FORMAT[dimension.key](dimension.poolAvg)} · better than {dimension.percentile}%</small>
+              <small>{DIMENSION_FORMAT[dimension.key](dimension.playerAvg)} · sample {DIMENSION_FORMAT[dimension.key](dimension.poolAvg)} from {dimension.poolGames} sampled games · better than {dimension.percentile}%</small>
             </li>
           ))}
         </ul>
@@ -120,6 +121,37 @@ export function PerformanceIndexCard({ index, bests, bestBaseHref, partial }: {
           <PersonalBestsStrip bests={bests} bestBaseHref={bestBaseHref} />
         </>
       )}
+    </section>
+  );
+}
+
+const DELTA_MIN_GAMES = 5;
+
+export function FormDeltas({ comparison }: { comparison: FormComparison }) {
+  const { latest, earlier } = comparison;
+  const metrics = [
+    { label: "Win rate", latest: latest.winRate, earlier: earlier.winRate, format: (v: number) => `${Math.round(v)}%`, delta: (v: number) => `${Math.abs(Math.round(v))} pp` },
+    { label: "KDA", latest: latest.kda, earlier: earlier.kda, format: (v: number) => v.toFixed(2), delta: (v: number) => Math.abs(v).toFixed(2) },
+    { label: "CS/min", latest: latest.csPerMinute, earlier: earlier.csPerMinute, format: (v: number) => v.toFixed(1), delta: (v: number) => Math.abs(v).toFixed(1) },
+    { label: "Avg rating", latest: latest.rating, earlier: earlier.rating, format: (v: number) => v.toFixed(1), delta: (v: number) => Math.abs(v).toFixed(1) },
+  ];
+  const chips = metrics.flatMap(metric => {
+    if (metric.latest.value === null || metric.earlier.value === null) return [];
+    if (metric.latest.count < DELTA_MIN_GAMES || metric.earlier.count < DELTA_MIN_GAMES) return [];
+    const change = metric.latest.value - metric.earlier.value;
+    const sign = change > 0 ? "+" : change < 0 ? "−" : "";
+    return [{ label: metric.label, text: `${metric.format(metric.latest.value)} (${sign}${metric.delta(change)})` }];
+  });
+  if (!chips.length) return null;
+  return (
+    <section className={styles.panel} aria-labelledby="form-deltas">
+      <h2 id="form-deltas">Recent vs previous</h2>
+      <p className={styles.meta}>
+        Last {latest.games} games vs the previous {earlier.games} in the stored sample · remakes and early surrenders excluded.
+      </p>
+      <ul className={styles.deltas}>
+        {chips.map(chip => <li key={chip.label}><span>{chip.label}</span><strong>{chip.text}</strong></li>)}
+      </ul>
     </section>
   );
 }

@@ -5,17 +5,18 @@ import { currentWinStreak } from "@/lib/current-win-streak";
 import { Avatar } from "@/components/ui";
 import Link from "next/link";
 import Form from "next/form";
-import { MATCH_DETAIL_LIMIT, matchQueueName, matchSectionId, recentMatchHistory } from "@/lib/match-history";
+import { MATCH_DETAIL_LIMIT, matchQueueName, matchRoleLabel, matchSectionId, recentMatchHistory } from "@/lib/match-history";
 import { RATING_DESCRIPTION, RATING_VERSION } from "@/lib/match-performance";
 import { matchFilterPath } from "./older-match-page";
 import { LatestGames, OlderGames } from "./match-history-view";
+import { ChampionSummary } from "./champion-summary";
 import styles from "./history.module.css";
 import profileStyles from "./profile.module.css";
-import { buildPlayerAnalytics } from "@/lib/player-analytics";
+import { buildPlayerAnalytics, formComparison } from "@/lib/player-analytics";
 import { buildPerformanceIndex, duoSynergy, formCurve, personalBests, type PoolGame } from "@/lib/performance-index";
 import { performancePool } from "@/lib/performance-pool";
-import { FormCurveSparkline, PerformanceIndexCard, PersonalBestsSection } from "@/components/player-insights";
-import { PlayerActivity, PlayerChampionAnalytics, PlayerPerformance, PlayerPlayStyle } from "@/components/player-analytics";
+import { FormCurveSparkline, FormDeltas, PerformanceIndexCard, PersonalBestsSection } from "@/components/player-insights";
+import { PlayerActivity, PlayerChampionAnalytics, PlayerPerformance, PlayerPlayStyle, PlayerRoleBreakdown, type ChampionSort } from "@/components/player-analytics";
 import { masteryNeedsCatalog, PlayerMastery } from "@/components/player-mastery";
 import { PlayerRankHistory } from "@/components/player-rank-history";
 import { RefreshPlayer } from "@/components/refresh-player";
@@ -44,7 +45,7 @@ export const metadata: Metadata = {
 };
 
 export default async function PlayerPage({ searchParams }: {
-  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; match?: string; older?: string; queue?: string; champion?: string; from?: string; fromPlayer?: string; fromDiscussion?: string; timeline?: string; via?: string; playerKey?: string }>;
+  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; match?: string; older?: string; queue?: string; champion?: string; role?: string; csort?: string; cdir?: string; from?: string; fromPlayer?: string; fromDiscussion?: string; timeline?: string; via?: string; playerKey?: string }>;
 }) {
   const sp = await searchParams;
   const platform = sp.platform && isPlatform(sp.platform) ? sp.platform : "na1";
@@ -116,7 +117,7 @@ export default async function PlayerPage({ searchParams }: {
   const partial = result.source === "partial";
   const snap = player.snapshot;
   const matches = player.matchHistory?.matches ?? snap.matches;
-  const analytics = buildPlayerAnalytics(matches);
+  const analytics = buildPlayerAnalytics(matches, undefined, { excludeEarlySurrenders: true });
   const incompleteHistory = partial || player.matchHistory?.complete === false;
   const [linked,owner,roomSlugs,masteryCatalog] = await Promise.all([
     user ? q`SELECT 1 FROM wp_links WHERE user_id=${user.id} AND puuid=${player.puuid}`.catch(() => null) : null,
@@ -129,10 +130,15 @@ export default async function PlayerPage({ searchParams }: {
   const canOpenMatchContext = !partial && user !== undefined;
   const badges = earnedBadges(snap);
   const streak = partial ? null : currentWinStreak(snap, player.fetchedAt);
-  const history = recentMatchHistory(matches, sp.queue, sp.champion);
+  const history = recentMatchHistory(matches, sp.queue, sp.champion, sp.role);
   const publicSample = gameCount(history.sampleSize, "public");
   const latest = history.matches.slice(0, MATCH_DETAIL_LIMIT);
-  const filtered = Boolean(history.queue || history.champion);
+  const filtered = Boolean(history.queue || history.champion || history.role);
+  const championSort: ChampionSort | undefined = sp.csort || sp.cdir ? {
+    key: (["games", "winrate", "kda", "cs", "rating", "damage"] as const).find(key => key === sp.csort) ?? "games",
+    dir: sp.cdir === "asc" ? "asc" : "desc",
+    base: "",
+  } : undefined;
   const route = new URL(withSearchReturn(playerStatsHref(player.platform, player.gameName + "#" + player.tagLine), searchReturn), "https://lookup.invalid");
   if (sp.via === "mention" && sp.playerKey) {
     route.searchParams.set("via", "mention");
@@ -143,10 +149,19 @@ export default async function PlayerPage({ searchParams }: {
   const lookupHref = route.pathname + route.search;
   if (history.queue) route.searchParams.set("queue", history.queue);
   if (history.champion) route.searchParams.set("champion", history.champion);
+  if (history.role) route.searchParams.set("role", history.role);
+  if (championSort) {
+    route.searchParams.set("csort", championSort.key);
+    route.searchParams.set("cdir", championSort.dir);
+  }
   if (typeof sp.match === "string" && matchSectionId(sp.match)) route.searchParams.set("match", sp.match);
   if (typeof sp.older === "string" && /^\d{1,3}$/.test(sp.older)) route.searchParams.set("older", sp.older);
   const refreshHref = route.pathname + route.search;
+  if (championSort) championSort.base = refreshHref;
   const historyHref = `${lookupHref}#match-history`;
+  // The form strip reflects the same filtered sample the history shows.
+  const formPath = filtered ? matchFilterPath(lookupHref, history.queue, history.champion, history.role)
+    : sp.match || sp.older ? lookupHref : "";
 
   // Match history establishes shared games only. Older snapshots have names without tags.
   const mateCounts = new Map<string,number>();
@@ -165,6 +180,7 @@ export default async function PlayerPage({ searchParams }: {
   const bests = personalBests(insightWindow);
   const form = formCurve(insightWindow);
   const duo = duoSynergy(insightWindow);
+  const comparison = formComparison(matches);
   return (
     <div className={profileStyles.profile}>
       {user?.pilotActive && <PilotVisit kind="stats"/>}
@@ -185,25 +201,23 @@ export default async function PlayerPage({ searchParams }: {
         <RefreshPlayer href={refreshHref} fetchedAt={player.fetchedAt} source={result.source} retryAt={result.retryAt} requested={sp.force === "1"} />
         {user && allowLink && <LinkPlayerButton platform={platform} gameName={player.gameName} tagLine={player.tagLine} />}
       </header>
-      {performanceIndex
-        ? <PerformanceIndexCard index={performanceIndex} bests={bests} bestBaseHref={lookupHref} partial={partial} />
-        : <PersonalBestsSection bests={bests} bestBaseHref={lookupHref} partial={partial} />}
       <div id="summary" className={profileStyles.anchor}>
         <PlayerStats player={player} source={result.source} variant="profile" />
-        <RecentResults matches={snap.matches} historyPath={filtered || sp.match || sp.older ? lookupHref : ""} partial={partial} />
+        <RecentResults matches={history.matches} historyPath={formPath} partial={partial} />
       </div>
+      <div className={profileStyles.layout}>
       <section className={styles.history} aria-labelledby="match-history">
         <div className={styles.historyHeader}>
           <h2 id="match-history" className={styles.heading}>Match history</h2>
           {history.sampleSize > 0 && <nav aria-label="Quick queue filters" className={styles.quickFilters}>
             {[["", "All"], ["ranked", "Ranked"]].map(([queue, label]) => (
-              <Link key={label} href={matchFilterPath(lookupHref, queue, history.champion) + "#match-history"}
+              <Link key={label} href={matchFilterPath(lookupHref, queue, history.champion, history.role) + "#match-history"}
                 aria-current={history.queue === queue ? "page" : undefined} prefetch={false}>{label}</Link>
             ))}
           </nav>}
           {history.sampleSize > 0 && <details className={styles.filterDisclosure} open={filtered || undefined}>
             <summary>Filters</summary>
-              <Form action="/player#match-history" className={styles.filters} key={JSON.stringify([platform, player.gameName, player.tagLine, history.queue, history.champion])}>
+              <Form action="/player#match-history" className={styles.filters} key={JSON.stringify([platform, player.gameName, player.tagLine, history.queue, history.champion, history.role])}>
                 <input type="hidden" name="platform" value={platform}/>
                 <input type="hidden" name="riotId" value={player.gameName + "#" + player.tagLine}/>
                 {sp.via === "mention" && sp.playerKey && <>
@@ -223,26 +237,31 @@ export default async function PlayerPage({ searchParams }: {
                   {history.champion && !history.champions.includes(history.champion) && <option value={history.champion}>Outside this sample</option>}
                   {history.champions.map(c => <option key={c} value={c}>{c}</option>)}
                 </select></label>
+                <label>Role<select name="role" defaultValue={history.role}>
+                  <option value="">All roles</option>
+                  {history.role && !(history.roles as readonly string[]).includes(history.role) && <option value={history.role}>{matchRoleLabel(history.role)} · outside this sample</option>}
+                  {history.roles.map(r => <option key={r} value={r}>{matchRoleLabel(r)}</option>)}
+                </select></label>
                 <button className="btn secondary small">Apply</button>
               </Form>
           </details>}
         </div>
-        {form && <FormCurveSparkline form={form} />}
         {history.sampleSize > 0 && <p className={styles.result} aria-live="polite">
           {history.winRate === null ? `No matching games among the ${incompleteHistory ? "available" : "latest"} ${publicSample}` : <>
             {filtered ? `${history.matches.length} of ${publicSample}` : incompleteHistory ? `${publicSample} available` : `Latest ${publicSample}`}
             {" · "}{history.wins}W–{history.losses}L · {history.winRate}% win rate
           </>}
+          {history.excluded > 0 && <> · {history.excluded} remake or early surrender {history.excluded === 1 ? "game" : "games"} not counted</>}
           {filtered && <Link href={historyHref} className={styles.reset}>Clear filters</Link>}
         </p>}
         {history.sampleSize === 0 && !discussionId && <p className="meta">{partial ? "Riot couldn’t provide recent public games for this lookup." : "No recent public games in this lookup."}</p>}
         {latest.length > 0 && (
           <LatestGames matches={latest} patch={patch} platform={player.platform} riotId={`${player.gameName}#${player.tagLine}`}
             persisted={canOpenMatchContext} lookupHref={lookupHref}
-            queueFilter={history.queue} championFilter={history.champion} rawMatch={sp.match} showTimeline={sp.timeline === "objectives"}/>
+            queueFilter={history.queue} championFilter={history.champion} roleFilter={history.role} rawMatch={sp.match} showTimeline={sp.timeline === "objectives"}/>
         )}
         <OlderGames matches={history.matches} patch={patch} platform={player.platform} riotId={`${player.gameName}#${player.tagLine}`} persisted={canOpenMatchContext} lookupHref={lookupHref}
-          rawPage={sp.older} rawMatch={sp.match} showTimeline={sp.timeline === "objectives"} queueFilter={history.queue} championFilter={history.champion}/>
+          rawPage={sp.older} rawMatch={sp.match} showTimeline={sp.timeline === "objectives"} queueFilter={history.queue} championFilter={history.champion} roleFilter={history.role}/>
 
         {history.sampleSize > 0 && <details className={styles.ratingGuide}>
           <summary>How match ratings work</summary>
@@ -250,21 +269,29 @@ export default async function PlayerPage({ searchParams }: {
           <p>Remakes, early surrenders and games with insufficient evidence are unrated.</p>
         </details>}
       </section>
+      <ChampionSummary analytics={analytics} patch={patch} partial={incompleteHistory} championsHref={`${lookupHref}#player-champions`} />
+      </div>
 
+      <details className={profileStyles.disclosure}>
+        <summary>Insights</summary>
+        {performanceIndex
+          ? <PerformanceIndexCard index={performanceIndex} bests={bests} bestBaseHref={lookupHref} partial={partial} />
+          : <PersonalBestsSection bests={bests} bestBaseHref={lookupHref} partial={partial} />}
+        {form && <FormCurveSparkline form={form} />}
+        <FormDeltas comparison={comparison} />
+        <PlayerRoleBreakdown analytics={analytics} partial={incompleteHistory} />
+        <PlayerPerformance analytics={analytics} partial={incompleteHistory} />
+        <PlayerActivity analytics={analytics} partial={incompleteHistory} />
+        {badges.length > 0 && <p className="meta">{badges.join(" · ")}</p>}
+        {duo && <p className="meta">Duo record · You + {duo.name}#{duo.tag}: {duo.wins}W–{duo.losses}L together across {duo.games} recent games</p>}
+        {frequent.length > 0 && <p className="meta">Also on the same team recently · {frequent.map(([name,games]) => `${name} (${games} games)`).join(", ")}</p>}
+      </details>
       <details className={profileStyles.disclosure}>
         <summary>Champions and roles</summary>
         <div id="player-champions" className={profileStyles.anchor}>
-          <PlayerChampionAnalytics analytics={analytics} partial={incompleteHistory} patch={patch} visibleRooms={publicRooms}/>
+          <PlayerChampionAnalytics analytics={analytics} partial={incompleteHistory} patch={patch} visibleRooms={publicRooms} sort={championSort}/>
           <PlayerPlayStyle analytics={analytics} partial={incompleteHistory}/>
         </div>
-      </details>
-      <details className={profileStyles.disclosure}>
-        <summary>Performance and activity</summary>
-        {badges.length > 0 && <p className="meta">{badges.join(" · ")}</p>}
-        <PlayerPerformance analytics={analytics} partial={incompleteHistory}/>
-        <PlayerActivity analytics={analytics} partial={incompleteHistory}/>
-        {duo && <p className="meta">Duo record · You + {duo.name}#{duo.tag}: {duo.wins}W–{duo.losses}L together across {duo.games} recent games</p>}
-        {frequent.length > 0 && <p className="meta">Also on the same team recently · {frequent.map(([name,games]) => `${name} (${games} games)`).join(", ")}</p>}
       </details>
       <details className={profileStyles.disclosure}>
         <summary>Champion mastery</summary>

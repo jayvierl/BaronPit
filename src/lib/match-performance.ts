@@ -3,7 +3,14 @@ import type { MatchParticipantSummary, MatchSummary } from "./pure";
 export const RATING_VERSION = 2;
 export const RATING_DESCRIPTION = "In completed ranked Solo/Duo and Flex games of at least 15 minutes, we compare each player with the opponent in the same role. We weigh kill participation, damage per gold, vision per minute, deaths per ten minutes, gold per minute and, when available for everyone, objective damage per minute. An even comparison scores 5.5. The highest unrounded score on each complete team earns MVP (win) or Team Ace (loss). Exact ties share the badge.";
 export const MATCH_DETAILS_VERSION = 3;
+export const EARLY_SURRENDER_REASON = "Early surrenders and remakes are excluded.";
 const missing = "The match record lacks complete, comparable role data.";
+
+/** True only when the stored rating evidence itself flags the game as a remake
+ * or early surrender. Other queues carry no such flag, so nothing is guessed. */
+export function isEarlySurrender(match: Pick<MatchSummary, "ratingReason">): boolean {
+  return match.ratingReason === EARLY_SURRENDER_REASON;
+}
 
 export function eligibleForMatchRating(queue: number, seconds: number) {
   return (queue === 420 || queue === 440) && seconds >= 900 && seconds <= 86400;
@@ -51,7 +58,7 @@ export function rateMatch(participants: Record<string, unknown>[], queue: number
   const exclusion = ineligibleReason(queue, seconds);
   if (exclusion) return { reason: exclusion };
   if (map !== 11) return { reason: "Only Summoner’s Rift games are rated." };
-  if (participants.some(p => p.gameEndedInEarlySurrender === true)) return { reason: "Early surrenders and remakes are excluded." };
+  if (participants.some(p => p.gameEndedInEarlySurrender === true)) return { reason: EARLY_SURRENDER_REASON };
   if (participants.length !== 10 || new Set(participants.map(p => p.participantId)).size !== 10) return { reason: missing };
 
   const byTeam = new Map<number, Team>();

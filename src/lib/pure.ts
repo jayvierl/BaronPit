@@ -9,6 +9,12 @@ export interface MatchParticipantSummary {
   name?: string;
   tag?: string;
   isPlayer?: true;
+  /** Damage dealt to champions (snapshots stored after the damage fields landed). */
+  damage?: number;
+  /** Damage taken (same provenance as `damage`). */
+  damageTaken?: number;
+  /** Share of the participant's own team damage, 0–1 (same provenance). */
+  damageShare?: number;
 }
 
 export interface MatchSummary {
@@ -32,6 +38,14 @@ export interface MatchSummary {
   items: number[];
   /** Gold earned by the player this game (newer snapshots only). */
   gold?: number;
+  /** Damage dealt to champions (only when `damageVersion` is set). */
+  damage?: number;
+  /** Damage taken (only when `damageVersion` is set). */
+  damageTaken?: number;
+  /** Player damage as a share of their team's total damage, 0–1 (same provenance). */
+  teamDamageShare?: number;
+  /** Marker distinguishing snapshots that store the damage fields from older ones. */
+  damageVersion?: 1;
   /** Total gold earned by the player's whole team this game. */
   teamGold?: number;
   /** Exact team objective count, when returned by Match-V5. */
