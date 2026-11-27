@@ -3,6 +3,7 @@
 import { createHash } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import { clearFixturePhoto, fixturePhotoEnv } from "./photo-scanner.mjs";
+import { seedPlayerDepth } from "./profile-depth-fixture.mjs";
 
 const fixtureDsn = "postgresql://fixture:fixture@ep-fixture.invalid/ward_smoke";
 if (process.env.DATABASE_URL !== fixtureDsn || !/^[a-f0-9]{64}$/.test(process.env.SMOKE_SESSION || "")) {
@@ -100,6 +101,7 @@ async function seed(tx) {
     [JSON.stringify(supportSnapshot)],
   );
   await tx.exec("INSERT INTO wp_links(user_id,puuid,is_primary,verified) VALUES(504,'fixture-support',true,true)");
+  await seedPlayerDepth(tx);
 }
 
 async function query(tx, statement) {

@@ -21,8 +21,7 @@ export function dailyCallWindow(asOf: Date) {
 
 type DailyCallSql = Awaited<ReturnType<typeof getSql>>;
 const pausedPublication = () => process.env.SAFETY_PAUSE_PUBLICATION === "true";
-const launchGeneration = `EXISTS (SELECT 1 FROM wp_meta WHERE key='schema_generation' AND value='2')`;
-const firstLaunchPending = `${launchGeneration} AND NOT EXISTS (SELECT 1 FROM wp_daily_calls)
+const firstLaunchPending = `NOT EXISTS (SELECT 1 FROM wp_daily_calls)
   AND NOT EXISTS (SELECT 1 FROM wp_meta WHERE key LIKE 'daily_call:%' OR key='${DAILY_CALL_LAUNCH_KEY}')`;
 
 function preparePublisher(sql: DailyCallSql, paused: boolean, firstOnly = false) {
@@ -57,14 +56,19 @@ function openDailyCall(sql: DailyCallSql, window: ReturnType<typeof dailyCallWin
     JSON.stringify({ options: scenario.options }), scenario.title, opensAt, closesAt]);
 }
 
-/** The generation-2 production migration supplies its initialized connection. */
-export async function seedFirstDailyCall(sql: DailyCallSql, asOf = new Date()) {
+/** Production initialization supplies its connection and expected schema generation. */
+export async function seedFirstDailyCall(sql: DailyCallSql, generation: number, asOf = new Date()) {
   if (process.env.VERCEL_ENV !== "production") return 0;
   const paused = pausedPublication();
-  const [, , , , opened] = await sql.transaction([
+  const [, , , , , opened] = await sql.transaction([
     sql`SELECT pg_advisory_xact_lock(hashtext('wp_schema_init'))`,
+    sql(`DO $guard$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM wp_meta WHERE key='schema_generation' AND value::bigint = ${generation}) THEN
+        RAISE EXCEPTION 'Schema generation changed' USING ERRCODE='BP001';
+      END IF;
+    END $guard$`, []),
     ...preparePublisher(sql, paused, true), openDailyCall(sql, dailyCallWindow(asOf), paused, true),
-    sql(`INSERT INTO wp_meta(key,value) SELECT $1,'handled' WHERE ${launchGeneration} ON CONFLICT(key) DO NOTHING`, [DAILY_CALL_LAUNCH_KEY]),
+    sql`INSERT INTO wp_meta(key,value) VALUES (${DAILY_CALL_LAUNCH_KEY},'handled') ON CONFLICT(key) DO NOTHING`,
   ]);
   return opened.length;
 }

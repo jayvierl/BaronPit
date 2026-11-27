@@ -6,9 +6,10 @@ import { currentWinStreak } from "./current-win-streak";
 import { playerFromRow, type Player } from "./riot";
 import { fnvHash } from "./pure";
 import { publicAvatar } from "./avatar";
+import { SOCIAL_PLAYER_SELECT } from "./social-player-select";
 
 function linkedRows(userId: number, includeMatches: boolean) {
-  const columns = includeMatches ? "p.*, p.snapshot #> '{champPool,0,champion}' AS main"
+  const columns = includeMatches ? `${SOCIAL_PLAYER_SELECT}, p.snapshot #> '{champPool,0,champion}' AS main`
     : "p.puuid,p.platform,p.game_name,p.tag_line,p.profile_icon,p.rank_tier,p.rank_div,p.rank_lp,p.fetched_at,p.snapshot->'rankedEntries' AS entries";
   return queryRows(`SELECT ${columns}, l.is_primary,
     (l.verified AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.verified AND other.puuid=l.puuid AND other.user_id<>l.user_id)) AS verified
@@ -108,7 +109,7 @@ const visibleSpotlight = `featured AS (
 
 export async function todaysSpotlight(dateStr: string, viewerId: number | null = null) {
   const [row] = await queryRows(`WITH ${HIDDEN_AUTHORS}, ${visibleSpotlight}
-    SELECT p.*, u.display_name AS owner_name, u.id AS owner_id FROM featured f
+    SELECT ${SOCIAL_PLAYER_SELECT}, u.display_name AS owner_name, u.id AS owner_id FROM featured f
     JOIN wp_players p ON p.puuid=f.puuid JOIN wp_users u ON u.id=f.user_id`, [viewerId,dateStr]);
   if (!row) return null;
   const player = playerFromRow(row);

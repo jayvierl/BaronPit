@@ -1,5 +1,12 @@
 /** Pure helpers (no server imports) — shared by riot.ts, social.ts, and tests. */
 
+export interface MatchParticipantSummary {
+  champion: string;
+  name?: string;
+  tag?: string;
+  isPlayer?: true;
+}
+
 export interface MatchSummary {
   matchId: string;
   champion: string;
@@ -29,6 +36,15 @@ export interface MatchSummary {
   baron?: boolean;
   /** Same-team players (excluding the player): champion + Riot name where shown. */
   teammates?: { champion: string; name: string; tag?: string }[];
+  championLevel?: number;
+  spellIds?: [number, number];
+  runes?: { keystone: number; primaryStyle: number; secondaryStyle: number };
+  teamKills?: number;
+  /** Share of the team's kills in which the player participated, when known. */
+  killParticipation?: number;
+  teams?: { allies: MatchParticipantSummary[]; opponents: MatchParticipantSummary[] };
+  /** This game has already been projected from Match-V5 with the rich fields. */
+  detailsVersion?: 1;
 }
 
 type BaronData = { teamBaronKills?: unknown; baron?: unknown };

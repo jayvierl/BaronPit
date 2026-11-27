@@ -3,7 +3,7 @@ import { postgres } from "../../test/postgres";
 import { q } from "./db";
 import type { User } from "./auth";
 import { searchAll } from "./social";
-import { readSearchReturn, searchHref, searchScope, withSearchReturn } from "./search-scopes";
+import { isExactRiotId, readSearchReturn, searchHref, searchScope, withSearchReturn } from "./search-scopes";
 import { playerStatsHref } from "./platforms";
 
 vi.mock("@neondatabase/serverless", async () => ({ neon: (await import("../../test/postgres")).neonForTests }));
@@ -83,4 +83,9 @@ it("keeps a selected region and safely returns from exact lookups without a redi
     expect(readSearchReturn(value)).toBeUndefined();
   }
   expect(readSearchReturn("/search?scope=unknown&region=invalid&from=/player&q=Nami")).toBe("/search?q=Nami");
+});
+
+it("accepts display-form Riot IDs and keeps community hashtag searches on search", () => {
+  for (const value of ["Jay Lewis#NA1", "Jay Lewis #NA1", "Écho River#WAVE"]) expect(isExactRiotId(value)).toBe(true);
+  for (const value of ["#NA1", "discuss #support", "who plays #Ashe today?", "Jay#NA1#NA1"]) expect(isExactRiotId(value)).toBe(false);
 });

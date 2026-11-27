@@ -43,6 +43,25 @@ it("shows just a Flex placement and does not borrow the legacy Solo/Duo rank", (
   expect(html).not.toContain("Combined ranked record");
 });
 
+it("shows both profile queues and distinguishes an unplaced queue from unknown legacy data", () => {
+  const view = (rankedEntries: Player["rankedEntries"]) => renderToStaticMarkup(createElement(PlayerStats, {
+    variant: "profile", player: { ...player, rankedEntries },
+  }));
+  const flexOnly = view([{ queueType: "RANKED_FLEX_SR", tier: "EMERALD", rank: "I", leaguePoints: 21, wins: 2, losses: 1 }]);
+  const legacy = view(undefined);
+  for (const html of [flexOnly, legacy]) {
+    expect(html).toContain('aria-label="Ranked Solo/Duo"');
+    expect(html).toContain('aria-label="Ranked Flex"');
+    expect(html).not.toContain("Most played champions");
+    expect(html).not.toContain("Combined ranked record");
+  }
+  expect(flexOnly).toMatch(/aria-label="Ranked Solo\/Duo"[^>]*><h3>Ranked Solo\/Duo<\/h3><span[^>]+>Unranked<\/span>/);
+  expect(flexOnly).toContain("Emerald I · 21 LP");
+  expect(flexOnly).toContain("67%");
+  expect(legacy).toContain("Gold IV · 6 LP");
+  expect(legacy).toMatch(/aria-label="Ranked Flex"[^>]*><h3>Ranked Flex<\/h3><span[^>]+>Rank unavailable<\/span>/);
+});
+
 it("distinguishes absent data, unplaced rank and a stale snapshot without displaying a made-up record", () => {
   const html = renderToStaticMarkup(createElement(PlayerStats, { player: {...player, rankedEntries: []}, source: "stale" }));
   expect(html).toContain('data-tier="neutral"');

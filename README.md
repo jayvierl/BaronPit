@@ -1,6 +1,6 @@
 # Baron Pit
 
-This is the source for [baronpit.com](https://baronpit.com), Vercel project `ward-party`. The brand comes from `NEXT_PUBLIC_APP_NAME`. Players discuss their games and find compatible ranked duo partners. Verified community profiles and public player lookups show Riot’s ranked-year record by queue. Role and champion frequencies come from the most recent 20 available matches across queues.
+This is the source for [baronpit.com](https://baronpit.com), Vercel project `ward-party`. The brand comes from `NEXT_PUBLIC_APP_NAME`. Players discuss their games and find compatible ranked duo partners. Verified community profiles and public player lookups show Riot’s ranked-year record by queue. Public player lookups show up to 100 recent matches across queues. Community profiles and duo features use the most recent 20.
 
 - [Muse’s original audit](AUDIT.md) records the initial problems. Some findings were already repaired when this source was recovered.
 - [Baron Pit round-two audit](BARON-ROUND-2-AUDIT.md) covers the production-source reconciliation and the six Baron feature checks. [Muse’s round-one handoff](CODEX-DEEP-AUDIT.md) is preserved for comparison.
@@ -26,7 +26,7 @@ Resend needs a verified sender and canonical origin. Set `AUTH_PUBLIC_ALIASES` t
 
 ## Persistence and deployment
 
-The database stores one replaceable player snapshot with up to 20 recent matches. Refresh freshness is ten minutes. A user-published match card keeps the selected summary. No per-match history is collected. Persistent social records and protected moderation records use separate tables. A revision check skips setup on an up-to-date database. An upgrade uses an ordered, advisory-locked transaction. Keep older account and social data when rolling forward.
+The database stores one replaceable player snapshot with up to 100 recent matches. The first 20 supply social summaries. The older portion belongs to the player lookup. Refresh freshness is ten minutes. A user-published match card keeps the selected summary. The only historical series records a maximum of one rank observation per player, queue and UTC date. A past-season line requires recorded rank observations. Persistent social records and protected moderation records use separate tables. A revision check skips setup on an up-to-date database. An upgrade uses an ordered, advisory-locked transaction. Keep older account and social data when rolling forward.
 
 Deploy this directory to the existing `ward-party` project. Check the live alias immediately before promotion for intervening releases. Run the smoke suite on the exact source bundle, check the preview and review the safety release gates with the owner before changing the live alias.
 

@@ -1,20 +1,27 @@
-import { q, dbAvailable } from "./db";
+import { createHash } from "node:crypto";
+import { q, dbAvailable, queryRows } from "./db";
+import { SOCIAL_PLAYER_SELECT } from "./social-player-select";
 import bundledCatalog from "./champion-catalog.json";
 import { playerSnapshotTiming, readRankedEntries, type RankedEntry } from "./player-summary";
 
 /**
  * Riot API access — on-demand recent form ONLY (build brief §2/§8).
- * A player's wp_players row is a short-lived cache of their last ~20 games;
- * it is overwritten on refresh and nothing older is retained anywhere.
+ * A player's wp_players row holds a bounded on-demand sample. The latest 20
+ * keep their existing community semantics; the profile can extend it to 100.
  */
 
 import { PLATFORMS, isPlatform, type PlatformId } from "./platforms";
 export { PLATFORMS, isPlatform };
 export type { PlatformId };
 
-import { summarize, teamBaronFields, EMPTY_SNAPSHOT, type MatchSummary, type PlayerSnapshot } from "./pure";
+import { summarize, EMPTY_SNAPSHOT, type MatchSummary, type PlayerSnapshot } from "./pure";
+import { matchFromRiot, readStoredMatches } from "./riot-match";
 export { summarize, EMPTY_SNAPSHOT };
 export type { MatchSummary, PlayerSnapshot };
+
+const COMMUNITY_MATCH_LIMIT = 20;
+const PROFILE_MATCH_LIMIT = 100;
+export const PLAYER_UPDATE_INTERVAL_MS = 2 * 60_000;
 
 function regionFor(platform: string): "americas" | "europe" | "asia" | "sea" {
   if (["euw1", "eun1", "tr1", "ru"].includes(platform)) return "europe";
@@ -38,7 +45,14 @@ export interface Player {
   /** Published entries from the same lookup. Legacy rows contain only Solo/Duo columns. */
   rankedEntries?: RankedEntry[];
   snapshot: PlayerSnapshot;
+  matchHistory?: { matches: MatchSummary[]; complete: boolean };
+  championMastery?: ChampionMastery;
   fetchedAt: string;
+}
+
+export interface ChampionMastery {
+  fetchedAt: string;
+  champions: { championId: number; level: number; points: number }[];
 }
 
 function key(): string | null {
@@ -49,21 +63,76 @@ export function riotConfigured(): boolean {
   return Boolean(key());
 }
 
+const APPLICATION_WINDOW = 2 * 60_000;
+const APPLICATION_LIMIT = 98;
+const BURST_WINDOW = 1_000;
+const BURST_LIMIT = 18;
+let budgetKey: string | undefined;
 let apiCooldownUntil = 0;
+let requestTimes: number[] = [];
 
-async function riotJson(url: string): Promise<{ status: number; body: unknown }> {
+function throttleBucket(k: string | null) {
+  return `riot:cooldown:${createHash("sha256").update(k ?? "").digest("hex")}`;
+}
+
+function currentBudget(k: string) {
+  if (budgetKey === k) return;
+  budgetKey = k;
+  requestTimes = [];
+  apiCooldownUntil = 0;
+}
+
+function retryAt() {
+  const now = Date.now();
+  const k = key();
+  if (!k) return undefined;
+  currentBudget(k);
+  const until = Math.max(apiCooldownUntil, requestTimes.length >= APPLICATION_LIMIT ? requestTimes[0] + APPLICATION_WINDOW : 0);
+  return until > now ? new Date(until).toISOString() : undefined;
+}
+
+async function claimRequest(k: string, deadline: number) {
+  currentBudget(k);
+  for (;;) {
+    const now = Date.now();
+    if (budgetKey !== k || now < apiCooldownUntil || now >= deadline) return false;
+    requestTimes = requestTimes.filter(at => now - at < APPLICATION_WINDOW);
+    if (requestTimes.length >= APPLICATION_LIMIT) return false;
+    const burst = requestTimes.filter(at => now - at < BURST_WINDOW);
+    if (burst.length < BURST_LIMIT) {
+      requestTimes.push(now);
+      return true;
+    }
+    const next = burst[0] + BURST_WINDOW;
+    if (next >= deadline) return false;
+    await new Promise(resolve => setTimeout(resolve, Math.max(1, next - now)));
+  }
+}
+
+async function riotJson(url: string, deadline = Date.now() + 6_000): Promise<{ status: number; body: unknown }> {
   const k = key();
   if (!k) return { status: 503, body: null };
+  if (!(await claimRequest(k, deadline))) return { status: 429, body: null };
   if (Date.now() < apiCooldownUntil) return { status: 429, body: null };
   try {
     const res = await fetch(url, {
       headers: { "X-Riot-Token": k },
       cache: "no-store",
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(Math.min(6_000, Math.max(1, deadline - Date.now()))),
     });
     if (res.status === 429) {
-      const wait = Number(res.headers.get("retry-after")) || 5;
-      apiCooldownUntil = Math.max(apiCooldownUntil, Date.now() + Math.min(600, Math.max(wait, 1)) * 1000);
+      const seconds = Number(res.headers.get("retry-after"));
+      const wait = Number.isFinite(seconds) && seconds > 0 ? seconds : 5;
+      const until = Math.min(8.64e15, Date.now() + wait * 1000);
+      if (budgetKey === k && until > apiCooldownUntil) {
+        apiCooldownUntil = until;
+        // Preserve Riot's backoff across function instances. A database outage
+        // still leaves this instance's guard in place.
+        await q`INSERT INTO wp_action_windows(bucket,hits,expires_at)
+          VALUES (${throttleBucket(k)},ARRAY[]::timestamptz[],${new Date(until).toISOString()})
+          ON CONFLICT(bucket) DO UPDATE SET expires_at=excluded.expires_at
+          WHERE wp_action_windows.expires_at<excluded.expires_at`.catch(() => []);
+      }
     }
     if (!res.ok) return { status: res.status, body: null };
     return { status: 200, body: await res.json() };
@@ -72,29 +141,30 @@ async function riotJson(url: string): Promise<{ status: number; body: unknown }>
   }
 }
 
+function normalizedMastery(raw: unknown, fetchedAt: unknown): ChampionMastery | undefined {
+  if (!Array.isArray(raw) || typeof fetchedAt !== "string" || !Number.isFinite(Date.parse(fetchedAt))) return undefined;
+  const champions: ChampionMastery["champions"] = [];
+  for (const entry of raw.slice(0, 8)) {
+    if (!entry || ![entry.championId, entry.level, entry.points].every(value => Number.isSafeInteger(value) && value >= 0) ||
+        entry.championId === 0 || entry.level === 0 || champions.some(existing => existing.championId === entry.championId)) return undefined;
+    champions.push({ championId: entry.championId, level: entry.level, points: entry.points });
+  }
+  champions.sort((a, b) => b.points - a.points || a.championId - b.championId);
+  return { fetchedAt, champions };
+}
+
+function storedMastery(raw: unknown): ChampionMastery | undefined {
+  const stored = raw as Partial<ChampionMastery> | null;
+  return stored ? normalizedMastery(stored.champions, stored.fetchedAt) : undefined;
+}
+
 /** Recompute display totals from the bounded match sample, including older rows without champion KDA. */
 function readSnapshot(raw: unknown): PlayerSnapshot {
   if (!raw || typeof raw !== "object") return EMPTY_SNAPSHOT;
   const stored = raw as Partial<PlayerSnapshot>;
   if (Array.isArray(stored.matches) && stored.matches.length) {
-    const matches = stored.matches
-      .slice(0, 20)
-      .filter(
-        (m) =>
-          m &&
-          typeof m.matchId === "string" &&
-          typeof m.champion === "string" &&
-          typeof m.win === "boolean" &&
-          [m.kills, m.deaths, m.assists, m.cs, m.durationSec, m.playedAt].every(Number.isFinite),
-      )
-      .map((m) => ({
-        ...m,
-        items: Array.isArray(m.items) ? m.items.filter(Number.isInteger) : [],
-        teammates: Array.isArray(m.teammates)
-          ? m.teammates.filter((t) => t && typeof t.name === "string" && typeof t.champion === "string")
-          : [],
-      }));
-    return summarize(matches);
+    const matches = readStoredMatches(stored.matches, COMMUNITY_MATCH_LIMIT);
+    return { ...summarize(matches), coverageFrom: stored.coverageFrom, coverageThrough: stored.coverageThrough };
   }
   // Older data may only contain aggregates. Preserve complete aggregates without inventing unknown values.
   if (
@@ -119,6 +189,11 @@ function readSnapshot(raw: unknown): PlayerSnapshot {
 }
 
 export function playerFromRow(r: Record<string, unknown>): Player {
+  const stored = r.snapshot as Partial<PlayerSnapshot> & { olderMatches?: unknown; historyComplete?: unknown; rankedEntries?: unknown; championMastery?: unknown } | null;
+  const snapshot = readSnapshot(stored);
+  const older = readStoredMatches(stored?.olderMatches, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT, snapshot.matches);
+  const complete = stored?.historyComplete === true && older.length === (Array.isArray(stored.olderMatches) ? stored.olderMatches.length : 0) &&
+    snapshot.matches.length === stored.matches?.length;
   return {
     puuid: String(r.puuid),
     platform: String(r.platform),
@@ -131,25 +206,29 @@ export function playerFromRow(r: Record<string, unknown>): Player {
     rankLp: r.rank_lp == null ? null : Number(r.rank_lp),
     rankWins: r.rank_wins == null ? null : Number(r.rank_wins),
     rankLosses: r.rank_losses == null ? null : Number(r.rank_losses),
-    rankedEntries: readRankedEntries((r.snapshot as { rankedEntries?: unknown } | null)?.rankedEntries),
-    snapshot: readSnapshot(r.snapshot),
+    rankedEntries: readRankedEntries(stored?.rankedEntries),
+    championMastery: storedMastery(stored?.championMastery),
+    matchHistory: typeof stored?.historyComplete === "boolean" || older.length ? { matches: [...snapshot.matches, ...older], complete } : undefined,
+    snapshot,
     fetchedAt: String(r.fetched_at),
   };
 }
 
-export async function getCachedPlayer(puuid: string): Promise<Player | null> {
+export async function getCachedPlayer(puuid: string, { profile = false }: { profile?: boolean } = {}): Promise<Player | null> {
   if (!dbAvailable()) return null;
-  const rows = await q`SELECT * FROM wp_players WHERE puuid = ${puuid} LIMIT 1`;
+  const rows = profile ? await q`SELECT * FROM wp_players WHERE puuid = ${puuid} LIMIT 1`
+    : await queryRows(`SELECT ${SOCIAL_PLAYER_SELECT} FROM wp_players p WHERE p.puuid=$1 LIMIT 1`, [puuid]);
   return rows.length ? playerFromRow(rows[0]) : null;
 }
 
 export type LookupResult =
-  | { ok: true; player: Player; fresh: boolean; source: "live" | "cache" | "stale" | "partial" }
-  | { ok: false; code: "not_found" | "invalid_key" | "key_unavailable" | "rate_limited" | "upstream" | "unavailable" };
+  | { ok: true; player: Player; fresh: boolean; source: "live" | "cache" | "stale" | "partial"; retryAt?: string }
+  | { ok: false; code: "not_found" | "invalid_key" | "key_unavailable" | "rate_limited" | "upstream" | "unavailable"; retryAt?: string };
 
-const refreshes = new Map<string, Promise<LookupResult>>();
+type LookupScope = { force: boolean; profile: boolean };
+const refreshes = new Map<string, { scope: LookupScope; task: Promise<LookupResult> }>();
 
-export async function lookupPlayer(platform: string, gameName: string, tagLine: string): Promise<LookupResult> {
+export async function lookupPlayer(platform: string, gameName: string, tagLine: string, options: { force?: boolean; profile?: boolean } = {}): Promise<LookupResult> {
   if (!isPlatform(platform)) return { ok: false, code: "not_found" };
   if (!dbAvailable()) return { ok: false, code: "unavailable" };
   const name = gameName.trim(),
@@ -157,26 +236,89 @@ export async function lookupPlayer(platform: string, gameName: string, tagLine: 
   if (!name || !tag || name.length > 32 || tag.length > 16) return { ok: false, code: "not_found" };
   const id = JSON.stringify([platform, name.toLowerCase(), tag.toLowerCase()]);
   const running = refreshes.get(id);
-  if (running) return running;
-  const task = loadPlayer(platform, name, tag).finally(() => {
+  if (running) {
+    running.scope.force ||= options.force === true;
+    running.scope.profile ||= options.profile === true;
+    return running.task;
+  }
+  const scope = { force: options.force === true, profile: options.profile === true };
+  const task = loadPlayer(platform, name, tag, scope).finally(() => {
     refreshes.delete(id);
   });
-  refreshes.set(id, task);
+  refreshes.set(id, { scope, task });
   return task;
 }
 
-async function loadPlayer(platform: string, gameName: string, tagLine: string): Promise<LookupResult> {
-  const existing = await q`SELECT * FROM wp_players
-    WHERE platform = ${platform} AND lower(game_name) = lower(${gameName}) AND lower(tag_line) = lower(${tagLine}) ORDER BY fetched_at DESC,puuid LIMIT 1`;
-  const cached = existing[0] ? playerFromRow(existing[0]) : null;
-  if (cached && playerSnapshotTiming(cached.fetchedAt).fresh)
-    return { ok: true, player: cached, fresh: false, source: "cache" };
+async function claimRiotWindow(bucket: string) {
+  const rows = await q`INSERT INTO wp_action_windows(bucket,hits,expires_at)
+    VALUES (${bucket},ARRAY[now()],now()+interval '2 minutes')
+    ON CONFLICT (bucket) DO UPDATE SET hits=excluded.hits,expires_at=excluded.expires_at
+    WHERE wp_action_windows.expires_at<=now() RETURNING bucket`;
+  return rows.length > 0;
+}
+
+function validMatchId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Z][A-Z0-9]{1,7}_[0-9]{1,20}$/.test(value);
+}
+
+async function collectMatchDetails(ids: readonly string[], region: string, puuid: string, known: Map<string, MatchSummary>, deadline: number, core: ReadonlySet<string>) {
+  for (let index = 0; index < ids.length && Date.now() < deadline; index += 4) {
+    const batch = ids.slice(index, index + 4);
+    const results = await Promise.all(batch.map(id =>
+      riotJson(`https://${region}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(id)}`, deadline)));
+    for (const [offset, response] of results.entries()) {
+      if (response.status !== 200) continue;
+      const detail = matchFromRiot(response.body, batch[offset], puuid, core.has(batch[offset]));
+      if (detail) known.set(detail.matchId, detail);
+    }
+    if (results.some(response => response.status !== 200 && response.status !== 404)) return false;
+  }
+  return true;
+}
+
+async function loadChampionMastery(platform: string, puuid: string) {
+  const response = await riotJson(`https://${platform}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/${puuid}/top?count=8`,
+    Date.now() + 2_000);
+  if (response.status !== 200 || !Array.isArray(response.body)) return undefined;
+  const entries = response.body.map(entry => entry && ({ championId: entry.championId, level: entry.championLevel, points: entry.championPoints }));
+  return normalizedMastery(entries, new Date().toISOString());
+}
+
+async function loadPlayer(platform: string, gameName: string, tagLine: string, scope: LookupScope): Promise<LookupResult> {
+  const k = key();
+  const [observed] = await q`WITH profile AS (
+    SELECT * FROM wp_players WHERE platform = ${platform} AND lower(game_name) = lower(${gameName})
+      AND lower(tag_line) = lower(${tagLine}) ORDER BY fetched_at DESC,puuid LIMIT 1
+  ) SELECT profile.*, throttle.expires_at AS riot_retry_at FROM (SELECT 1) seed LEFT JOIN profile ON true
+    LEFT JOIN wp_action_windows throttle ON throttle.bucket=${throttleBucket(k)} AND throttle.expires_at>now()`;
+  const cached = observed?.puuid ? playerFromRow(observed) : null;
+  const force = scope.force;
+  if (k) {
+    currentBudget(k);
+    const until = Date.parse(String(observed?.riot_retry_at ?? ""));
+    if (Number.isFinite(until)) apiCooldownUntil = Math.max(apiCooldownUntil, until);
+  }
+  const eligibleAt = cached ? Date.parse(cached.fetchedAt) + PLAYER_UPDATE_INTERVAL_MS : 0;
+  if (cached && ((!force && playerSnapshotTiming(cached.fetchedAt).fresh) || (force && eligibleAt > Date.now()))) {
+    const resumeAt = Math.max(eligibleAt, Date.parse(retryAt() ?? "") || 0);
+    return { ok: true, player: cached, fresh: false, source: "cache", ...(force && { retryAt: new Date(resumeAt).toISOString() }) };
+  }
   let fallback = cached;
-  const unavailable = (status: number): LookupResult =>
-    fallback
-      ? { ok: true, player: fallback, fresh: false, source: "stale" }
-      : { ok: false, code: status === 401 || status === 403 ? "invalid_key" : status === 429 ? "rate_limited" : "upstream" };
+  const unavailable = (status: number, mastery?: ChampionMastery): LookupResult => {
+    const retry = retryAt();
+    const backoff = retry ? { retryAt: retry } : {};
+    return fallback
+      ? { ok: true, player: mastery ? { ...fallback, championMastery: mastery } : fallback, fresh: false, source: "stale", ...backoff }
+      : { ok: false, code: status === 401 || status === 403 ? "invalid_key" : status === 429 ? "rate_limited" : "upstream", ...backoff };
+  };
   if (!riotConfigured()) return cached ? unavailable(503) : { ok: false, code: "key_unavailable" };
+  if (retryAt()) return unavailable(429);
+  if (force && cached) {
+    const digest = createHash("sha256").update(`${platform}:${cached.puuid}`).digest("hex");
+    if (!(await claimRiotWindow(`riot:force:${digest}`).catch(() => false))) {
+      return { ok: true, player: cached, fresh: false, source: "cache" };
+    }
+  }
   const region = regionFor(platform);
   const acct = await riotJson(
     // Account-V1 accepts americas, asia and europe; Match-V5 additionally routes Oceania through SEA.
@@ -184,178 +326,137 @@ async function loadPlayer(platform: string, gameName: string, tagLine: string): 
   );
   if (acct.status === 404) return { ok: false, code: "not_found" };
   if (acct.status !== 200 || !acct.body) return unavailable(acct.status);
-  const {
-    puuid,
-    gameName: realName,
-    tagLine: realTag,
-  } = acct.body as Partial<{ puuid: string; gameName: string; tagLine: string }>;
-  if (typeof puuid !== "string" || !puuid || typeof realName !== "string" || typeof realTag !== "string")
+  const { puuid, gameName: realName, tagLine: realTag } = acct.body as Partial<{
+    puuid: string; gameName: string; tagLine: string;
+  }>;
+  if (typeof puuid !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(puuid) || typeof realName !== "string" || typeof realTag !== "string") {
     return unavailable(502);
-
+  }
   // A reassigned Riot ID must never inherit the prior holder’s cached profile.
   if (cached && cached.puuid !== puuid) fallback = null;
-
   const observedAt = new Date().toISOString();
-  const [summ, league, ids] = await Promise.all([
+  const profile = scope.profile;
+  const matchLimit = profile ? PROFILE_MATCH_LIMIT : COMMUNITY_MATCH_LIMIT;
+  const [summ, rank, ids] = await Promise.all([
     riotJson(`https://${platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`),
-    riotJson(`https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}`),
-    riotJson(`https://${region}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=20`),
+    riotJson(`https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}`).then(result => ({ ...result, at: new Date().toISOString() })),
+    riotJson(`https://${region}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=${matchLimit}`),
   ]);
-
   if (summ.status === 404) return { ok: false, code: "not_found" };
   if (summ.status !== 200 || !summ.body) return unavailable(summ.status === 200 ? 502 : summ.status);
 
-  const level = summ.body ? Number((summ.body as { summonerLevel: number }).summonerLevel ?? 0) : 0;
-  const icon = summ.body ? Number((summ.body as { profileIconId: number }).profileIconId ?? 0) : 0;
-
-  const rankedEntries = league.status === 200 ? readRankedEntries(league.body) : undefined;
-  const matchList = ids.status === 200 && Array.isArray(ids.body) ? ids.body : undefined;
-  if (!rankedEntries && !matchList) return unavailable([league, ids].find(r => r.status !== 200)?.status ?? 502);
-  let complete = rankedEntries !== undefined && matchList !== undefined && matchList.every(id => typeof id === "string" && id.length > 0);
-  // Existing rank columns continue to mean Solo/Duo to all matching and eligibility checks.
+  const level = Number((summ.body as { summonerLevel?: number }).summonerLevel ?? 0);
+  const icon = Number((summ.body as { profileIconId?: number }).profileIconId ?? 0);
+  const rankedEntries = rank.status === 200 ? readRankedEntries(rank.body) : undefined;
+  const rankObservedAt = rank.at;
   const solo = rankedEntries?.find(entry => entry.queueType === "RANKED_SOLO_5x5");
-
-  const matchIds = Array.from(new Set((matchList ?? []).filter((id): id is string => typeof id === "string" && id.length > 0))).slice(
-    0,
-    20,
-  );
-  const known = new Map(
-    (cached?.puuid === puuid ? cached.snapshot.matches : []).map((match) => [match.matchId, match]),
-  );
-  const missing = matchIds.filter((id) => !known.has(id));
-  for (let i = 0; i < missing.length; i += 4) {
-    const batch = missing.slice(i, i + 4);
-    const results = await Promise.all(
-      batch.map((id) =>
-        riotJson(`https://${region}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(id)}`),
-      ),
-    );
-    let delayed = false;
-    for (const r of results) {
-      if (r.status !== 200 || !r.body) {
-        complete = false;
-        if (r.status !== 404) delayed = true;
-        continue;
-      }
-      const m = r.body as {
-        info: {
-          gameDuration: number;
-          gameVersion?: string;
-          queueId: number;
-          gameEndTimestamp: number;
-          gameStartTimestamp?: number;
-          teams?: { teamId: number; objectives?: { baron?: { kills?: number } } }[];
-          participants: {
-            puuid: string;
-            championName: string;
-            win: boolean;
-            kills: number;
-            deaths: number;
-            assists: number;
-            totalMinionsKilled: number;
-            neutralMinionsKilled: number;
-            teamPosition: string;
-            teamId: number;
-            goldEarned: number;
-            riotIdGameName?: string;
-            riotIdTagline?: string;
-            item0: number;
-            item1: number;
-            item2: number;
-            item3: number;
-            item4: number;
-            item5: number;
-            item6: number;
-          }[];
-        };
-        metadata: { matchId: string };
-      };
-      if (!Array.isArray(m.info?.participants) || !batch.includes(m.metadata?.matchId)) {
-        complete = false;
-        continue;
-      }
-      const me = m.info.participants.find((p) => p.puuid === puuid);
-      if (!me || typeof me.win !== "boolean" || typeof me.championName !== "string") {
-        complete = false;
-        continue;
-      }
-      const team = m.info.participants.filter((p) => p.teamId === me.teamId);
-      const teamObjectives = Number.isInteger(me.teamId) && Array.isArray(m.info.teams)
-        ? m.info.teams.find(t => t?.teamId === me.teamId)?.objectives
-        : undefined;
-      const opposite = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"].includes(me.teamPosition)
-        ? m.info.participants.filter((p) => p.teamId !== me.teamId && p.teamPosition === me.teamPosition)
-        : [];
-      const gamePatch = typeof m.info.gameVersion === "string"
-        ? /^([1-9]\d?\.[1-9]\d?)(?:\.|$)/.exec(m.info.gameVersion)?.[1]
-        : undefined;
-      known.set(m.metadata.matchId, {
-        matchId: m.metadata.matchId,
-        champion: me.championName,
-        win: me.win,
-        kills: me.kills,
-        deaths: me.deaths,
-        assists: me.assists,
-        cs: me.totalMinionsKilled + me.neutralMinionsKilled,
-        durationSec: m.info.gameDuration,
-        queueId: m.info.queueId,
-        role: me.teamPosition || "",
-        opponentChampion: opposite.length === 1 ? opposite[0].championName : undefined,
-        gamePatch,
-        playedAt: m.info.gameEndTimestamp,
-        startedAt: Number.isSafeInteger(m.info.gameStartTimestamp) && m.info.gameStartTimestamp! > 0 && m.info.gameStartTimestamp! <= m.info.gameEndTimestamp ? m.info.gameStartTimestamp : undefined,
-        items: [me.item0, me.item1, me.item2, me.item3, me.item4, me.item5, me.item6].filter((x) => x > 0),
-        gold: me.goldEarned,
-        teamGold: team.reduce((a, p) => a + p.goldEarned, 0),
-        ...teamBaronFields({ teamBaronKills: teamObjectives?.baron?.kills }),
-        teammates: team
-          .filter((p) => p.puuid !== puuid)
-          .map((p) => ({
-            champion: p.championName,
-            name: p.riotIdGameName ?? "",
-            tag: p.riotIdTagline || undefined,
-          })),
-      });
+  const matchList: unknown[] | undefined = ids.status === 200 && Array.isArray(ids.body) ? ids.body.slice(0, matchLimit) : undefined;
+  const rawCore = matchList?.slice(0, COMMUNITY_MATCH_LIMIT) ?? [];
+  const coreIds = [...new Set(rawCore.filter(validMatchId))];
+  const allIds = [...new Set(matchList?.filter(validMatchId) ?? [])];
+  const olderIds = allIds.filter(id => !coreIds.includes(id)).slice(0, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT);
+  const coreSet = new Set(coreIds);
+  const known = new Map((fallback?.matchHistory?.matches ?? fallback?.snapshot.matches ?? []).map(match => [match.matchId, match]));
+  if (fallback) {
+    const raw = observed.snapshot as { matches?: unknown } | null;
+    for (const match of readStoredMatches(raw?.matches, COMMUNITY_MATCH_LIMIT, [], true)) {
+      if (coreSet.has(match.matchId)) known.set(match.matchId, match);
     }
-    if (delayed) break;
   }
+  await collectMatchDetails(coreIds.filter(id => !known.has(id)), region, puuid, known, Date.now() + 12_000, coreSet);
+  const matches = coreIds.flatMap(id => known.get(id) ?? []);
+  const coreComplete = rankedEntries !== undefined && matchList !== undefined && matches.length === rawCore.length &&
+    (matches.length > 0 || (fallback?.snapshot.games ?? 0) === 0);
 
-  const matches = matchIds.flatMap((id) => known.get(id) ?? []);
-  const snapshot = summarize(matches);
-  if (!complete || matches.length !== matchIds.length || (!matches.length && (fallback?.snapshot.games ?? 0) > 0)) {
-    // Screens may show Riot's observed subset. Keep it out of the shared cache and eligibility evidence.
-    if (fallback) return unavailable(502);
-    return { ok: true, source: "partial", fresh: false, player: {
+  // Mastery is optional and comes after core details so it cannot consume a
+  // quota slot needed for the most recent matches. An old result retains its own date.
+  const mastery = profile ? await loadChampionMastery(platform, puuid) : undefined;
+  const championMastery = mastery ?? fallback?.championMastery;
+  if (!coreComplete) {
+    if (fallback || (!rankedEntries && !matchList && !championMastery)) {
+      return unavailable([rank, ids].find(response => response.status !== 200)?.status ?? 502, mastery);
+    }
+    return { ok: true, source: "partial", fresh: false, retryAt: retryAt(), player: {
       puuid, platform, gameName: realName, tagLine: realTag, summonerLevel: level, profileIcon: icon,
       rankTier: solo?.tier ?? null, rankDiv: solo?.rank ?? null, rankLp: solo?.leaguePoints ?? null,
-      rankWins: solo?.wins ?? null, rankLosses: solo?.losses ?? null, rankedEntries, snapshot, fetchedAt: observedAt,
+      rankWins: solo?.wins ?? null, rankLosses: solo?.losses ?? null, rankedEntries, championMastery,
+      snapshot: summarize(readStoredMatches(matches, COMMUNITY_MATCH_LIMIT)), fetchedAt: observedAt,
     } };
   }
-  // Missing details or hidden teammates can prove a positive match but cannot rule one out.
-  if (matches.length && matches.length === matchList?.length && matches.every(m =>
-    m.startedAt && m.teammates?.length && m.teammates.every(t => t.name && t.tag))) {
-    snapshot.coverageThrough = Math.max(...matches.map(m => m.playedAt));
-    snapshot.coverageFrom = matches.length < 20 ? 0 : Math.min(...matches.map(m => m.startedAt!));
+
+  if (profile && !retryAt()) {
+    const deadline = Date.now() + 9_000;
+    // Reproject a few legacy rows per refresh, even when no new match has landed.
+    const legacy = coreIds.filter(id => known.get(id)?.detailsVersion !== 1).slice(0, 4);
+    const accepting = await collectMatchDetails(legacy, region, puuid, known, deadline, coreSet);
+    const missing = olderIds.filter(id => !known.has(id));
+    // Coordinate large cold backfills across function instances. Ordinary
+    // handfuls of new games and cached rows do not require the application lease.
+    const bulkAllowed = missing.length <= 8 || (accepting && !retryAt() &&
+      await claimRiotWindow("riot:profile-deep").catch(() => false));
+    if (accepting && bulkAllowed) {
+      const available = await collectMatchDetails(missing, region, puuid, known, deadline, coreSet);
+      if (available && allIds.every(id => known.has(id))) {
+        const remainingLegacy = allIds.filter(id => known.get(id)?.detailsVersion !== 1 && !legacy.includes(id));
+        await collectMatchDetails(remainingLegacy, region, puuid, known, deadline, coreSet);
+      }
+    }
   }
-  const rows = await q`INSERT INTO wp_players
+
+  const recentMatches = coreIds.flatMap(id => known.get(id) ?? []);
+  let history: { olderMatches: MatchSummary[]; historyComplete: boolean } | undefined;
+  if (profile) {
+    const olderMatches = olderIds.flatMap(id => known.get(id) ?? []);
+    history = { olderMatches, historyComplete: matchList?.length === allIds.length && recentMatches.length + olderMatches.length === allIds.length };
+  } else if (fallback?.matchHistory && rawCore.length === COMMUNITY_MATCH_LIMIT) {
+    const retained = fallback.matchHistory;
+    const olderMatches = retained.matches.filter(match => !coreIds.includes(match.matchId)).slice(0, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT);
+    history = { olderMatches, historyComplete: retained.complete && coreIds.every((id, index) => id === retained.matches[index]?.matchId) };
+  }
+  const snapshot = { ...summarize(recentMatches) };
+  // Only the original first-20 window is eligible community/duo evidence.
+  if (recentMatches.length && recentMatches.every(m => m.startedAt && m.teammates?.length && m.teammates.every(t => t.name && t.tag))) {
+    snapshot.coverageThrough = Math.max(...recentMatches.map(m => m.playedAt));
+    snapshot.coverageFrom = recentMatches.length < COMMUNITY_MATCH_LIMIT ? 0 : Math.min(...recentMatches.map(m => m.startedAt!));
+  }
+  if (history) history.olderMatches = readStoredMatches(history.olderMatches, PROFILE_MATCH_LIMIT - COMMUNITY_MATCH_LIMIT, recentMatches);
+  const stored = { ...snapshot, rankedEntries, rankObservedAt, championMastery, ...history };
+  const rows = await q`WITH accepted_snapshot AS (
+    INSERT INTO wp_players
       (puuid, platform, game_name, tag_line, summoner_level, profile_icon,
        rank_tier, rank_div, rank_lp, rank_wins, rank_losses, snapshot, fetched_at)
     VALUES (${puuid}, ${platform}, ${realName}, ${realTag}, ${level}, ${icon},
        ${solo?.tier ?? null}, ${solo?.rank ?? null}, ${solo?.leaguePoints ?? null},
-       ${solo?.wins ?? null}, ${solo?.losses ?? null}, ${JSON.stringify({...snapshot,rankedEntries})}::jsonb, ${observedAt})
+       ${solo?.wins ?? null}, ${solo?.losses ?? null}, ${JSON.stringify(stored)}::jsonb, ${observedAt})
     ON CONFLICT (puuid) DO UPDATE SET
       platform = EXCLUDED.platform, game_name = EXCLUDED.game_name, tag_line = EXCLUDED.tag_line,
       summoner_level = EXCLUDED.summoner_level, profile_icon = EXCLUDED.profile_icon,
       rank_tier = EXCLUDED.rank_tier, rank_div = EXCLUDED.rank_div, rank_lp = EXCLUDED.rank_lp,
       rank_wins = EXCLUDED.rank_wins, rank_losses = EXCLUDED.rank_losses,
       snapshot = EXCLUDED.snapshot, fetched_at = EXCLUDED.fetched_at
-    WHERE wp_players.fetched_at <= EXCLUDED.fetched_at
-    RETURNING *`;
+    WHERE wp_players.fetched_at < EXCLUDED.fetched_at
+      AND COALESCE((wp_players.snapshot->>'rankObservedAt')::timestamptz, '-infinity'::timestamptz)
+        <= (EXCLUDED.snapshot->>'rankObservedAt')::timestamptz
+    RETURNING *
+  ), recorded_rank AS (
+    INSERT INTO wp_rank_history (puuid, platform, queue, observed_day, tier, division, lp, wins, losses, captured_at)
+    SELECT player.puuid, player.platform, rank."queueType", (observation.captured_at AT TIME ZONE 'UTC')::date,
+      rank.tier, rank.rank, rank."leaguePoints", rank.wins, rank.losses, observation.captured_at
+    FROM accepted_snapshot player
+    CROSS JOIN LATERAL (SELECT (player.snapshot->>'rankObservedAt')::timestamptz AS captured_at) observation
+    CROSS JOIN LATERAL jsonb_to_recordset(player.snapshot->'rankedEntries')
+      AS rank("queueType" text, tier text, rank text, "leaguePoints" bigint, wins bigint, losses bigint)
+    ON CONFLICT (puuid, queue, observed_day) DO UPDATE SET
+      platform = EXCLUDED.platform, tier = EXCLUDED.tier, division = EXCLUDED.division,
+      lp = EXCLUDED.lp, wins = EXCLUDED.wins, losses = EXCLUDED.losses, captured_at = EXCLUDED.captured_at
+    WHERE wp_rank_history.captured_at < EXCLUDED.captured_at
+  )
+  SELECT * FROM accepted_snapshot`;
   if (!rows.length) {
-    const newer = await getCachedPlayer(puuid);
+    const newer = await getCachedPlayer(puuid, { profile });
     return newer ? { ok: true, player: newer, fresh: false, source: "cache" } : unavailable(503);
   }
-  return { ok: true, player: playerFromRow(rows[0]), fresh: true, source: "live" };
+  return { ok: true, player: playerFromRow(rows[0]), fresh: true, source: "live", retryAt: retryAt() };
 }
 
 /* ---------------- Data Dragon (static game data, CDN-cached) ---------------- */
@@ -408,6 +509,7 @@ export function profileIconUrl(patch: string, iconId: number): string {
 
 export interface ChampionInfo {
   id: string;
+  key?: number;
   name: string;
   title: string;
   tags: string[];
@@ -443,8 +545,11 @@ async function readChampionList(patch: string): Promise<Catalog> {
       signal: AbortSignal.timeout(4500),
     });
     if (!res.ok) throw new Error("Cannot load champions");
-    const body = (await res.json()) as { data: Record<string, ChampionInfo> };
-    const list = Object.values(body.data).map(({ id, name, title, tags }) => ({ id, name, title, tags }));
+    const body = (await res.json()) as { data: Record<string, Omit<ChampionInfo, "key"> & {key?: string | number}> };
+    const list = Object.values(body.data).map(({ id, name, title, tags, key }) => {
+      const numericId = Number(key);
+      return { id, name, title, tags, ...(Number.isSafeInteger(numericId) && numericId > 0 ? { key: numericId } : {}) };
+    });
     if (!list.length) throw new Error("Empty champion roster");
     return (champCache = { patch, list });
   } catch {

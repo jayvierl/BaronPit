@@ -15,7 +15,12 @@ export function searchScope(value: unknown): SearchScope {
 }
 
 export function isExactRiotId(value: string): boolean {
-  return /^[^#]+#[^#]+$/u.test(value);
+  const [name, tag, extra] = value.trim().split("#");
+  if (!tag || extra !== undefined) return false;
+  // A spaced hashtag usually belongs to a community search. Accept the common
+  // written form “Jay Lewis #NA1” when its tag fits Riot’s short tag format.
+  if (name !== name.trimEnd() && !/^[\p{L}\p{N}]{2,5}$/u.test(tag.trim())) return false;
+  return name.trim().length > 0 && name.trim().length <= 32 && /^[\p{L}\p{N}]{1,16}$/u.test(tag.trim());
 }
 
 export function searchHref(scope: SearchScope, query: string, region?: PlatformId, browse = false): string {
@@ -23,7 +28,7 @@ export function searchHref(scope: SearchScope, query: string, region?: PlatformI
   if (scope !== "all") params.set("scope", scope);
   if (query) params.set("q", query);
   if (region) params.set("region", region);
-  if (browse && scope === "players" && region && isExactRiotId(query)) params.set("results", "1");
+  if (browse && (scope === "all" || (scope === "players" && region)) && isExactRiotId(query)) params.set("results", "1");
   return params.size ? "/search?" + params : "/search";
 }
 export function readSearchReturn(value: unknown): string | undefined {

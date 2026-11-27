@@ -19,7 +19,7 @@ export function matchQueueName(key: string): string {
 
 /** Every count and option comes from the same bounded match sample, newest first. */
 export function recentMatchHistory(matches: MatchSummary[], rawQueue?: string, rawChampion?: string) {
-  const sample = matches.slice(0, 20);
+  const sample = matches.slice(0, 100);
   const queues = [...new Set(sample.map(m => queueKey(m.queueId)))].sort((a,b) => matchQueueName(a).localeCompare(matchQueueName(b)));
   const champions = [...new Set(sample.map(m => m.champion))].sort((a,b) => a.localeCompare(b));
   const queue = typeof rawQueue === "string" && /^(?:[0-9]{1,6}|unknown)$/.test(rawQueue) ? rawQueue : "";

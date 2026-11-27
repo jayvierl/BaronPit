@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { checkSubmissions } from "./submissions.mjs";
 import { checkCommunityDuo } from "./community-duo.mjs";
 import { checkPlayerProfiles } from "./profiles.mjs";
+import { checkPlayerDepth } from "./profile-depth.mjs";
 import { checkNavigation } from "./navigation.mjs";
 import { checkProfileEditor } from "./profile-editor.mjs";
 import { checkPersonalSafety } from "./personal-safety.mjs";
@@ -176,6 +177,7 @@ try {
     await journey(signedOutPage, {status:307, signInReturn:signedOutPage});
   }
   await checkPlayerProfiles(journey);
+  await checkPlayerDepth(journey);
   await checkNavigation(journey);
   const pitBanner = new Date().getUTCMonth() === 11 ? "/rooms/baron-pit-winter" : "/baron-room";
   await journey("/rooms/general", {

@@ -7,6 +7,7 @@ import { readPosts } from "./post-reader";
 import { publicProfile, linkedPlayers, linkedPlayerIdentities, trendingChampions, championRoomPulse } from "./player-insights";
 import { ensureRooms, getRoom, listRooms, runPatchWatch, searchAll, todaysSpotlight } from "./social";
 import { summarize, type MatchSummary } from "./pure";
+import { getCachedPlayer } from "./riot";
 
 vi.mock("@neondatabase/serverless", async () => ({ neon: (await import("../../test/postgres")).neonForTests }));
 let patch = "16.23.1";
@@ -75,6 +76,41 @@ describe("bounded player and community data queries", () => {
     const start = testQueries.length;
     expect((await linkedPlayers(2)).map((p) => p.puuid)).toEqual(["player-1", "player-2"]);
     expect(testQueries.length - start).toBe(1);
+  });
+  it("keeps extended lookup and roster fields out of first-20 social reads", async () => {
+    const [stored] = await q`SELECT snapshot FROM wp_players WHERE puuid='player-1'`;
+    const snapshot = stored.snapshot as ReturnType<typeof summarize>;
+    const teams = {
+      allies: Array.from({length:5}, (_,i) => ({champion:"Ashe", ...(i === 0 && {isPlayer:true})})),
+      opponents: Array.from({length:5}, () => ({champion:"Nami", name:"Example Rival", tag:"TEST"})),
+    };
+    await q`UPDATE wp_players SET snapshot=${JSON.stringify({
+      ...snapshot,
+      matches: [{...snapshot.matches[0],teams,championLevel:17,teamKills:30,detailsVersion:1}, ...snapshot.matches.slice(1)],
+      olderMatches: [{...snapshot.matches[0],matchId:"NA1_100"}], historyComplete:true,
+      championMastery: {fetchedAt:"2026-11-26T12:00:00Z",champions:[{championId:22,level:3,points:1234}]},
+    })}::jsonb WHERE puuid='player-1'`;
+    try {
+      const start = testQueries.length;
+      const [linked] = await linkedPlayers(2);
+      const saved = await getCachedPlayer("player-1");
+      expect(testQueries.length - start).toBe(2);
+      for (const player of [linked, saved]) {
+        expect(player?.matchHistory).toBeUndefined();
+        expect(player?.championMastery).toBeUndefined();
+        expect(player?.snapshot.matches).toHaveLength(20);
+        const first = player?.snapshot.matches[0];
+        expect(first?.teams).toBeUndefined();
+        expect(first?.teamKills).toBeUndefined();
+        expect(first?.teammates).toHaveLength(4);
+      }
+      const full = await getCachedPlayer("player-1", {profile:true});
+      expect(full?.matchHistory?.matches).toHaveLength(21);
+      expect(full?.snapshot.matches[0].teams?.opponents[0].name).toBe("Example Rival");
+      expect(full?.championMastery?.champions[0].points).toBe(1234);
+    } finally {
+      await q`UPDATE wp_players SET snapshot=${JSON.stringify(snapshot)}::jsonb WHERE puuid='player-1'`;
+    }
   });
   it("keeps account settings and picture choices in the same order without transferring match histories", async () => {
     const full = await linkedPlayers(2);

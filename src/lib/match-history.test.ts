@@ -15,9 +15,9 @@ it("intersects queue and champion before counting results and preserves newest-f
   expect(recentMatchHistory(games, "420", "Jinx")).toMatchObject({matches:[], champion:"Jinx"});
 });
 
-it("caps the source at 20 and keeps unknown queues distinct from custom matches", () => {
-  const games = Array.from({length:21}, (_,i) => game(String(i),"Ashe",i===0 ? NaN : i===1 ? 0 : 4444,i===20));
-  expect(recentMatchHistory(games)).toMatchObject({sampleSize:20, wins:0, winRate:0});
+it("caps the source at 100 and keeps unknown queues distinct from custom matches", () => {
+  const games = Array.from({length:101}, (_,i) => game(String(i),"Ashe",i===0 ? NaN : i===1 ? 0 : 4444,i===100));
+  expect(recentMatchHistory(games)).toMatchObject({sampleSize:100, wins:0, winRate:0});
   expect(recentMatchHistory(games,"unknown")).toMatchObject({losses:1});
   expect(recentMatchHistory(games,"0").matches[0].matchId).toBe("1");
   expect(matchQueueName("unknown")).toBe("Queue unavailable");

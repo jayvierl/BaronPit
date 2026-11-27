@@ -8,7 +8,103 @@
 .filters button { min-height: 40px; }
 .result { margin: 6px 0 12px; color: var(--ink-mid); font-size: .83rem; font-variant-numeric: tabular-nums; }
 .reset { margin-inline-start: .6em; color: var(--accent-ink); }
+
+.game { min-width: 0; }
+.gameSummary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .65rem;
+}
+.portrait {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: .45rem;
+  background-color: var(--field);
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+.gameInfo { min-width: 0; }
+.byline, .championName, .matchNumbers {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: .1rem .55rem;
+  margin: 0;
+  color: var(--ink-mid);
+  font-size: .77rem;
+}
+.championName { margin-block-start: .16rem; }
+.championName strong { color: var(--ink); font-size: .96rem; overflow-wrap: anywhere; }
+.matchNumbers { margin: .5rem 0; font-variant-numeric: tabular-nums; }
+.kda { display: grid; justify-items: end; font-variant-numeric: tabular-nums; font-size: .9rem; }
+.kda > strong { white-space: nowrap; }
+.kda :global(.meta) { font-size: .72rem; white-space: nowrap; }
+
+.gameDetails { margin-top: .4rem; border-top: 1px solid var(--border); }
+.gameDetails summary, .archive summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+  color: var(--ink-mid);
+  font-size: .87rem;
+  font-weight: 650;
+}
+.gameDetails h4 { margin: 0 0 .35rem; font-size: .8rem; }
+.gameDetails p { margin: .35rem 0; }
+.loadoutGroups, .teams { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
+.teams { margin: .66rem 0; }
+.loadout, .teamMembers, .legacyTeam ul { padding: 0; margin: 0; list-style: none; }
+.loadout { display: flex; flex-wrap: wrap; gap: .3rem .55rem; }
+.loadout li, .teamMembers li, .legacyTeam li {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  overflow-wrap: anywhere;
+  font-size: .75rem;
+}
+.loadout img { flex: none; border-radius: .2rem; }
+.teamMembers li { min-height: 32px; padding: .25rem 0; }
+.participantName { display: grid; min-width: 0; overflow-wrap: anywhere; }
+.participantName a { color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: .15em; }
+.participantName small { color: var(--ink-soft); font-size: .68rem; }
+.participantName .selectedPlayer { color: var(--accent-ink); }
+.legacyTeam { margin-block: .45rem; }
+.legacyTeam ul { display: flex; flex-wrap: wrap; gap: .35rem .7rem; margin-top: .2rem; }
+.legacyTeam li { max-width: 100%; }
+.legacyTeam .participantName > small { display: none; }
+.share { margin-top: .45rem; }
+
+.archive { margin: .8rem 0; border-block: 1px solid var(--border); scroll-margin-block-start: 76px; }
+.archiveRange { margin: .15rem 0 .3rem; color: var(--ink-soft); font-size: .78rem; }
+.archiveRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: .5rem;
+  min-height: 56px;
+  padding: .2rem 0;
+  border-top: 1px solid var(--border);
+}
+.archiveIdentity { min-width: 0; overflow-wrap: anywhere; font-size: .84rem; }
+.archiveIdentity > :global(.meta) { display: block; font-size: .72rem; }
+.archiveIdentity > :global(.win), .archiveIdentity > :global(.loss) { font-size: .75rem; }
+.archiveLink, .archiveNav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--accent-ink);
+  font-size: .79rem;
+  font-weight: 600;
+}
+.archiveNav { display: flex; flex-wrap: wrap; gap: 1rem; border-top: 1px solid var(--border); }
+
 @media(max-width: 359px) {
   .filters { gap: 4px 6px; }
   .filters select { max-width: 122px; }
+  .gameSummary { gap: .4rem; }
+  .teams, .loadoutGroups { grid-template-columns: minmax(0, 1fr); }
+  .archiveRow { gap: .33rem; }
 }
