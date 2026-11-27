@@ -229,13 +229,13 @@ describe("passwordless account lifecycle",()=>{
       await q`INSERT INTO wp_sessions (user_id,token_hash,expires_at)
         VALUES (${other.id},${createHash("sha256").update(otherToken).digest("hex")},now()+interval '1 day')`;
       fakes.cookie.value = otherToken;
-      expect((await removeFor(actor.id)).status).toBe(409);
+      expect((await removeFor(Number(actor.id))).status).toBe(409);
       expect((await removeFor()).status).toBe(409);
       expect((await acceptTerms(request("/api/account/eligibility",{accountId:actor.id,ageBand:"adult",accepted:true,termsVersion:TERMS_VERSION}))).status).toBe(409);
       expect(await q`SELECT age_band,terms_accepted_at FROM wp_users WHERE id=${other.id}`).toEqual([{age_band:null,terms_accepted_at:null}]);
       expect(await q`SELECT id FROM wp_profile_photos WHERE user_id=${other.id}`).toEqual([{id:otherPhoto}]);
       fakes.cookie.value = token;
-      const remove = await removeFor(actor.id);
+      const remove = await removeFor(Number(actor.id));
       expect(remove.status).toBe(200);
       expect(await remove.json()).toMatchObject({ok:true,status:"none",photoId:null});
       expect(await q`SELECT id FROM wp_profile_photos WHERE id IN (${ownPhoto}::uuid,${otherPhoto}::uuid)`).toEqual([{id:otherPhoto}]);
