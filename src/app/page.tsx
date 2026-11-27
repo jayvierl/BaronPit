@@ -4,6 +4,7 @@ import { hasIncomingDuoRequest } from "@/lib/duo-activity";
 import { Suspense } from "react";
 import { CommunityObjective } from "@/components/community-objective";
 import { TonightInThePit } from "@/components/tonight-in-the-pit";
+import { tonightInThePit } from "@/lib/tonight-in-the-pit";
 import { DailyCallHome } from "@/components/daily-call-home";
 import { CommunityWelcome } from "@/components/community-welcome";
 import { WardEmptyState } from "@/components/ward-mascot";
@@ -50,12 +51,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const available = dbAvailable();
   const rooms = available ? listFeaturedRooms(user?.id).catch(() => []) : Promise.resolve([]);
   const interests = user && available ? joinedRoomIds(user.id).catch(() => []) : Promise.resolve([]);
-  const [patch, page, champions, unread, duoInvite] = await Promise.all([
+  const [patch, page, champions, unread, duoInvite, tonight] = await Promise.all([
     currentPatch(),
     available ? readHomeFeedPage(user?.id ?? null, activeTab, before, now.getTime()).catch(() => null) : null,
     user ? championList() : [],
     user && available ? hasUnreadReplies(user.id).catch(() => false) : false,
     user && available ? hasIncomingDuoRequest(user.id).catch(() => false) : false,
+    available && requestedSummary ? tonightInThePit(user?.id ?? null, now.getTime()).catch(() => null) : null,
   ]);
   return (
     <div className={`home-layout ${styles.home}`}>
@@ -101,7 +103,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             {available && <Suspense fallback={null}><CommunityObjective viewerId={user?.id ?? null}/></Suspense>}
             {available && <Suspense fallback={null}><DailyCallHome viewerId={user?.id ?? null}/></Suspense>}
           </>}
-          {available && requestedSummary && <Suspense fallback={<p id="tonight-in-the-pit-title" role="status">Loading recent match activity…</p>}><TonightInThePit viewerId={user?.id ?? null} now={now.getTime()}/></Suspense>}
+          {available && requestedSummary && <TonightInThePit summary={tonight} now={now.getTime()}/>}
           {available && <Suspense fallback={null}><HomeSpotlight today={today} viewerId={user?.id ?? null} patch={patch}/></Suspense>}
           <details className="community-lookup">
             <summary>Look up a player</summary>
