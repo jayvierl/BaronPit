@@ -119,7 +119,12 @@ it("links separate commentary once through the real post route and publishes onl
 });
 
 it("keeps a new author's quote in review while retaining the server-validated pointer", async () => {
-  const response = await submit(input(104, "What would change if their jungler had already recalled?"), rookie);
+  // Borderline wording from the new author, submitted for review: the path
+  // that still lands a quote in the held state at publish time.
+  const response = await submit(
+    { ...input(104, "fuck shit, what would change if their jungler had already recalled?"), submitForReview: true },
+    rookie,
+  );
   expect(response.status).toBe(201);
   const { postId, status } = await response.json();
   expect(status).toBe("held");

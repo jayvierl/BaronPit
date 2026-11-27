@@ -6,6 +6,7 @@ import { APP_NAME } from "./brand";
 import { PATCH_PUBLISHER } from "./patch-notes";
 import { spotlightSchema } from "./spotlight-schema";
 import { decisionSchema } from "./decision-schema";
+import { moderationDecisionsSchema } from "./moderation-decisions-schema";
 import { quoteSchema } from "./quote-schema";
 import { librarySchema } from "./discussion-library-schema";
 import { reviewHourSchema } from "./review-hour-schema";
@@ -27,7 +28,7 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 type Sql = NeonQueryFunction<false, false>;
 // Keep the deployed pre-generation bundle from replaying old DDL during a rolling release.
 const LEGACY_SCHEMA_REVISION = "baron-profile-avatar-20261126-1";
-const SCHEMA_GENERATION = 4;
+const SCHEMA_GENERATION = 5;
 let client: Sql | undefined;
 let ready: Promise<void> | undefined;
 
@@ -331,7 +332,7 @@ export function schemaStatements(sql: Sql, checkAfterLock = false) {
     )`,
     sql`CREATE INDEX IF NOT EXISTS wp_duo_shortlist_player_idx ON wp_duo_shortlist(player_id)`,
     sql`ALTER TABLE wp_posts ADD COLUMN IF NOT EXISTS replies_closed boolean NOT NULL DEFAULT false`,
-    ...[...ownershipSchema, ...decisionSchema, ...librarySchema, ...pilotSchema, ...duoExtraSchema, ...duoFitSchema, ...reviewHourSchema, ...communityObjectiveSchema, ...spotlightSchema, ...dailyCallSchema, ...quoteSchema].map(text => sql(text, [])),
+    ...[...ownershipSchema, ...decisionSchema, ...moderationDecisionsSchema, ...librarySchema, ...pilotSchema, ...duoExtraSchema, ...duoFitSchema, ...reviewHourSchema, ...communityObjectiveSchema, ...spotlightSchema, ...dailyCallSchema, ...quoteSchema].map(text => sql(text, [])),
     sql`CREATE TABLE IF NOT EXISTS wp_safety_page_delivery (receipt uuid PRIMARY KEY, opened_at timestamptz NOT NULL,
       attempts integer NOT NULL DEFAULT 0, next_attempt timestamptz NOT NULL DEFAULT now(), lease_id uuid, delivered_at timestamptz)`,
     ...profilePhotoSchema(sql),
