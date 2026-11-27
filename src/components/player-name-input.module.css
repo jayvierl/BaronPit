@@ -1,0 +1,22 @@
+.field { position: relative; min-width: 0; flex: 1; }
+.field input { width: 100%; }
+:global(.lookup-form) .field { flex: 1 1 200px; }
+.popup {
+  position: absolute; z-index: 12; inset-block-start: calc(100% + 5px); inset-inline-start: 0;
+  width: 100%; min-width: min(17rem, calc(100vw - 3rem)); padding: .25rem;
+  color: var(--ink); background: var(--bg); border: 1px solid var(--border-strong);
+  border-radius: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+.list { list-style: none; margin: 0; padding: 0; max-height: min(18rem, 35dvh); overflow-y: auto; overscroll-behavior: contain; }
+.option {
+  min-height: 44px; display: flex; gap: .7rem; align-items: center; justify-content: space-between;
+  padding: .55rem .7rem; border-radius: 9px; cursor: pointer;
+}
+.option[aria-selected="true"] { background: var(--field); outline: 1px solid var(--border-strong); outline-offset: -1px; }
+@media (hover: hover) { .option:hover { background: var(--field); } }
+.identity { min-width: 0; display: block; overflow-wrap: anywhere; font-size: .94rem; }
+.identity strong { font-weight: 600; }
+.identity span, .option small, .message { color: var(--ink-mid); }
+.identity span { font-size: .86em; }
+.option small { text-align: end; font-size: .77rem; }
+.message { margin: 0; padding: .65rem .7rem; font-size: .88rem; }

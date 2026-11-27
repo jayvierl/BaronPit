@@ -27,7 +27,7 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 type Sql = NeonQueryFunction<false, false>;
 // Keep the deployed pre-generation bundle from replaying old DDL during a rolling release.
 const LEGACY_SCHEMA_REVISION = "baron-profile-avatar-20261126-1";
-const SCHEMA_GENERATION = 4;
+const SCHEMA_GENERATION = 5;
 let client: Sql | undefined;
 let ready: Promise<void> | undefined;
 
@@ -133,6 +133,7 @@ export function schemaStatements(sql: Sql, checkAfterLock = false) {
     sql`ALTER TABLE wp_users ADD COLUMN IF NOT EXISTS avatar_ref jsonb,
       ADD COLUMN IF NOT EXISTS profile_version integer NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS profile_link text`,
+    sql`CREATE INDEX IF NOT EXISTS wp_users_display_prefix_idx ON wp_users (lower(display_name) text_pattern_ops)`,
     sql`CREATE TABLE IF NOT EXISTS wp_magic_links (
     id SERIAL PRIMARY KEY,
     email TEXT NOT NULL,
@@ -162,6 +163,7 @@ export function schemaStatements(sql: Sql, checkAfterLock = false) {
     fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
     sql`CREATE INDEX IF NOT EXISTS wp_players_name_idx ON wp_players (lower(game_name), lower(tag_line), platform)`,
+    sql`CREATE INDEX IF NOT EXISTS wp_players_name_prefix_idx ON wp_players (lower(game_name) text_pattern_ops)`,
     sql`CREATE INDEX IF NOT EXISTS wp_players_fetched_at_idx ON wp_players (fetched_at)`,
     sql`CREATE TABLE IF NOT EXISTS wp_rank_history (
       puuid TEXT NOT NULL REFERENCES wp_players(puuid) ON DELETE CASCADE,

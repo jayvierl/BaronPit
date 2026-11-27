@@ -91,7 +91,7 @@ async function main() {
     let replyPath;
     await check("Guest searches Riot ID and opens public match discussion with the keyboard", async () => {
       await load(river, origin, "/search?scope=players");
-      const search = await visible(river.getByRole("searchbox", { name: "Player name or Riot ID" }));
+      const search = await visible(river.getByRole("combobox", { name: "Player name or Riot ID" }));
       await search.fill(identity);
       await river.getByRole("combobox", { name: "League region" }).selectOption("na1");
       await search.press("Enter");

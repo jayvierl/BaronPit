@@ -6,6 +6,7 @@ import { publicAvatarIdentity } from "@/lib/author-identity";
 import { searchAll } from "@/lib/social";
 import { searchGameData } from "@/lib/game-search";
 import { SearchGameResults } from "@/components/search-game-results";
+import { SearchNameFields } from "@/components/search-name-fields";
 import { currentPatch } from "@/lib/riot";
 import { isPlatform, playerStatsHref, splitRiotId, PLATFORMS } from "@/lib/platforms";
 import { isExactRiotId, searchHref, searchScope, searchScopes, withSearchReturn } from "@/lib/search-scopes";
@@ -67,12 +68,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
       {scope !== "all" && <input type="hidden" name="scope" value={scope}/>}
       {!playersOnly && region && <input type="hidden" name="region" value={region}/>}
       <div className={styles.form}>
-        <input type="search" name="q" enterKeyHint="search" aria-label={playersOnly ? "Player name or Riot ID" : "Search the community"}
-          placeholder={placeholders[scope]} defaultValue={term} maxLength={80}/>
-        {playersOnly && <select name="region" aria-label="League region" defaultValue={region ?? ""}>
-          <option value="">All regions</option>
-          {PLATFORMS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-        </select>}
+        {scope === "all" || scope === "people" || scope === "players"
+          ? <SearchNameFields scope={scope} initialQuery={term} initialRegion={region} placeholder={placeholders[scope]}/>
+          : <input type="search" name="q" enterKeyHint="search" aria-label="Search the community"
+              placeholder={placeholders[scope]} defaultValue={term} maxLength={80}/>}
         <button className={styles.submit} type="submit" aria-label="Search" title="Search">
           <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
             <circle cx="10.5" cy="10.5" r="6.8"/><path d="m16 16 4.7 4.7"/>
