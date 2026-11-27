@@ -32,7 +32,6 @@
   color: var(--ink-soft);
   font-weight: 700;
 }
-.gameSummary:not(:has(.rating)) { grid-template-columns: auto minmax(0, 1fr) auto; }
 .gameInfo { min-width: 0; }
 .byline, .championName, .matchNumbers {
   display: flex;
@@ -90,18 +89,7 @@
 
 .archive { margin: .8rem 0; border-block: 1px solid var(--border); scroll-margin-block-start: 76px; }
 .archiveRange { margin: .15rem 0 .3rem; color: var(--ink-soft); font-size: .78rem; }
-.archiveRow {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: .5rem;
-  min-height: 56px;
-  padding: .2rem 0;
-  border-top: 1px solid var(--border);
-}
-.archiveIdentity { min-width: 0; overflow-wrap: anywhere; font-size: .84rem; }
-.archiveIdentity > :global(.meta) { display: block; font-size: .72rem; }
-.archiveRow:has(.rating) { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
+.archiveRow { min-width: 0; padding-block: .6rem; border-top: 1px solid var(--border); }
 .archiveLink, .archiveNav a {
   display: inline-flex;
   align-items: center;
@@ -117,7 +105,6 @@
   .filters select { max-width: 122px; }
   .gameSummary { gap: .4rem; }
   .teams, .loadoutGroups { grid-template-columns: minmax(0, 1fr); }
-  .archiveRow { gap: .33rem; }
 }
 
 .timelineLink { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent-ink); text-decoration: underline; text-underline-offset: 3px; }
@@ -132,4 +119,25 @@
   .history { margin-block-start: .65rem; }
   .historyHeader { padding-top: .45rem; }
   .result { margin-block: .1rem .45rem; }
+}
+
+.quickFilters { display: flex; gap: .25rem; margin-inline-start: auto; }
+.quickFilters a { display: inline-flex; align-items: center; min-height: 36px; padding: 0 .8rem; border: 1px solid var(--border); border-radius: 99px; color: var(--ink-mid); font-size: .82rem; }
+.quickFilters a[aria-current] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.glance { min-width: 0; grid-column: 1 / -1; }
+.glance .matchNumbers { column-gap: .75rem; margin: .35rem 0; }
+.reason, .scoreReason { color: var(--ink-mid); font-size: .78rem; line-height: 1.45; }
+.reason { margin: .3rem 0; }
+.unrated { color: var(--ink-mid); font-size: .74rem; }
+.finalItems { display: flex; flex-wrap: wrap; gap: .2rem; padding: 0; margin: .2rem 0 0; list-style: none; }
+.finalItems a { display: inline-flex; align-items: center; min-height: 32px; }
+.teamMembers li[data-viewed] { background: var(--field); border-radius: .4rem; }
+.teamMembers li { padding-inline: .3rem; }
+.teamMembers .rating { margin-inline-start: auto; }
+.teamMembers .rating strong { font-size: .85rem; }
+.teamMembers .rating small { font-size: .65rem; }
+@media (max-width: 560px) {
+  .teams { grid-template-columns: minmax(0, 1fr); }
+  .gameSummary { column-gap: .45rem; }
+  .rating { max-width: 5.2rem; text-align: right; }
 }

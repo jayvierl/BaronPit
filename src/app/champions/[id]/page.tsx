@@ -5,6 +5,7 @@ import { championCatalog } from "@/lib/riot";
 import { publicPatch } from "@/lib/patch-notes";
 import { catalogText } from "@/lib/catalog-text";
 import { buildsHref } from "@/lib/build-sharing";
+import { visibleChampionRoomSlugs } from "@/lib/rooms";
 
 async function abilities(patch: string, id: string) {
   try {
@@ -28,7 +29,10 @@ export default async function ChampionPage({ params }: { params: Promise<{ id: s
   const [{ id }, catalog] = await Promise.all([params, championCatalog()]);
   const champ = catalog.list.find(entry => entry.id.toLowerCase() === id.toLowerCase());
   if (!champ) notFound();
-  const kit = await abilities(catalog.patch, champ.id);
+  const [kit, rooms] = await Promise.all([
+    abilities(catalog.patch, champ.id),
+    visibleChampionRoomSlugs([champ.id]).catch(() => []),
+  ]);
   return <article>
     <Link href="/champions">← Champions</Link>
     <header className="card">
@@ -36,6 +40,7 @@ export default async function ChampionPage({ params }: { params: Promise<{ id: s
       <h1 className="page-title">{champ.name}</h1>
       <p>{champ.title} · {champ.tags.join(" · ")}</p>
       <small className="meta">Riot Data Dragon · Patch {publicPatch(catalog.patch) ?? catalog.patch}</small>
+      {rooms.length > 0 && <p><Link href={`/rooms/${rooms[0]}`} prefetch={false}>Visit the {champ.name} room</Link></p>}
     </header>
     <section className="card">
       <h2>Abilities</h2>

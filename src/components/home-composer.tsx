@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { lazy, useCallback, useRef, useState } from "react";
 import type { AvatarIdentity } from "@/lib/author-identity";
 import { POST_TO_THE_PIT } from "@/lib/brand";
-import { Composer } from "./composer";
 import { GuestPostDraft } from "./guest-draft";
 import { Avatar } from "./ui";
 import styles from "./home-composer.module.css";
+
+const Composer = lazy(() => import("./composer").then(module => ({ default: module.Composer })));
 
 function focusEditor(panel: HTMLDetailsElement) {
   const field = panel.querySelector("textarea");

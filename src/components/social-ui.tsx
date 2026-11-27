@@ -9,7 +9,6 @@ import { ActionFeedback, usePostAction } from "./post-action";
 import { SafetyReport } from "./safety-report";
 import { PlayerNameInput } from "./player-name-input";
 
-export { Composer } from "./composer";
 export { CommentSection } from "./comment-section";
 export { MatchCard } from "./match-card";
 export { PostCard } from "./post-card";

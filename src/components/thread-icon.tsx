@@ -1,3 +1,5 @@
+import styles from "./thread-icon.module.css";
+
 const paths = {
   heart: "M20.8 4.9a5.5 5.5 0 0 0-7.8 0L12 6l-1.1-1.1a5.5 5.5 0 1 0-7.8 7.8l8 8a1.2 1.2 0 0 0 1.8 0l8-8a5.5 5.5 0 0 0-.1-7.8z",
   reply: "M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1.1L3 20l1.1-5.3A8.5 8.5 0 1 1 21 11.5Z",
@@ -11,8 +13,7 @@ const paths = {
 };
 
 export function ThreadIcon({ name, filled = false }: { name: keyof typeof paths; filled?: boolean }) {
-  return <svg viewBox="0 0 24 24" width="19" height="19" fill={filled ? "currentColor" : "none"}
-    stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+  return <svg viewBox="0 0 24 24" className={styles.icon} fill={filled ? "currentColor" : "none"} aria-hidden="true">
     <path d={paths[name]} />
   </svg>;
 }

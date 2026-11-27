@@ -72,6 +72,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               ? <h1 key={value}><Link aria-current="page" href={href}>{label}</Link></h1>
               : <Link key={value} href={href}>{label}</Link>)}
           </nav>
+          <Link className={styles.statsShortcut} href="/player" prefetch={false}>Player Stats</Link>
           {!user && <Link className={styles.signUp} href={signInHref("/#compose", "signup")}>Create account</Link>}
           <details className={styles.discover}>
             <summary aria-label="Discover"><span className={styles.magnifier} aria-hidden="true" /><span>Discover</span></summary>
@@ -98,7 +99,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         <details open={requestedSummary}>
           <summary>Around the community</summary>
           <nav className={styles.destinations} aria-label="Community shortcuts">
-            <Link href="/questions">Match questions</Link><Link href="/rooms">Rooms</Link><Link href="/player">Player lookup</Link>
+            <Link href="/questions">Match questions</Link><Link href="/rooms">Rooms</Link><Link href="/player" prefetch={false}>Player Stats</Link>
             {available && !requestedSummary && <Link href={summaryHref} prefetch={false}>Tonight in the pit</Link>}
           </nav>
           {activeTab === "everyone" && <>

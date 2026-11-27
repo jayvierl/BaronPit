@@ -39,3 +39,8 @@
   .discover > summary > span:last-child { display: none; }
   .signUp { margin-inline-start: .2rem; }
 }
+
+.statsShortcut { display: none; }
+@media (min-width: 900px) {
+  .statsShortcut { float: inline-end; display: inline-flex; align-items: center; min-height: 52px; margin-inline-start: 1rem; color: var(--ink-mid); font-size: .8125rem; font-weight: 600; }
+}

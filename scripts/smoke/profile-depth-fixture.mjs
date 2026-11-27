@@ -19,11 +19,20 @@ function depthMatches(now) {
   return Array.from({ length: 100 }, (_, index) => {
     const [champion, role, queueId] = pattern[index % pattern.length];
     const recent = index < 20;
-    const playedAt = now - (2 + index * 6) * hour;
-    const durationSec = recent ? 1800 : 1920;
+    const playedAt = now - (index === 1 ? 7 : 2 + index * 6) * hour;
+    const durationSec = index === 1 ? 1051 : recent ? 1800 : 1920;
     const teammate = { champion: champion === "Ashe" ? "Sivir" : "Ashe", name: "Fixture Archer", tag: "NA1" };
-    // Keep an unrated legacy record beside rated, completed ranked matches.
-    const performanceRating = { 0: 10, 1: 7.5, 4: 6.5 }[index];
+    // Two players display 8.3 in the first game. Only the higher raw score earns MVP.
+    const performanceRating = { 0: 8.339, 1: 7.5, 4: 6.6 }[index];
+    const allies = [{ champion, isPlayer: true }, teammate, { champion: "Ahri" }, { champion: "Amumu" }, { champion: "Garen" }];
+    const opponents = ["Lulu", "Jinx", "Katarina", "Warwick", "Darius"].map(champion => ({ champion }));
+    if (performanceRating !== undefined) {
+      const scores = [performanceRating, 8.331, 4.45, 3.7, 3.7];
+      for (const [position, score] of scores.entries()) {
+        allies[position].performanceRating = score;
+        opponents[position].performanceRating = 11 - score;
+      }
+    }
     return {
       matchId: depthMatchId(index), champion, role, queueId,
       win: recent ? index % 4 !== 3 : index % 2 === 0,
@@ -33,13 +42,12 @@ function depthMatches(now) {
       items: [3158, 3067, 3340], spellIds: [4, 12],
       runes: { keystone: 8005, primaryStyle: 8000, secondaryStyle: 8400 },
       championLevel: 14, teamKills: 20, killParticipation: recent ? 0.65 : 0.5,
-      teamBaronKills: index % 2, detailsVersion: performanceRating === undefined ? 1 : 2, performanceRating,
+      teamBaronKills: index % 2, vision: 58,
+      detailsVersion: performanceRating === undefined ? (index === 2 ? 2 : 1) : 3,
+      performanceRating: index === 2 ? 10 : performanceRating,
+      ratingReason: performanceRating === undefined ? undefined : "Largest difference against the opposing role: kill participation, 65% vs 35%.",
       teammates: [teammate],
-      teams: {
-        allies: [{ champion, isPlayer: true }, teammate,
-          { champion: "Ahri" }, { champion: "Amumu" }, { champion: "Garen" }],
-        opponents: ["Lulu", "Jinx", "Katarina", "Warwick", "Darius"].map(champion => ({ champion })),
-      },
+      teams: { allies, opponents },
     };
   });
 }

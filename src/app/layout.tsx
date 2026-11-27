@@ -45,7 +45,7 @@ function ExploreLinks({ desktop = false }: { desktop?: boolean }) {
       <Link href="/me" prefetch={false}>Account settings</Link>
     </div>
     <div role="group" aria-label="League">
-      <Link href="/player">Player lookup</Link>
+      <Link href="/player" prefetch={false}>Player Stats</Link>
       <Link href="/builds">Builds</Link>
       <Link href="/champions">Champions</Link>
     </div>

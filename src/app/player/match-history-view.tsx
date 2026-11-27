@@ -2,12 +2,11 @@ import { ObjectiveTimeline } from "./objective-timeline";
 import Link from "next/link";
 import { cache, Suspense } from "react";
 import { GameAssetIcon } from "@/components/game-asset-icon";
-import { ItemIcons } from "@/components/item-icons";
-import { TeamBaronTag } from "@/components/team-baron-tag";
 import { timeAgo } from "@/components/ui";
+import { TeamBaronTag } from "@/components/team-baron-tag";
 import { championAvatarArt } from "@/lib/avatar";
-import { APP_NAME } from "@/lib/brand";
-import { buildCatalog, cardItems } from "@/lib/build-catalog";
+import { ratingExplanation } from "@/lib/match-performance";
+import { buildCatalog } from "@/lib/build-catalog";
 import { questionHref, type QuestionMatch } from "@/lib/decisions-input";
 import { matchRegion } from "@/lib/match-context";
 import { MATCH_DETAIL_LIMIT, matchQueueName, matchSectionId } from "@/lib/match-history";
@@ -44,7 +43,8 @@ function MatchTime({ playedAt, relative = false }: { playedAt: number; relative?
   const end = gameDate(playedAt);
   if (!end) return <span>Date unavailable</span>;
   const iso = end.toISOString(), label = dateFormat.format(end);
-  return <time dateTime={iso} title={label}>{relative ? timeAgo(iso) : label}</time>;
+  const elapsed = relative ? timeAgo(iso, true) : null;
+  return <time dateTime={iso} title={label}>{elapsed ? elapsed === "now" ? "Played just now" : `Played ${elapsed} ago` : label}</time>;
 }
 
 function queue(match: MatchSummary) {
@@ -59,12 +59,42 @@ function Kda({ match }: { match: MatchSummary }) {
   </span>;
 }
 
-function MatchRating({ rating }: { rating?: number }) {
-  if (rating === undefined) return null;
+function MatchRating({ player }: { player: Pick<MatchSummary, "performanceRating" | "ratingBadge"> }) {
+  const { performanceRating: score, ratingBadge } = player;
   return <span className={styles.rating}>
-    <span role="img" aria-label={`Match rating ${rating} out of 10`}><strong>{rating}</strong><small>/10</small></span>
-    {rating === 10 && <span className={styles.mvp} title={`${APP_NAME} MVP · Highest rating in this match`}>MVP</span>}
+    {score === undefined ? <span className={styles.unrated}>Not rated</span> : <>
+      <span role="img" title="Baron Match Rating" aria-label={`Baron Match Rating ${score.toFixed(1)} out of 10`}><strong>{score.toFixed(1)}</strong><small>/10</small></span>
+      {ratingBadge && <span className={styles.mvp}>{ratingBadge}</span>}
+    </>}
   </span>;
+}
+
+function MatchGlance({ match, patch }: { match: MatchSummary; patch: string }) {
+  const duration = Number.isFinite(match.durationSec) && match.durationSec >= 1 ? Math.floor(match.durationSec) : 0;
+  const kp = match.killParticipation;
+  const role = roles.get(match.role);
+  const catalog = match.items.length ? loadCatalog(patch) : null;
+  return <div className={styles.glance}>
+    <div className={styles.gameSummary}>
+      <MatchPortrait champion={match.champion} size={40}/>
+      <div className={styles.gameInfo}>
+        <p className={styles.championName}><strong>{match.champion}</strong><span>{role ?? "Role unavailable"}</span></p>
+        <p className={styles.byline}><Result win={match.win}/> · {queue(match)}</p>
+      </div>
+      <Kda match={match}/>
+      <MatchRating player={match}/>
+    </div>
+    <p className={styles.matchNumbers}>
+      <span>{duration ? `Duration ${Math.floor(duration / 60)}m ${duration % 60}s` : "Duration unavailable"}</span>
+      <MatchTime playedAt={match.playedAt} relative/>
+      {kp != null && kp >= 0 && kp <= 1 && <span>{Math.round(kp * 100)}% KP</span>}
+      {role === "Support" && match.vision != null
+        ? <span>{match.vision} vision</span>
+        : duration > 0 && Number.isFinite(match.cs) && <span>{(match.cs * 60 / duration).toFixed(1)} CS/min</span>}
+    </p>
+    {catalog && <Suspense fallback={null}><MatchItems ids={match.items} catalog={catalog}/></Suspense>}
+    {match.performanceRating === undefined && <p className={styles.reason}>{ratingExplanation(match)}</p>}
+  </div>;
 }
 
 function LoadoutGroup({ title, entries }: { title: string; entries: { name: string; icon?: string }[] }) {
@@ -99,8 +129,9 @@ function Teams({ match, platform, fromMatch }: { match: MatchSummary; platform: 
       <div key={label}>
         <h4>{label}</h4>
         <ul className={styles.teamMembers}>
-          {players.map((player, index) => <li key={index}>
+          {players.map((player, index) => <li key={index} data-viewed={player.isPlayer || undefined}>
             <Participant player={player} platform={platform} fromMatch={fromMatch}/>
+            <MatchRating player={player}/>
           </li>)}
         </ul>
       </div>
@@ -115,7 +146,6 @@ type MatchRowProps = {
 };
 
 function MatchRow({ match, patch, platform, lookupHref, expanded, discussion, timeline }: MatchRowProps) {
-  const catalog = match.items.length ? loadCatalog(patch) : null;
   const matchId = matchSectionId(match.matchId);
   const reference = discussion && matchRegion(match.matchId) && isPublicMatchQueue(match.queueId)
     ? { ...discussion, matchId: match.matchId } : null;
@@ -135,27 +165,16 @@ function MatchRow({ match, patch, platform, lookupHref, expanded, discussion, ti
   const { spells, runes } = matchLoadout(match);
   const legacyTeam = !match.teams && match.queueId !== 0 ? match.teammates ?? [] : [];
   const duration = Number.isFinite(match.durationSec) && match.durationSec >= 1 ? Math.floor(match.durationSec) : undefined;
-  const role = roles.get(match.role);
   const participation = match.killParticipation;
   const killParticipation = participation != null && Number.isFinite(participation) && participation >= 0 && participation <= 1
     ? `${Math.round(participation * 100)}% P/Kill` : null;
   return <div id={matchId} tabIndex={-1} className={`${styles.matchTarget} ${styles.game}`}>
-    <div className={styles.gameSummary}>
-      <MatchPortrait champion={match.champion} size={42}/>
-      <div className={styles.gameInfo}>
-        <p className={styles.championName}><strong>{match.champion}</strong><Result win={match.win}/></p>
-        <p className={styles.byline}>{queue(match)} <span aria-hidden="true">·</span> <MatchTime playedAt={match.playedAt} relative/></p>
-      </div>
-      <Kda match={match}/>
-      <MatchRating rating={match.performanceRating}/>
-    </div>
+    <MatchGlance match={match} patch={patch}/>
     {reference && <Link className={styles.discuss} prefetch={false}
       href={questionHref(reference, undefined, { discuss: true, fromMatch: matchPath })}>Discuss this match</Link>}
     <details className={styles.gameDetails} open={expanded || undefined}>
       <summary>Match details<span className="sr-only"> for {match.champion} · <MatchTime playedAt={match.playedAt}/></span></summary>
       <p className={styles.matchNumbers}>
-        {duration && <span>{Math.floor(duration / 60)}m {duration % 60}s</span>}
-        {role && <span>{role}</span>}
         {match.championLevel != null && <span>Level {match.championLevel}</span>}
         <span>{match.deaths > 0 ? `${((match.kills + match.assists) / match.deaths).toFixed(2)} KDA` : "No deaths"}</span>
         <span>{match.cs} CS{duration ? ` (${(match.cs * 60 / duration).toFixed(1)} CS/m)` : ""}</span>
@@ -163,7 +182,7 @@ function MatchRow({ match, patch, platform, lookupHref, expanded, discussion, ti
         {match.gold != null && <span>{(match.gold / 1000).toFixed(1)}k gold</span>}
         <TeamBaronTag match={match}/>
       </p>
-      {catalog && <Suspense fallback={null}><MatchItems ids={match.items} catalog={catalog}/></Suspense>}
+      {match.performanceRating !== undefined && <p className={styles.scoreReason}><strong>Why this score?</strong> {ratingExplanation(match)}</p>}
       {legacyTeam.length > 0 && <div className={styles.legacyTeam}>
         <span className="meta">Played with</span>
         <ul>{legacyTeam.map((player, index) => <li key={index}>
@@ -191,7 +210,16 @@ type Catalog = ReturnType<typeof buildCatalog>;
 
 async function MatchItems({ ids, catalog }: { ids: number[]; catalog: Catalog }) {
   const source = await catalog;
-  return <ItemIcons ids={ids} details={cardItems(source, ids)} patch={source.patch}/>;
+  return <ul className={styles.finalItems} aria-label="Final inventory">
+    {ids.filter(id => Number.isSafeInteger(id) && id > 0).map((id, slot) => {
+      const item = source.items.find(entry => entry.id === id);
+      if (!item) return <li key={slot} className={styles.unrated}>Unlisted item {id}</li>;
+      return <li key={slot}><Link prefetch={false} href={`/items/${id}`} aria-label={item.name} title={item.name}>
+        <GameAssetIcon name={item.name} size={24} src={`https://ddragon.leagueoflegends.com/cdn/${source.patch}/img/item/${id}.png`}/>
+        <span className="sr-only">{item.name}</span>
+      </Link></li>;
+    })}
+  </ul>;
 }
 
 export function LatestGames({ matches, patch, platform, riotId, persisted, lookupHref, queueFilter, championFilter, rawMatch, showTimeline }: {
@@ -220,12 +248,7 @@ export function OlderGames({ matches, patch, platform, riotId, persisted, lookup
         ? <MatchRow key={match.matchId} match={match} patch={patch} platform={platform} lookupHref={olderMatchHref(base, page.page, match.matchId)} expanded timeline={showTimeline && rawMatch === match.matchId}
           discussion={persisted && isPlatform(platform) ? { platform, riotId } : undefined}/>
         : <div key={match.matchId} id={matchSectionId(match.matchId)} tabIndex={-1} className={`${styles.archiveRow} ${styles.matchTarget}`}>
-          <MatchPortrait champion={match.champion} size={32}/>
-          <div className={styles.archiveIdentity}><strong>{match.champion}</strong> <Result win={match.win}/>
-            <span className="meta">{queue(match)} · <MatchTime playedAt={match.playedAt}/></span>
-          </div>
-          <Kda match={match}/>
-          <MatchRating rating={match.performanceRating}/>
+          <MatchGlance match={match} patch={patch}/>
           <Link prefetch={false} href={olderMatchHref(base, page.page, match.matchId)} className={styles.archiveLink}>
             Details<span className="sr-only"> for {match.champion} · <MatchTime playedAt={match.playedAt}/></span>
           </Link>

@@ -86,6 +86,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
     {playersOnly && !term && <p className={styles.hint}>For an exact lookup, choose a region and enter Name#Tag.</p>}
     {!term && (scope === "all" || scope === "league" || scope === "builds") && <nav className={styles.places} aria-label="Explore the community">
       <Link href="/champions">Champion hubs <span aria-hidden="true">→</span></Link>
+      <Link href="/items">Browse items <span aria-hidden="true">→</span></Link>
       <Link href="/builds">Community builds <span aria-hidden="true">→</span></Link>
       <Link href="/lfg">Find a duo <span aria-hidden="true">→</span></Link>
       <Link href="/rooms">Browse rooms <span aria-hidden="true">→</span></Link>

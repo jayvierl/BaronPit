@@ -91,3 +91,22 @@ it("keeps the prior player, active filters and older page when opening an object
   expect(Object.fromEntries(url.searchParams)).toMatchObject({fromPlayer:source,queue:"420",champion:"Ashe",older:"2",match:"NA1_16",timeline:"objectives"});
   expect(url.hash).toBe("#match-NA1_16");
 });
+
+it("keeps the rating and badge visible beside duration, age and items, and repeats the same score on the scoreboard", async () => {
+  const viewed = { champion: "Nami", isPlayer: true as const, performanceRating: 8.276, ratingBadge: "Team Ace" as const };
+  const match: MatchSummary = {
+    ...game(1), ...viewed, win: false, role: "UTILITY", durationSec: 1051, playedAt: Date.now() - 7 * 3600_000,
+    vision: 37, items: [1001], detailsVersion: 3, ratingReason: "Higher vision per minute than the opposing support.",
+    teams: { allies: [viewed], opponents: [{ champion: "Lulu", performanceRating: 8.152, ratingBadge: "MVP" }] },
+  };
+  const html = await render(createElement(LatestGames, { ...base, matches: [match] }));
+  const glance = html.slice(0, html.indexOf("<details"));
+  for (const marker of ["Duration 17m 31s", "Played 7h ago", "Support", "37 vision", "Boots", "Team Ace", "8.3"]) {
+    expect(glance).toContain(marker);
+  }
+  expect(html.match(/Baron Match Rating 8.3 out of 10/g)).toHaveLength(2);
+  for (const marker of ["Why this score?", match.ratingReason, 'data-viewed="true"', "Baron Match Rating 8.2 out of 10", ">MVP<"]) expect(html).toContain(marker);
+  const sparse = await render(createElement(LatestGames, { ...base, matches: [game(2)] }));
+  expect(sparse).toContain("Not rated");
+  expect(sparse).toContain("no current rating evidence");
+});

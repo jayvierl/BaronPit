@@ -8,16 +8,16 @@ export async function checkNavigation(journey) {
   await journey("/signin?error=expired", {includes:['role="alert"', "That link expired. Request a fresh one."]});
   const search = await journey("/search", {html:true});
   const primary = search.match(/<nav\b[^>]*aria-label="Primary"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
-  assert.equal((primary.match(/<a\b/g) ?? []).length, 5);
-  for (const path of ["/", "/search", "/#compose", "/activity", "/lfg"]) assert.ok(primary.includes('href="' + path + '"'));
+  assert.equal((primary.match(/<a\b/g) ?? []).length, 6);
+  for (const path of ["/", "/search", "/#compose", "/activity", "/lfg", "/player"]) assert.ok(primary.includes('href="' + path + '"'));
   assert.match(primary, /<a\b[^>]*aria-label="Post to the Pit"[^>]*href="\/#compose"/);
   for (const [, attrs, markup] of primary.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)) {
     const text = markup.replace(/<[^>]+>/g, "").trim();
     assert.ok(text && attrs.includes('aria-label="' + text + '"'), "Navigation label must match its visible text");
   }
   const desktop = search.match(/<nav\b[^>]*aria-label="Primary desktop"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
-  assert.equal((desktop.match(/<a\b/g) ?? []).length, 5);
-  for (const [label, path] of [["Home", "/"], ["Search", "/search"], ["Duos", "/lfg"], ["Activity", "/activity"], ["Profile", "/profile"]]) {
+  assert.equal((desktop.match(/<a\b/g) ?? []).length, 6);
+  for (const [label, path] of [["Home", "/"], ["Search", "/search"], ["Player Stats", "/player"], ["Duos", "/lfg"], ["Activity", "/activity"], ["Profile", "/profile"]]) {
     assert.ok([...desktop.matchAll(/<a\b[^>]*>/g)].some(([tag]) => tag.includes(`aria-label="${label}"`) && tag.includes(`href="${path}"`)));
   }
   assert.match(desktop, /aria-label="Search" aria-current="page"/);

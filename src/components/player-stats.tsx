@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { gameCount } from "@/lib/pure";
+import { MATCH_DETAILS_VERSION, RATING_VERSION } from "@/lib/match-performance";
 import { publicPlayerSummary } from "@/lib/player-summary";
 import { playerDisplayTime } from "@/lib/player-display-time";
 import type { Player } from "@/lib/riot";
@@ -17,7 +18,7 @@ export function PlayerStats({ player, source = "cache", lookupHref, variant = "s
 }) {
   const stats = publicPlayerSummary(player);
   if (variant === "profile") {
-    const ratings = player.snapshot.matches.flatMap(match => match.performanceRating === undefined ? [] : [match.performanceRating]);
+    const ratings = player.snapshot.matches.flatMap(match => match.detailsVersion !== MATCH_DETAILS_VERSION || match.performanceRating === undefined ? [] : [match.performanceRating]);
     const average = ratings.length >= 3 ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length : null;
     return (
       <section className={styles.profilePanel} aria-label="League stats">
@@ -50,7 +51,7 @@ export function PlayerStats({ player, source = "cache", lookupHref, variant = "s
             {stats.topRole && <div><dt>Main role</dt><dd>{stats.topRole.name}</dd></div>}
             {stats.champions.length > 0 && <div><dt>Most played</dt><dd>{stats.champions.slice(0,3).map(entry => entry.name).join(", ")}</dd></div>}
             {average !== null && <div><dt>Avg. match rating</dt>
-              <dd>{average.toFixed(1)}<small>/10</small> <small className={styles.ratingCoverage}>{ratings.length} rated games</small></dd>
+              <dd>{average.toFixed(1)}<small>/10</small> <small className={styles.ratingCoverage}>{ratings.length} rated games · v{RATING_VERSION}</small></dd>
             </div>}
           </dl>
         </div>}

@@ -7,6 +7,7 @@ import { searchHref } from "@/lib/search-scopes";
 import { q } from "@/lib/db";
 import { ensureRooms, getRoom, visibleChampionRoomSlugs } from "@/lib/rooms";
 import ChampionsPage from "./page";
+import ChampionPage from "./[id]/page";
 
 const state = vi.hoisted(() => ({ list: [] as ChampionInfo[], current: true }));
 vi.mock("@neondatabase/serverless", async () => ({ neon: (await import("../../../test/postgres")).neonForTests }));
@@ -42,6 +43,16 @@ it("shows the live room link and preserves builds for held or not-yet-seeded roo
   expect(await getRoom("champ-ahri")).toBeNull();
   expect(await getRoom("champ-akali")).toBeNull();
   expect(await visibleChampionRoomSlugs(["Ahri", "Akali"])).toEqual([]);
+
+  const kitRead = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 503 }));
+  try {
+    const ashe = renderToStaticMarkup(await ChampionPage({ params: Promise.resolve({ id: "Ashe" }) }));
+    expect(ashe).toContain('href="/rooms/champ-ashe"');
+    const ahri = renderToStaticMarkup(await ChampionPage({ params: Promise.resolve({ id: "Ahri" }) }));
+    expect(ahri).not.toContain('/rooms/champ-ahri');
+  } finally {
+    kitRead.mockRestore();
+  }
 });
 
 it("keeps the fallback catalog and build paths usable without room storage", async () => {

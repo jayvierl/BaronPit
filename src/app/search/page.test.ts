@@ -25,6 +25,7 @@ it.each(["all", "players", "people", "league", "builds", "posts", "rooms"])(
     if (["all", "people", "players"].includes(scope)) expect(form).toContain('role="combobox"');
     else expect(form).not.toContain('role="combobox"');
     if (scope === "players") expect(form).toMatch(/<option[^>]*value="euw1"[^>]*selected=""/);
+    if (scope === "league" || scope === "all") expect(html).toContain('href="/items"');
   },
 );
 
@@ -46,4 +47,18 @@ it("carries the exact scoped search through a build result and the server-render
     searchParams: Promise.resolve({ from: "//external.invalid/search?q=Ashe" }) }));
   expect(foreign).not.toContain('aria-label="Back to search"');
   expect(foreign).toContain('aria-label="Back to builds"');
+});
+
+it("opens a tagged discovery thread with readable champion and item links", async () => {
+  fixture.post.mockReturnValue({
+    id: 27, authorId: 23, authorName: "Fixture", authorHue: 30, kind: "text", status: "visible",
+    body: "[[c:Jayce|Jayce]] with [[i:3031|Infinity Edge]]", data: {}, reactions: {}, myReactions: [],
+    commentCount: 0, createdAt: "2026-11-27T12:00:00Z",
+  } satisfies Partial<PostView>);
+  const thread = renderToStaticMarkup(await PostPage({ params: Promise.resolve({ id: "27" }), searchParams: Promise.resolve({}) }));
+  expect(thread).toContain('aria-label="Jayce, champion"');
+  expect(thread).toContain('href="/champions/Jayce"');
+  expect(thread).toContain('aria-label="Infinity Edge, item"');
+  expect(thread).toContain('href="/items/3031"');
+  expect(thread).not.toMatch(/\[\[[ci]:/);
 });

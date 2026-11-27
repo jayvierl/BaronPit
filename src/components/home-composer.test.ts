@@ -1,15 +1,17 @@
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { expect, it, vi } from "vitest";
 import { Composer } from "./composer";
 import { HomeComposer } from "./home-composer";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 
-it.each([null, 7])("provides one closed home compose anchor for viewer %s", (viewerId) => {
-  const html = renderToStaticMarkup(createElement(HomeComposer, {
+it.each([null, 7])("provides one closed home compose anchor for viewer %s", async (viewerId) => {
+  const stream = await renderToReadableStream(createElement(HomeComposer, {
     viewerId, patch: "16.23.1", champions: ["Ahri"], viewerIdentity: viewerId === null ? null : { name: "Arc", hue: 80 },
   }));
+  await stream.allReady;
+  const html = await new Response(stream).text();
   expect(html.match(/id="compose"/g)).toHaveLength(1);
   expect(html).toMatch(/^<details\b[^>]*><summary/);
   expect(html).not.toMatch(/^<details[^>]*\bopen[=> ]/);
