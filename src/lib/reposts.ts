@@ -3,7 +3,7 @@ import { queryRows } from "./db";
 import { PATCH_PUBLISHER } from "./patch-notes";
 
 // System bulletins already have their own room and global distribution.
-export const repostableContent = (publisher: "$3" | "$11") => `p.kind IN ('text','poll','build')
+export const repostableContent = (publisher: "$3" | "$11" | "$20") => `p.kind IN ('text','poll','build')
   AND p.author_id IS DISTINCT FROM (SELECT id FROM wp_users WHERE email=${publisher})`;
 
 // Only a pointer is published. Re-enabling a previous repost cannot bump its date.

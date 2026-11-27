@@ -60,9 +60,9 @@ describe("bounded player and community data queries", () => {
       { champion: "Ashe", games: 2400 },
       { champion: "Lux", games: 1600 },
     ]);
-    expect(pulse).toMatchObject({ players: 200, games: 2400, wins: 1200 });
+    expect(pulse).toMatchObject({ players: 200, games: 2400, wins: 1200, roles: [{ role: "BOTTOM", games: 2400 }] });
     expect(pulse.topPlayers).toHaveLength(5);
-    expect(await championRoomPulse("Zed")).toEqual({ players: 0, games: 0, wins: 0, topPlayers: [] });
+    expect(await championRoomPulse("Zed")).toEqual({ players: 0, games: 0, wins: 0, roles: [], topPlayers: [] });
     const oldBytes = Buffer.byteLength(JSON.stringify(old));
     const trendBytes = Buffer.byteLength(JSON.stringify(trends));
     expect(trendBytes * 10).toBeLessThan(oldBytes);

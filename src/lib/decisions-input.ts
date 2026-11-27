@@ -16,6 +16,14 @@ export const trialOutcomes = {
   "still-testing": "Still testing",
 } as const;
 export type TrialOutcome = keyof typeof trialOutcomes;
+export const DECISION_FOLLOW_UP = "decision-follow-up";
+
+export function decisionCursor(value: unknown) {
+  if (typeof value !== "string" || !/^\d{1,10}$/.test(value)) return null;
+  const id = Number(value);
+  return validId(id) ? id : null;
+}
+
 export type DecisionContext = {
   itemId: number | null;
   itemName: string | null;

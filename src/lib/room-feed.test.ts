@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { postgres } from "../../test/postgres";
 import { q } from "./db";
+import type { User } from "./auth";
 import { readRoomFeed, roomFeedFromParam, roomFeedHref } from "./room-feed";
+import { buildFeed } from "./social";
 
 vi.mock("@neondatabase/serverless", async () => ({ neon: (await import("../../test/postgres")).neonForTests }));
 vi.mock("./build-catalog", () => ({ buildCatalog: async () => null }));
@@ -43,4 +45,21 @@ it("reopens the canonical room for invalid or repeated filter parameters", () =>
     expect(roomFeedHref("champ-ashe", roomFeedFromParam(value).key)).toBe("/rooms/champ-ashe");
   }
   expect(roomFeedHref("champ-ashe", roomFeedFromParam("questions").key)).toBe("/rooms/champ-ashe?feed=questions");
+});
+
+it("surfaces champion builds from visible rooms and site-wide posts without exposing held or blocked authors", async () => {
+  await postgres.exec(`
+    INSERT INTO wp_rooms(id,slug,name,kind,safety_status) VALUES
+      (10,'lane-practice','Lane practice','general','visible'),(11,'closed-room','Closed room','general','held');
+    INSERT INTO wp_posts(id,author_id,room_id,kind,body,status,data,created_at) VALUES
+      (201,2,NULL,'build','Site-wide Ashe','visible','{"champion":"Ashe"}',now()),
+      (202,2,10,'build','Ashe from Lane practice','visible','{"champion":"Ashe"}',now()),
+      (203,2,11,'build','Held room Ashe','visible','{"champion":"Ashe"}',now()),
+      (204,3,NULL,'build','Blocked Ashe','visible','{"champion":"Ashe"}',now()),
+      (205,2,NULL,'build','Another champion','visible','{"champion":"Nami"}',now()),
+      (206,2,NULL,'build','Held Ashe post','held','{"champion":"Ashe"}',now());
+  `);
+  const posts = await buildFeed({ id: 1 } as User, { champion: "Ashe" }, 12);
+  expect(posts.map(post => [post.id, post.roomSlug])).toEqual([[202,"lane-practice"], [201,null]]);
+  expect((await buildFeed({ id: 1 } as User, { champion: "Ashe" }, 1)).map(post => post.id)).toEqual([202]);
 });

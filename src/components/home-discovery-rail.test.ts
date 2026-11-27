@@ -61,6 +61,7 @@ it("explains joined-room preference and keeps fresh cold-start conversations ind
     post(45, { createdAt:daysAgo(1), commentCount:0 }),
     post(46, { createdAt:daysAgo(2), commentCount:99, reactions:{GG:900} }),
     post(47, { roomId:7, roomName:"Laning",status:"held" }),
+    post(48, { roomId:7, roomName:"Laning",createdAt:daysAgo(0.5),repliesClosed:true }),
   ];
   expect(activeConversations(posts, now).map(post => post.id)).toEqual([45,46,44]);
   expect(activeConversations(posts, now, [7]).map(post => post.id)).toEqual([44,45,46]);

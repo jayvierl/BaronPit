@@ -40,6 +40,7 @@ export async function startFixtureServer({ demo = false } = {}) {
         SMOKE_SESSION: session,
         SMOKE_HELPER_SESSION: helperSession,
         SMOKE_MATCH_DISCUSSION: demo ? "1" : "",
+        SMOKE_WORKFLOWS: demo === "workflows" ? "1" : "",
         // Leave provider credentials outside the local fixture.
         RIOT_API_KEY: "fixture-only",
         __NEXT_PROCESSED_ENV: "true",

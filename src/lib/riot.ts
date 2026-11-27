@@ -1,3 +1,5 @@
+import { consumeWindow } from "./rate-window";
+import { matchRegion } from "./match-context";
 import { createHash } from "node:crypto";
 import { q, dbAvailable, queryRows } from "./db";
 import { SOCIAL_PLAYER_SELECT } from "./social-player-select";
@@ -140,6 +142,16 @@ async function riotJson(url: string, deadline = Date.now() + 6_000): Promise<{ s
   } catch {
     return { status: 502, body: null };
   }
+}
+
+/** One explicit timeline request uses the existing Riot key, HTTP budget and shared 429 deadline. */
+export async function readRiotTimeline(matchId: string) {
+  const platform = matchRegion(matchId);
+  const k = key();
+  if (!platform || !k) return { status: 503, body: null };
+  const [cooldown] = await q`SELECT 1 FROM wp_action_windows WHERE bucket=${throttleBucket(k)} AND expires_at>now()`;
+  if (cooldown || retryAt() || !await consumeWindow("riot:public-timelines", 8, 1)) return { status: 429, body: null };
+  return riotJson(`https://${regionFor(platform)}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(matchId)}/timeline`);
 }
 
 function normalizedMastery(raw: unknown, fetchedAt: unknown): ChampionMastery | undefined {

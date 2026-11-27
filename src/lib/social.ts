@@ -10,6 +10,8 @@ import type { SearchScope } from "./search-scopes";
 import type { PlatformId } from "./platforms";
 import { placedRank, readRankedEntries, socialRankLabel } from "./player-summary";
 import { HIDDEN_AUTHORS, visibleCommentsFor, visiblePostForInteraction } from "./community-queries";
+import { quoteSourceVisible } from "./quote-queries";
+import { PATCH_PUBLISHER } from "./patch-notes";
 import { readPosts, readComments } from "./post-reader";
 import type { PostView, CommentView } from "./post-types";
 export type { PostView, CommentView } from "./post-types";
@@ -19,6 +21,8 @@ import { screenText } from "./managed-text-screen";
 import { scoreContent, bodyFingerprint } from "./moderation";
 import { rateLimit, type User } from "./auth";
 import { confirmedPatch } from "./riot";
+import { buildCatalog } from "./build-catalog";
+import { buildKeystone, verifyBuildLoadout } from "./build-sharing";
 import { REACTION_EMOJIS, ENDORSE_KINDS } from "./pure";
 
 export { REACTION_EMOJIS, ENDORSE_KINDS };
@@ -35,7 +39,7 @@ export type CreateResult = SubmissionResult;
 const badKey = { ok: false as const, error: "This draft identifier is invalid. Start a new submission." };
 
 export async function createPost(user: User, input: CreatePostInput, decision?: DecisionContext, decisionHash?: string,
-  checkedMatch?: import("./post-input").CheckedMatchForPost): Promise<CreateResult> {
+  checkedMatch?: import("./post-input").CheckedMatchForPost, quotedPostId?: number): Promise<CreateResult> {
   const key = input.submissionId ?? null;
   if (key !== null && !validSubmissionId(key)) return badKey;
   const hash = key ? decisionHash ?? submissionHash([input.kind,input.body,input.roomId ?? null,input.data ?? null,decision ?? null]) : null;
@@ -68,23 +72,33 @@ export async function createPost(user: User, input: CreatePostInput, decision?: 
   let rows;
   try {
     const sql = await getSql();
-    rows = await insertSubmission(sql,sql`WITH inserted AS (
+    rows = await insertSubmission(sql, sql(`WITH ${HIDDEN_AUTHORS}, original AS MATERIALIZED (
+    SELECT p.id,p.author_id FROM wp_posts p WHERE p.id=$21::int AND p.room_id IS NOT DISTINCT FROM $4::int
+      AND $1 NOT IN (SELECT id FROM hidden) AND ${quoteSourceVisible("$20")}
+  ), inserted AS (
     INSERT INTO wp_posts (author_id, kind, body, room_id, data, status, clip_review_required, card_validated, submission_id, submission_hash)
-    SELECT ${user.id}, ${input.kind}, ${body}, ${roomId}::int, ${JSON.stringify(data)}::jsonb, ${status}, ${input.kind === "clip"}, ${input.kind === "card"}, ${key}::uuid, ${hash}
-    WHERE CASE WHEN EXISTS(SELECT 1 FROM wp_posts WHERE author_id=${user.id} AND submission_id=${key}::uuid)
-      THEN false ELSE wp_reserve_room_turn(${roomId}::int,${user.id},${input.kind==="clip"||includesRoomLink(fields)}) END
+    SELECT $1,$2,$3,$4::int,$5::jsonb,$6,$7,$8,$9::uuid,$10
+    WHERE CASE WHEN EXISTS(SELECT 1 FROM wp_posts WHERE author_id=$1 AND submission_id=$9::uuid)
+      OR ($21::int IS NOT NULL AND NOT EXISTS (SELECT 1 FROM original))
+      THEN false ELSE wp_reserve_room_turn($4::int,$1,$11) END
     ON CONFLICT (author_id,submission_id) WHERE submission_id IS NOT NULL DO NOTHING
     RETURNING id
   ), question AS (
     INSERT INTO wp_decisions (post_id,champion,opponent,role,topic,patch,item_id,item_name)
-    SELECT id,${decision?.champion ?? null}::text,${decision?.opponent ?? null}::text,${decision?.role ?? null}::text,${decision?.topic ?? null}::text,${decision?.patch ?? null}::text,${decision?.itemId ?? null}::int,${decision?.itemName ?? null}::text
-    FROM inserted WHERE ${!!decision}
+    SELECT id,$13::text,$14::text,$15::text,$16::text,$17::text,$18::int,$19::text FROM inserted WHERE $12
+  ), quote AS (
+    INSERT INTO wp_quote_posts(post_id,original_post_id,original_author_id)
+    SELECT inserted.id,original.id,original.author_id FROM inserted CROSS JOIN original
   ), audit AS (
     INSERT INTO wp_mod_log (target_kind, target_id, author_id, score, action, detail)
-    SELECT 'post',id,${user.id},${mod.score},'hold',${mod.hits.join(",")} FROM inserted WHERE ${status}='held'
-  ) SELECT id FROM inserted`,key,user.id);
+    SELECT 'post',id,$1,$22,'hold',$23 FROM inserted WHERE $6='held'
+  ) SELECT id FROM inserted`, [user.id,input.kind,body,roomId,JSON.stringify(data),status,input.kind === "clip",input.kind === "card",key,hash,
+    input.kind === "clip" || includesRoomLink(fields),!!decision,decision?.champion ?? null,decision?.opponent ?? null,decision?.role ?? null,
+    decision?.topic ?? null,decision?.patch ?? null,decision?.itemId ?? null,decision?.itemName ?? null,PATCH_PUBLISHER,quotedPostId ?? null,
+    mod.score,mod.hits.join(",")]),key,user.id);
   } catch(error) { return await priorSubmission("post",user.id,key,hash) ?? {ok:false,error:roomWriteError(error)}; }
-  if (!rows.length) return await priorSubmission("post",user.id,key,hash) ?? { ok: false, error: "That room is unavailable." };
+  if (!rows.length) return await priorSubmission("post",user.id,key,hash) ?? { ok: false,
+    error: quotedPostId ? "The original post is unavailable to quote." : "That room is unavailable." };
   const postId = Number(rows[0].id);
   return { ok: true, postId, status };
 }
@@ -97,8 +111,8 @@ export function feedByAuthor(authorId: number, viewer: User | null, limit = 20):
   return readPosts(viewer?.id ?? null, { authorId }, limit);
 }
 
-export function buildFeed(viewer: User | null, filters: { champion?: string; offMeta?: boolean }): Promise<PostView[]> {
-  return readPosts(viewer?.id ?? null, { builds: filters }, 100);
+export function buildFeed(viewer: User | null, filters: { champion?: string; item?: number; offMeta?: boolean }, limit = 100): Promise<PostView[]> {
+  return readPosts(viewer?.id ?? null, { builds: filters }, limit);
 }
 
 export async function getPost(postId: number, viewer: User | null): Promise<PostView | null> {
@@ -169,7 +183,7 @@ export async function addComment(user: User, postId: number, bodyRaw: string, pa
     SELECT id FROM wp_comments WHERE id=$3::int AND post_id=$2
   ), ${visibleCommentsFor("candidateReplies")}, candidate AS MATERIALIZED (
     SELECT p.id,p.room_id FROM wp_posts p WHERE p.id=$2 AND ${visiblePostForInteraction} AND (NOT $6 OR p.kind='card')
-      AND ($3::int IS NULL OR EXISTS (SELECT 1 FROM thread))
+      AND NOT p.replies_closed AND ($3::int IS NULL OR EXISTS (SELECT 1 FROM thread)) FOR SHARE OF p
   ), submitted AS (
     INSERT INTO wp_comments(post_id,author_id,parent_id,body,status,one_fix,submission_id,submission_hash)
     SELECT id,$1,$3::int,$4,$5,$6::boolean,$10::uuid,$11 FROM candidate
@@ -183,7 +197,7 @@ export async function addComment(user: User, postId: number, bodyRaw: string, pa
   ) SELECT id FROM submitted`,
   [user.id, postId, parentId ?? null, body, status, oneFix, mod.score, mod.hits.join(","),includesRoomLink([body]),key,hash]),key,user.id);
   } catch(error) { return await priorSubmission("comment",user.id,key,hash) ?? {ok:false,error:roomWriteError(error)}; }
-  if (!rows.length) return await priorSubmission("comment",user.id,key,hash) ?? { ok: false, error: oneFix ? "One Fix needs an available game card." : "That post or reply is unavailable." };
+  if (!rows.length) return await priorSubmission("comment",user.id,key,hash) ?? { ok: false, error: oneFix ? "One Fix needs an available game card." : "Replies are closed or this conversation is unavailable." };
   return { ok: true, postId: Number(rows[0].id), status };
 }
 
@@ -255,11 +269,20 @@ export async function reconfirmBuild(user: User, postId: number): Promise<{ ok: 
   if (!validId(postId)) return { ok: false, error: "Build not found." };
   const patch = await confirmedPatch();
   if (!patch) return { ok: false, error: "The current patch is unavailable. Try again shortly." };
+  const [catalog, source] = await Promise.all([buildCatalog(patch), queryRows(`WITH ${HIDDEN_AUTHORS}
+    SELECT p.data FROM wp_posts p WHERE p.id = $2 AND p.author_id = $1 AND p.kind = 'build' AND ${visiblePostForInteraction}`,
+    [user.id, postId])]);
+  const prior = source[0]?.data as Record<string, unknown> | undefined;
+  if (!prior) return { ok: false, error: "Only the author of a published build can re-confirm it." };
+  if (catalog.patch !== patch) return { ok: false, error: "The current item and rune catalog is unavailable. Try again shortly." };
+  const keystone = prior.keystone == null ? null : buildKeystone(prior.keystone);
+  const loadout = prior.keystone == null || keystone ? verifyBuildLoadout(catalog, prior.items, keystone?.id) : null;
+  if (!loadout) return { ok: false, error: "This build includes items or a keystone that are unavailable on the current patch. Share an updated build instead." };
   const rows = await queryRows(`WITH ${HIDDEN_AUTHORS}
-    UPDATE wp_posts p SET data = p.data || jsonb_build_object('patch', $3::text)
-    WHERE p.id = $2 AND p.author_id = $1 AND p.kind = 'build' AND ${visiblePostForInteraction}
-    RETURNING p.id`, [user.id, postId, patch]);
-  return rows.length ? { ok: true, patch } : { ok: false, error: "Only the author of a published build can re-confirm it." };
+    UPDATE wp_posts p SET data = p.data || $3::jsonb
+    WHERE p.id = $2 AND p.author_id = $1 AND p.kind = 'build' AND p.data = $4::jsonb AND ${visiblePostForInteraction}
+    RETURNING p.id`, [user.id, postId, JSON.stringify({ patch, ...(loadout.keystone && { keystone: loadout.keystone }) }), JSON.stringify(prior)]);
+  return rows.length ? { ok: true, patch } : { ok: false, error: "This build changed. Reload it before re-confirming." };
 }
 
 /* ---------------------------------- search --------------------------------- */
@@ -273,20 +296,26 @@ export async function searchAll(term: string, viewer: User | null, scope: Search
     includes("people") && t.length >= 2 ? queryRows(`WITH ${HIDDEN_AUTHORS} SELECT id, display_name, avatar_hue, avatar_ref FROM wp_users
       WHERE safety_status = 'visible' AND id NOT IN (SELECT id FROM hidden) AND strpos(lower(display_name), lower($2)) > 0
       ORDER BY display_name, id LIMIT $3`, [viewer?.id ?? null, t, limit]) : [],
-    includes("players") && t.length >= 2 && tag === null ? q`SELECT puuid, platform, game_name, tag_line, rank_tier, rank_div, fetched_at, snapshot->'rankedEntries' AS ranked_entries FROM wp_players
-      WHERE strpos(lower(game_name || '#' || tag_line), lower(${t})) > 0
-        AND (${platform ?? null}::text IS NULL OR platform=${platform ?? null})
-      ORDER BY (lower(game_name || '#' || tag_line) = lower(${t})) DESC, game_name, platform, tag_line LIMIT ${limit}` : [],
+    includes("players") && t.length >= 2 && tag === null ? queryRows(`WITH ${HIDDEN_AUTHORS}, matches AS (
+      SELECT DISTINCT ON (platform,lower(game_name),lower(tag_line)) puuid,platform,game_name,tag_line,rank_tier,
+        rank_div,fetched_at,snapshot->'rankedEntries' AS ranked_entries FROM wp_players
+      WHERE strpos(lower(game_name || '#' || tag_line),lower($2)) > 0 AND ($3::text IS NULL OR platform=$3)
+      ORDER BY platform,lower(game_name),lower(tag_line),fetched_at DESC,puuid
+    ) SELECT platform,game_name,tag_line,rank_tier,rank_div,fetched_at,ranked_entries FROM matches p
+      WHERE NOT EXISTS(SELECT 1 FROM wp_links l WHERE l.puuid=p.puuid AND l.verified AND l.user_id IN (SELECT id FROM hidden))
+      ORDER BY (lower(game_name || '#' || tag_line)=lower($2)) DESC,game_name,platform,tag_line LIMIT $4`,
+      [viewer?.id ?? null,t,platform ?? null,limit]) : [],
     includes("rooms") && t ? listRooms(viewer?.id, limit, t) : [],
-    includes("posts") && (tag ?? t).length >= 2
-      ? readPosts(viewer?.id ?? null, tag === null ? { text: t } : { tag }, limit) : [],
+    (includes("posts") || scope === "builds") && (tag ?? t).length >= 2
+      ? readPosts(viewer?.id ?? null, { ...(tag === null ? { text: t } : { tag }),
+          ...(scope === "builds" ? { kind: "build" } : {}) }, limit) : [],
   ]);
   return {
     users: users.map(u => ({ id: Number(u.id), name: String(u.display_name), hue: Number(u.avatar_hue), avatar: publicAvatar(u.avatar_ref) })),
     players: players.map(p => {
       const fields = {rankTier: p.rank_tier as string | null, rankDiv: p.rank_div as string | null,
         rankedEntries: readRankedEntries(p.ranked_entries), fetchedAt: String(p.fetched_at)};
-      return {puuid: String(p.puuid), platform: String(p.platform), riotId: `${p.game_name}#${p.tag_line}`, rank: socialRankLabel(fields), tier: placedRank(fields).tier};
+      return {platform: String(p.platform), riotId: `${p.game_name}#${p.tag_line}`, rank: socialRankLabel(fields), tier: placedRank(fields).tier};
     }),
     rooms,
     posts,

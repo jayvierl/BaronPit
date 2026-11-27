@@ -1,4 +1,5 @@
 import { buildCatalog } from "./build-catalog";
+import { verifyBuildLoadout } from "./build-sharing";
 import { clipLink } from "./clip-link";
 import { gameCardMotion } from "./game-card-motion";
 import type { DiscussionKind } from "./match-context";
@@ -44,21 +45,24 @@ export async function preparePost(input: CreatePostInput, viewerId: number | nul
       return {...base, data: d.call === true ? {options, call: true} : {options}, fields: [body, ...options]};
     }
     case "build": {
+      if (!body) return invalid("Explain when you would use this build and why.");
       if (typeof d.champion !== "string" || d.champion.length > 64 || !Array.isArray(d.items) || !d.items.length || d.items.length > 6 ||
           !d.items.every(id => Number.isSafeInteger(id) && id > 0) || (d.runes != null && (typeof d.runes !== "string" || d.runes.length > 240))) {
         return invalid("Choose a champion and one to six items. Keep rune notes under 241 characters.");
       }
       const [patch, catalog] = await Promise.all([confirmedPatch(), championCatalog()]);
       if (!patch || !catalog.current || catalog.patch !== patch || !catalog.list.length) return invalid("The current patch catalog is unavailable. Your draft can be retried.");
+      if (d.patch != null && d.patch !== patch) return invalid("The patch changed while you were writing. Refresh and check your saved draft against the current shop.");
       const search = d.champion.trim().toLowerCase();
       const champion = catalog.list.find(c => c.id.toLowerCase() === search || c.name.toLowerCase() === search);
       if (!champion) return invalid("Choose a champion from the current catalog.");
       const shop = await buildCatalog(patch);
       if (shop.patch !== patch) return invalid("Item data is unavailable. Try posting this build again shortly.");
-      const available = new Set(shop.items.filter(i=>i.shop).map(i=>i.id));
-      if (!d.items.every(id => available.has(id))) return invalid("An item in this build is unavailable in the Summoner’s Rift shop on this patch.");
+      const loadout = verifyBuildLoadout(shop, d.items, d.keystoneId);
+      if (!loadout) return invalid("Choose items and a keystone available on this patch’s Summoner’s Rift catalog.");
       const runes = typeof d.runes === "string" ? d.runes.trim() : "";
-      return {...base, data: { champion: champion.id, items: d.items, runes, offMeta: d.offMeta === true, patch }, fields: [body, runes]};
+      return {...base, data: { champion: champion.id, items: loadout.items, ...(loadout.keystone && { keystone: loadout.keystone }),
+        runes, offMeta: d.offMeta === true, patch }, fields: [body, runes]};
     }
     case "card": {
       const resolved = checkedMatch ?? await resolveQuestionMatch(d, viewerId);

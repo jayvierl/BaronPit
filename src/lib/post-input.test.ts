@@ -36,7 +36,13 @@ describe("public post payloads", () => {
     riot.confirmedPatch.mockResolvedValue("16.23.1");
     riot.championCatalog.mockResolvedValue({current:true,patch:"16.23.1",list:[{name:"Ashe",id:"Ashe"}]});
     vi.stubGlobal("fetch",async()=>Response.json({data:{"3006":{name:"Boots"}}}));
-    expect(await preparePost({kind:"build",body:"Early boots",data:{champion:"ashe",items:[3006],patch:"35.9",offMeta:true}})).toMatchObject({ok:true,data:{patch:"16.23.1",champion:"Ashe",offMeta:true}});
+    const data = {champion:"ashe",items:[3006],offMeta:true,keystoneId:8465,keystone:{id:1,name:"Injected"}};
+    const draft = {kind:"build" as const,body:"Early boots"};
+    expect(await preparePost({...draft,data:{...data,patch:"16.23.1"}})).toMatchObject({ok:true,data:{patch:"16.23.1",champion:"Ashe",offMeta:true,keystone:{id:8465,name:"Guardian"}}});
+    expect(await preparePost({...draft,data})).toMatchObject({ok:true,data:{patch:"16.23.1"}});
+    expect(await preparePost({...draft,data:{...data,patch:"35.9"}})).toMatchObject({ok:false,error:expect.stringContaining("The patch changed")});
+    expect(await preparePost({...draft,data:{...data,keystoneId:1}})).toMatchObject({ok:false});
+    expect(await preparePost({...draft,body:"   ",data})).toMatchObject({ok:false,error:expect.stringContaining("Explain")});
     expect((await preparePost({kind:"build",body:"Unknown item",data:{champion:"Ashe",items:[99999]}})).ok).toBe(false);
     riot.championCatalog.mockResolvedValue({current:false,patch:"16.22.1",list:[{name:"Ashe",id:"Ashe"}]});
     expect((await preparePost({kind:"build",body:"Catalog expired",data:{champion:"Ashe",items:[3006]}})).ok).toBe(false);

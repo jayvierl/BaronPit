@@ -24,6 +24,8 @@ Treat these intervals as operating targets to staff and monitor. Apple Guideline
 
 Record the rule, content reference, time, action and duration. Keep the reporter private from the reported player. Independent reporters can trigger a temporary hold. Staff decide the merits on the content and context. Appeals can correct a sanction, notify affected reporters and restore eligible content. Protected items require additional owner review before release. Keep unrelated active restrictions in effect.
 
+Quote posts go through normal screening and appear in the original room. They store the writer’s own commentary and a reference. Each reader sees the original excerpt only while it is available to them and to the quote writer. When the original is withdrawn, held, removed or muted, eligible readers can still read the commentary with a generic unavailable notice. A block between the reader and the original author hides the quote entirely for that reader. The original author receives no notification for a quote alone.
+
 ## Urgent paging
 
 Run `node scripts/safety-pager.mjs` under a supervised service after the schema migration. It polls the durable urgent-case ledger every 15 seconds, leases pending deliveries, retries on failure and tracks successful receipt delivery. `--once` runs one batch. Configure a private HTTPS receiver with `SAFETY_PAGE_HTTPS_URL` and `SAFETY_PAGE_TOKEN`. The worker needs a restricted database role with column access to urgent receipt, opening and review time and read/write access to its separate delivery table. Keep it outside the web process. Do not configure external webhooks for the local test suite.

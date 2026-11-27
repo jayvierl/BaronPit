@@ -116,6 +116,9 @@ async function seed(tx) {
   );
   await tx.exec("INSERT INTO wp_links(user_id,puuid,is_primary,verified) VALUES(504,'fixture-support',true,true)");
   await seedPlayerDepth(tx);
+  if (process.env.SMOKE_WORKFLOWS === "1") {
+    await tx.exec("INSERT INTO wp_links(user_id,puuid,is_primary,verified) VALUES(551,'fixture-profile-depth',true,true)");
+  }
 }
 
 async function query(tx, statement) {
@@ -155,12 +158,18 @@ globalThis.fetch = async function fixtureFetch(input, init) {
       return Response.json({ message: error.message, code: error.code ?? "XX000" }, { status: 400 });
     }
   }
+  if (url.origin === "https://americas.api.riotgames.com" && url.pathname === "/lol/match/v5/matches/NA1_910000/timeline") {
+    return Response.json({ metadata: { matchId: "NA1_910000" }, info: { frames: [{ events: [
+      { type: "ELITE_MONSTER_KILL", monsterType: "DRAGON", killerTeamId: 100, timestamp: 754000 },
+      { type: "ELITE_MONSTER_KILL", monsterType: "BARON_NASHOR", killerTeamId: 200, timestamp: 1455000 },
+    ] }] } });
+  }
   if (url.hostname === "ddragon.leagueoflegends.com") {
     if (url.pathname === "/api/versions.json") return Response.json(["16.23.1"]);
     if (url.pathname === "/cdn/16.23.1/data/en_US/champion.json")
       return Response.json({
         data: {
-          Ashe: { id: "Ashe", name: "Ashe", title: "the Frost Archer", tags: ["Marksman", "Support"] },
+          Ashe: { id: "Ashe", key: 22, name: "Ashe", title: "the Frost Archer", tags: ["Marksman", "Support"] },
           ...(process.env.SMOKE_MATCH_DISCUSSION === "1" ? {
             Nami: { id: "Nami", key: 267, name: "Nami", title: "the Tidecaller", tags: ["Support", "Mage"] },
             Lulu: { id: "Lulu", key: 117, name: "Lulu", title: "the Fae Sorceress", tags: ["Support", "Mage"] },

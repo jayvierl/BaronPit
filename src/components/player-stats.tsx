@@ -98,6 +98,10 @@ export function PlayerStats({ player, source = "cache", lookupHref, variant = "s
         <div className={styles.recent}>
           <h3>{source === "partial" ? `${gameCount(stats.sampleGames)} available` : `Last ${gameCount(stats.sampleGames)}`} · supported public queues</h3>
           <dl>
+            {stats.sampleRecord && <div>
+              <dt>Recent win rate</dt>
+              <dd>{stats.sampleRecord.winRate}% <small>({stats.sampleRecord.wins}W · {stats.sampleRecord.losses}L)</small></dd>
+            </div>}
             <div>
               <dt>Most played role</dt>
               <dd>{stats.topRole ? <>{stats.topRole.name} <small>({gameCount(stats.topRole.games)}{stats.topRole.name.includes(" / ") ? " each" : ""})</small></> : "Role unavailable"}</dd>

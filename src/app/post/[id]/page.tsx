@@ -6,6 +6,7 @@ import { discussionMetadata, unavailableMetadata } from "@/lib/discussion-librar
 import { ContextBackLink } from "@/components/context-back-link";
 import { ThreadIcon } from "@/components/thread-icon";
 import { returnToMatch } from "@/lib/decisions-input";
+import { buildThreadReturn, buildsHref } from "@/lib/build-sharing";
 import { projectMatchContext } from "@/lib/match-context";
 import styles from "@/components/thread.module.css";
 import Link from "next/link";
@@ -14,6 +15,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { publicAvatarIdentity } from "@/lib/author-identity";
 import { getPost, listComments } from "@/lib/social";
 import { currentPatch } from "@/lib/riot";
+import { getRoom } from "@/lib/rooms";
 import { DecisionThread } from "@/components/decision-thread";
 import { PostCard } from "@/components/post-card";
 
@@ -28,7 +30,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
 }
 
-export default async function PostPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ from?: string; fromMatch?: string }> }) {
+export default async function PostPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ from?: string; fromMatch?: string; fromBuild?: string }> }) {
   const [{ id }, source] = await Promise.all([params, searchParams]);
   const postId = Number(id);
   if (!/^\d+$/.test(id) || !validId(postId)) notFound();
@@ -49,15 +51,20 @@ export default async function PostPage({ params, searchParams }: { params: Promi
   // same visibility-scoped endpoint loads the conversation after the main post.
   const initialComments = post.commentCount === 0 ? [] : post.commentCount <= 25
     ? await listComments(postId, user).catch(() => null) : null;
-  const backHref = post.roomSlug ? `/rooms/${post.roomSlug}` : "/";
+  const backHref = post.roomSlug ? `/rooms/${post.roomSlug}${post.kind === "build" ? "?feed=builds" : ""}`
+    : post.kind === "build" ? buildsHref({ champion: typeof post.data.champion === "string" ? post.data.champion : undefined }) : "/";
   const matchContext = post.kind === "card" ? projectMatchContext(post.data.matchContext) : null;
   const fromMatch = matchContext ? returnToMatch(source.fromMatch, matchContext) : undefined;
+  const buildSource = post.kind === "build" ? buildThreadReturn(source.fromBuild, post.data.champion, post.data.items, post.roomSlug) : null;
+  const fromBuild = buildSource?.roomSlug && buildSource.roomSlug !== post.roomSlug &&
+    !await getRoom(buildSource.roomSlug, user?.id).catch(() => null) ? null : buildSource;
+  const back = fromMatch ? { href: fromMatch, label: "Back to match" } : fromBuild;
   return (
     <div className={styles.threadPage}>
       {user?.pilotActive && <PilotVisit kind="social" />}
       <header className={styles.detailHeading}>
-        {fromMatch ? <Link href={fromMatch} prefetch={false} aria-label="Back to match" title="Back to match"><ThreadIcon name="back"/></Link>
-          : <ContextBackLink fallback={backHref} fallbackLabel={post.roomName ? `Back to ${post.roomName}` : "Back to feed"} />}
+        {back ? <Link href={back.href} prefetch={false} aria-label={back.label} title={back.label}><ThreadIcon name="back"/></Link>
+          : <ContextBackLink fallback={backHref} fallbackLabel={post.roomName ? `Back to ${post.roomName}` : post.kind === "build" ? "Back to builds" : "Back to feed"} />}
         <h1>Thread</h1>
       </header>
       <PostCard

@@ -70,7 +70,7 @@ function publicAppearances(limit: 200 | 300) {
     ORDER BY fetched_at DESC, puuid LIMIT ${limit}
   ), appearances AS (
     SELECT DISTINCT ON (s.puuid,m->>'matchId') s.puuid,s.game_name,s.tag_line,s.platform,
-      m->>'champion' AS champion,m->'win'='true'::jsonb AS win
+      m->>'champion' AS champion,m->'win'='true'::jsonb AS win,m->>'role' AS role
     FROM sample s CROSS JOIN LATERAL jsonb_array_elements(
       CASE WHEN jsonb_typeof(s.matches)='array' THEN s.matches ELSE '[]'::jsonb END
     ) WITH ORDINALITY AS records(m,pos)
@@ -88,15 +88,22 @@ async function readTrends(viewerId: number | null = null) {
 }
 
 export async function championRoomPulse(champion: string, viewerId: number | null = null) {
-  const rows = await queryRows(`${publicAppearances(300)}, played AS (
-    SELECT game_name,tag_line,platform,count(*)::int AS games,count(*) FILTER(WHERE win)::int AS wins FROM appearances
-    WHERE champion=$2 GROUP BY puuid,game_name,tag_line,platform
+  const rows = await queryRows(`${publicAppearances(300)}, selected AS MATERIALIZED (
+    SELECT * FROM appearances WHERE champion=$2
+  ), played AS (
+    SELECT game_name,tag_line,platform,count(*)::int AS games,count(*) FILTER(WHERE win)::int AS wins FROM selected
+    GROUP BY puuid,game_name,tag_line,platform
+  ), roles AS (
+    SELECT role,count(*)::int AS games FROM selected
+    WHERE role IN ('TOP','JUNGLE','MIDDLE','BOTTOM','UTILITY') GROUP BY role
   ) SELECT played.*,count(*) OVER () AS players,sum(games) OVER () AS all_games,sum(wins) OVER () AS all_wins
+    ,(SELECT jsonb_agg(roles ORDER BY games DESC,role) FROM roles) AS role_counts
     FROM played ORDER BY games DESC,game_name,tag_line,platform LIMIT 5`,[viewerId,champion]);
   return {
     players: Number(rows[0]?.players ?? 0),
     games: Number(rows[0]?.all_games ?? 0),
     wins: Number(rows[0]?.all_wins ?? 0),
+    roles: (rows[0]?.role_counts ?? []) as { role: "TOP" | "JUNGLE" | "MIDDLE" | "BOTTOM" | "UTILITY"; games: number }[],
     topPlayers: rows.map((row) => ({
       name: String(row.game_name),
       tag: String(row.tag_line),

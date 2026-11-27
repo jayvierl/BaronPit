@@ -120,7 +120,11 @@ export type DecisionFilter = {
   q?: string;
   before?: number;
   postId?: number;
+  authorId?: number;
+  matchContextOnly?: boolean;
+  progress?: "all" | "ready";
 };
+export const DECISION_PAGE_SIZE = 20;
 type TrialMatch = {
   champion: string;
   win: boolean;
@@ -142,7 +146,7 @@ export type Decision = DecisionContext & {
 const publicAnswer = `LEFT JOIN wp_comments answer ON answer.id=d.accepted_comment_id
   AND ${questionDecisionPost}
   AND answer.post_id=p.id AND answer.parent_id IS NULL AND answer.status='visible'
-  AND answer.author_id<>p.author_id AND answer.author_id NOT IN (SELECT id FROM hidden)`;
+  AND answer.withdrawn_at IS NULL AND answer.author_id<>p.author_id AND answer.author_id NOT IN (SELECT id FROM hidden)`;
 
 /** Import the normal post visibility fragment and apply it before any text search, mode filter or page limit. */
 export async function decisions(viewerId: number | null, f: DecisionFilter = {}): Promise<Decision[]> {
@@ -157,18 +161,24 @@ export async function decisions(viewerId: number | null, f: DecisionFilter = {})
     ${publicAnswer} LEFT JOIN wp_users helper ON helper.id=answer.author_id
     WHERE ${visiblePostForInteraction}
       AND ($2::int IS NULL OR p.id=$2) AND ($3::int IS NULL OR p.id<$3)
+      AND ($11::int IS NULL OR p.author_id=$11)
+      AND (NOT $12::boolean OR (p.kind='card' AND p.card_validated AND ${publicQueueSql("(p.data->'matchContext')")}))
+      AND ($13='' OR (p.author_id=$1 AND ${questionDecisionPost}
+        AND ($13<>'ready' OR (answer.id IS NOT NULL AND d.outcome IS NULL))))
       AND ($4='' OR lower(d.champion)=lower($4)) AND ($5='' OR lower(d.opponent)=lower($5))
       AND ($6='' OR d.role=$6) AND ($7='' OR d.patch=$7) AND ($10='' OR d.topic=$10)
       AND ($8='' OR strpos(lower(p.body),lower($8))>0 OR strpos(lower(answer.body),lower($8))>0)
       AND ($9<>'mine' OR (answer.id IS NULL AND p.author_id<>$1
         AND NOT EXISTS (SELECT 1 FROM wp_comments reply WHERE reply.post_id=p.id AND reply.parent_id IS NULL
-          AND reply.status='visible' AND reply.author_id<>p.author_id AND reply.author_id NOT IN (SELECT id FROM hidden))
+          AND reply.status='visible' AND reply.withdrawn_at IS NULL AND reply.author_id<>p.author_id
+          AND reply.author_id NOT IN (SELECT id FROM hidden))
         AND EXISTS (
         SELECT 1 FROM wp_decision_preferences pref WHERE pref.user_id=$1 AND pref.role=d.role
           AND (pref.champion IS NULL OR pref.champion=d.champion))))
       AND ($9<>'answered' OR answer.id IS NOT NULL) AND ($9<>'unanswered' OR answer.id IS NULL)
+      AND ($9 NOT IN ('mine','unanswered') OR NOT p.replies_closed)
       AND ($9 NOT IN ('mine','answered','unanswered') OR ${questionDecisionPost})
-    ORDER BY p.id DESC LIMIT 21`,
+    ORDER BY p.id DESC LIMIT ${DECISION_PAGE_SIZE + 1}`,
     [
       viewerId,
       f.postId ?? null,
@@ -180,6 +190,9 @@ export async function decisions(viewerId: number | null, f: DecisionFilter = {})
       f.q?.slice(0, 120) ?? "",
       f.mode ?? "",
       f.topic ?? "",
+      f.authorId ?? null,
+      f.matchContextOnly ?? false,
+      f.progress ?? "",
     ],
   );
   return rows.map((r) => ({
@@ -208,6 +221,21 @@ export async function decisions(viewerId: number | null, f: DecisionFilter = {})
   }));
 }
 
+function activityPage(rows: Decision[]) {
+  const entries = rows.slice(0, DECISION_PAGE_SIZE);
+  return { entries, next: rows.length > DECISION_PAGE_SIZE ? entries.at(-1)?.postId ?? null : null };
+}
+
+export async function profileMatchDiscussions(authorId: number, viewerId: number | null, before: number | null) {
+  const page = activityPage(await decisions(viewerId, { authorId, matchContextOnly: true, before: before ?? undefined }));
+  return { ...page, entries: page.entries.flatMap(entry => entry.matchContext ? [{ ...entry, matchContext: entry.matchContext }] : []) };
+}
+
+export async function myDecisionProgress(userId: number, before: number | null, ready: boolean) {
+  if (!validId(userId)) return { entries: [], next: null };
+  return activityPage(await decisions(userId, { authorId: userId, progress: ready ? "ready" : "all", before: before ?? undefined }));
+}
+
 /** Only a question author may feature a currently visible first-level reply from another player. */
 export async function acceptDecision(userId: number, postId: number, commentId: number) {
   if (!validId(postId) || !validId(commentId)) return false;
@@ -219,7 +247,7 @@ export async function acceptDecision(userId: number, postId: number, commentId: 
     trial_match=CASE WHEN d.accepted_comment_id=c.id THEN d.trial_match END
     FROM wp_posts p JOIN wp_comments c ON c.post_id=p.id WHERE p.id=$2 AND d.post_id=p.id AND p.author_id=$1
       AND ${questionDecisionPost}
-      AND c.id=$3 AND c.parent_id IS NULL AND c.status='visible' AND c.author_id<>$1
+      AND c.id=$3 AND c.parent_id IS NULL AND c.status='visible' AND c.withdrawn_at IS NULL AND c.author_id<>$1
       AND c.author_id NOT IN (SELECT id FROM hidden) AND ${visiblePostForInteraction} RETURNING d.post_id`,
     [userId, postId, commentId],
   );

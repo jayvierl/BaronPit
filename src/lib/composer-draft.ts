@@ -6,11 +6,11 @@ const lifetime = 30 * 60_000;
 export type PostKind = "text" | "build" | "poll" | "clip";
 export const emptyPostDraft = {
   kind: "text" as PostKind, body: "", champion: "", items: [] as number[], itemQuery: "", runes: "",
-  offMeta: false, options: ["", ""], baronCall: false, clipUrl: "", submissionId: null as string | null,
+  keystoneId: null as number | null, offMeta: false, options: ["", ""], baronCall: false, clipUrl: "", submissionId: null as string | null,
 };
 export type PostDraft = typeof emptyPostDraft;
 export function hasPostDraft(draft: PostDraft) {
-  return Boolean(draft.body || draft.champion || draft.items.length || draft.itemQuery || draft.runes ||
+  return Boolean(draft.body || draft.champion || draft.items.length || draft.itemQuery || draft.runes || draft.keystoneId ||
     draft.offMeta || draft.options.some(Boolean) || draft.baronCall || draft.clipUrl || draft.kind !== "text");
 }
 
@@ -24,7 +24,8 @@ export function readPostDraft(input: Record<string, unknown>): PostDraft {
     kind: input.kind === "poll" || input.kind === "clip" || input.kind === "build" ? input.kind : "text",
     body: text("body",2000), champion: text("champion",100), itemQuery: text("itemQuery",120),
     items: Array.isArray(input.items) ? input.items.filter(validId).slice(0,6) : [],
-    runes: text("runes",240), clipUrl: text("clipUrl",2048), options, offMeta: input.offMeta === true,
+    runes: text("runes",240), keystoneId: validId(input.keystoneId) ? input.keystoneId : null,
+    clipUrl: text("clipUrl",2048), options, offMeta: input.offMeta === true,
     baronCall: input.baronCall === true, submissionId: validSubmissionId(input.submissionId) ? input.submissionId : null,
   };
 }

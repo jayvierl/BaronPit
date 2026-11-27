@@ -3,6 +3,7 @@ import { POST_TO_THE_PIT } from "@/lib/brand";
 import Link from "next/link";
 import { Suspense } from "react";
 import { ProfileReplies } from "./profile-replies";
+import { ProfileMatchDiscussions } from "./profile-match-discussions";
 import { ShareLink } from "@/components/share-link";
 import { RankBadge } from "@/components/rank-badge";
 import { WinStreak } from "@/components/win-streak";
@@ -15,6 +16,8 @@ import { earnedBadges } from "@/lib/pure";
 import { linkedPlayers as readLinkedPlayers, publicProfile } from "@/lib/player-insights";
 import { playerStatsHref } from "@/lib/platforms";
 import { pageCursor } from "@/lib/discussion-library";
+import { decisionCursor } from "@/lib/decisions-input";
+import { profileMatchDiscussions } from "@/lib/decisions";
 import { readSearchReturn, withSearchReturn } from "@/lib/search-scopes";
 import { readProfileLink } from "@/lib/profile-featured-link";
 import { signInHref } from "@/lib/signin-return";
@@ -41,21 +44,23 @@ export default async function ProfilePage({ params, searchParams }: {
   const today = new Date().toISOString().slice(0, 10);
   const profile = await publicProfile(userId, viewer?.id ?? null, today);
   if (!profile) notFound();
-  const activeTab = tab === "players" || tab === "stats" ? "stats" : tab === "replies" ? "replies" : "posts";
+  const activeTab = tab === "players" || tab === "stats" ? "stats" : tab === "replies" || tab === "discussions" ? tab : "posts";
   const searchReturn = readSearchReturn(from);
-  const cursor = activeTab === "replies" ? pageCursor(before) : null;
+  const repliesCursor = activeTab === "replies" ? pageCursor(before) : null;
+  const discussionsCursor = activeTab === "discussions" ? decisionCursor(before) : null;
   const profilePath = `/u/${userId}`;
-  function tabHref(target: "posts" | "replies" | "stats", before?: string | null) {
+  function tabHref(target: "posts" | "replies" | "stats" | "discussions", before?: string | number | null) {
     const path = target === "posts" ? profilePath : `${profilePath}?tab=${target}`;
     return withSearchReturn(before ? `${path}&before=${before}` : path, searchReturn);
   }
   const statsHref = tabHref("stats");
-  const [patch,counts,endorsements,linkedPlayers,following,posts,featuredLink,pins] = await Promise.all([
+  const [patch,counts,endorsements,linkedPlayers,following,posts,featuredLink,pins,discussions] = await Promise.all([
     activeTab === "posts" ? currentPatch() : "", followCounts(userId), endorsementCounts(userId), readLinkedPlayers(userId),
     viewer && viewer.id !== userId ? isFollowing(viewer.id,userId) : false,
     activeTab === "posts" ? feedByAuthor(userId,viewer,20).catch(() => null) : [],
     profile.link ? readProfileLink(profile.link, viewer?.id ?? null) : null,
     viewer && viewer.id !== userId ? pinnedDuoIds(viewer.id, [userId]).catch(() => null) : null,
+    activeTab === "discussions" ? profileMatchDiscussions(userId, viewer?.id ?? null, discussionsCursor).catch(() => null) : null,
   ]);
   const player = linkedPlayers[0] ?? null;
   const badges = player?.verified ? earnedBadges(player.snapshot) : [];
@@ -96,7 +101,7 @@ export default async function ProfilePage({ params, searchParams }: {
             <Link href="/profile/edit" className="btn secondary">Edit profile</Link>
             <Link href="/lfg#duo-plan" className="btn secondary">My duo preferences</Link>
           </> : viewer ? <FollowButton userId={userId} initial={following} />
-            : <Link className="btn small" href={signInHref(tabHref(activeTab, cursor))}>Sign in to follow</Link>}
+            : <Link className="btn small" href={signInHref(tabHref(activeTab, repliesCursor ?? discussionsCursor))}>Sign in to follow</Link>}
           {pins && <DuoPinButton key={userId} playerId={userId} initial={pins.includes(userId)}/>}
           <ShareLink path={profilePath} kind="profile"/>
           {!isSelf && (viewer ? <UserSafetyMenu userId={userId}/> : <SafetyReport kind="user" targetId={userId}/>)}
@@ -114,16 +119,19 @@ export default async function ProfilePage({ params, searchParams }: {
         </details>}
       </header>
       <nav aria-label="Profile sections" className="tabs">
-        {([["posts","Posts"], ["replies","Replies"], ["stats","Player stats"]] as const).map(([id,label]) =>
+        {([["posts","Posts"], ["replies","Replies"], ["discussions","Match discussions"], ["stats","Player stats"]] as const).map(([id,label]) =>
           <Link key={id} href={tabHref(id)}
             prefetch={false} scroll={false} aria-current={activeTab === id ? "page" : undefined} className={activeTab === id ? "active" : ""}>{label}</Link>)}
       </nav>
 
       {activeTab === "replies" && (
-        <Suspense key={cursor ?? ""} fallback={<p className={styles.empty} role="status">Loading replies…</p>}>
-          <ProfileReplies authorId={userId} viewerId={viewer?.id ?? null} cursor={cursor} searchReturn={searchReturn}/>
+        <Suspense key={repliesCursor ?? ""} fallback={<p className={styles.empty} role="status">Loading replies…</p>}>
+          <ProfileReplies authorId={userId} viewerId={viewer?.id ?? null} cursor={repliesCursor} searchReturn={searchReturn}/>
         </Suspense>
       )}
+      {activeTab === "discussions" && <ProfileMatchDiscussions page={discussions} older={discussionsCursor !== null}
+        latestHref={tabHref("discussions")} olderHref={discussions?.next ? tabHref("discussions", discussions.next) : undefined}
+        searchReturn={searchReturn} isSelf={isSelf}/>}
       {activeTab === "stats" && (
         linkedPlayers.length ? linkedPlayers.map(p => {
           const href = withSearchReturn(playerStatsHref(p.platform, `${p.gameName}#${p.tagLine}`), searchReturn);

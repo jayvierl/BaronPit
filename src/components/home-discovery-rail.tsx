@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
-import { APP_NAME } from "@/lib/brand";
 import catalog from "@/lib/champion-catalog.json";
 import { dbAvailable } from "@/lib/db";
 import { duoEnabled } from "@/lib/duo";
@@ -33,10 +32,7 @@ export function HomeDiscoveryRail({ posts, activeTab, asOf, roomsRead, interests
   const matching = duoEnabled();
   return (
     <aside aria-label="Discover" className={styles.rail}>
-      <form action="/search" method="get" role="search" aria-label="Community search" className={styles.search}>
-        <input type="search" name="q" enterKeyHint="search" aria-label="Search the community" placeholder={`Search ${APP_NAME}`} maxLength={80} required />
-        <button type="submit" aria-label="Search"><span aria-hidden="true" /></button>
-      </form>
+
 
       <Suspense fallback={null}><DiscoverConversations viewerId={viewerId} posts={posts} asOf={asOf} activeTab={activeTab} interestsRead={interestsRead} patch={patch}/></Suspense>
 

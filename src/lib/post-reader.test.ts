@@ -28,7 +28,7 @@ beforeAll(async () => {
     INSERT INTO wp_blocks VALUES (1,3,now()),(4,1,now());
     INSERT INTO wp_mutes VALUES (1,5,now());
     INSERT INTO wp_posts(id,author_id,kind,body,status,room_id,data) VALUES
-      (11,2,'build','first','visible',1,'{"champion":"Ashe","offMeta":true,"patch":"16.22.1"}'),
+      (11,2,'build','first','visible',1,'{"champion":"Ashe","offMeta":true,"items":[1001],"patch":"16.22.1","keystone":{"id":8465,"name":"Guardian"}}'),
       (12,2,'poll','question','visible',1,'{"options":["A","B"]}'),
       (13,2,'card','game','visible',1,'{}'), (14,2,'text','held','held',1,'{}'),
       (15,3,'text','blocked','visible',1,'{}'), (16,4,'text','reverse','visible',1,'{}'),
@@ -166,11 +166,18 @@ describe("feed and conversation read contracts", () => {
   });
   it("filters builds before the limit and reconfirms only a published build owned by the actor", async () => {
     expect((await buildFeed(viewer,{champion:"aShE",offMeta:true})).map(p=>p.id)).toEqual([11]);
+    expect((await buildFeed(viewer,{item:1001})).map(p=>p.id)).toEqual([11]);
+    expect(await buildFeed(viewer,{champion:"Ashe",item:3190})).toEqual([]);
     expect((await buildFeed(viewer,{champion:"Lux"}))).toEqual([]);
     expect((await reconfirmBuild(viewer,11)).ok).toBe(false);
     testQueries.length=0;
     expect((await reconfirmBuild(own,11)).ok).toBe(true);
-    expect(testQueries).toHaveLength(1);
+    expect(testQueries).toHaveLength(2);
+    expect((await getPost(11,viewer))?.data).toMatchObject({patch:"16.23.1",keystone:{id:8465,name:"Guardian"}});
+    await q`UPDATE wp_posts SET data=data || '{"items":[999999999],"patch":"16.22.1"}'::jsonb WHERE id=11`;
+    expect(await reconfirmBuild(own,11)).toMatchObject({ok:false,error:expect.stringContaining("unavailable on the current patch")});
+    expect((await getPost(11,viewer))?.data.patch).toBe("16.22.1");
+    await q`UPDATE wp_posts SET data=data || '{"items":[1001],"patch":"16.23.1"}'::jsonb WHERE id=11`;
   });
   it("votes once per voter; only available poll options and actual visible targets accept input", async () => {
     testQueries.length=0;

@@ -1,3 +1,4 @@
+import { ObjectiveTimeline } from "./objective-timeline";
 import Image from "next/image";
 import Link from "next/link";
 import { cache, Suspense } from "react";
@@ -105,10 +106,10 @@ function Teams({ match, platform, fromMatch }: { match: MatchSummary; platform: 
 type MatchRowProps = {
   match: MatchSummary; patch: string; platform: string; lookupHref: string;
   discussion?: Pick<QuestionMatch, "platform" | "riotId">;
-  motion?: boolean; expanded?: boolean; community?: { showStarters: boolean };
+  motion?: boolean; expanded?: boolean; timeline?: boolean; community?: { showStarters: boolean };
 };
 
-function MatchRow({ match, patch, platform, lookupHref, motion, expanded, community, discussion }: MatchRowProps) {
+function MatchRow({ match, patch, platform, lookupHref, motion, expanded, community, discussion, timeline }: MatchRowProps) {
   const catalog = match.items.length ? loadCatalog(patch) : null;
   const matchId = matchSectionId(match.matchId);
   const reference = discussion && matchRegion(match.matchId) && isPublicMatchQueue(match.queueId)
@@ -120,6 +121,11 @@ function MatchRow({ match, patch, platform, lookupHref, motion, expanded, commun
   if (matchId) from.hash = matchId;
   const matchPath = from.pathname + from.search + from.hash;
   const question = reference && community ? { match: reference, showStarters: community.showStarters, fromMatch: matchPath, showQuestion: false } : null;
+  const timelineUrl = new URL(matchPath, "https://profile.invalid");
+  timelineUrl.searchParams.set("timeline", "objectives");
+  timelineUrl.searchParams.set("match", match.matchId);
+  const returnUrl = new URL(timelineUrl);
+  returnUrl.searchParams.delete("timeline");
   const fromMatch = encodeURIComponent(matchPath);
   const { spells, runes } = matchLoadout(match);
   const legacyTeam = !match.teams && match.queueId !== 0 ? match.teammates ?? [] : [];
@@ -166,6 +172,8 @@ function MatchRow({ match, patch, platform, lookupHref, motion, expanded, commun
           !duration && "Duration and CS/m unavailable", !match.items.length && "No item build recorded",
         ].filter(Boolean).join(" · ")}
       </p>}
+      {reference && (timeline ? <ObjectiveTimeline reference={reference} returnHref={returnUrl.pathname + returnUrl.search + returnUrl.hash}/> :
+        <Link className={styles.timelineLink} prefetch={false} href={timelineUrl.pathname + timelineUrl.search + timelineUrl.hash}>View objective timeline</Link>)}
       <Teams match={match} platform={participantPlatform} fromMatch={fromMatch}/>
     </details>
     {reference && <div className={discussionStyles.actions}>
@@ -191,18 +199,18 @@ async function MatchQuestions({ question, catalog, ids }: {
   return <MatchQuestionLinks {...question} items={cardItems(await catalog, ids)}/>;
 }
 
-export function LatestGames({ matches, patch, platform, riotId, persisted, lookupHref, communityMatchIds, queueFilter, championFilter, rawMatch }: {
+export function LatestGames({ matches, patch, platform, riotId, persisted, lookupHref, communityMatchIds, queueFilter, championFilter, rawMatch, showTimeline }: {
   matches: MatchSummary[]; patch: string; platform: string; riotId: string; persisted: boolean;
-  lookupHref: string; communityMatchIds: ReadonlySet<string>; queueFilter: string; championFilter: string; rawMatch?: string;
+  lookupHref: string; communityMatchIds: ReadonlySet<string>; queueFilter: string; championFilter: string; rawMatch?: string; showTimeline?: boolean;
 }) {
   const base = matchFilterPath(lookupHref, queueFilter, championFilter);
-  return matches.slice(0, MATCH_DETAIL_LIMIT).map((match, index) => <MatchRow key={match.matchId} match={match} patch={patch} platform={platform} lookupHref={base} expanded={rawMatch === match.matchId}
+  return matches.slice(0, MATCH_DETAIL_LIMIT).map((match, index) => <MatchRow key={match.matchId} match={match} patch={patch} platform={platform} lookupHref={base} expanded={rawMatch === match.matchId} timeline={showTimeline && rawMatch === match.matchId}
     discussion={persisted && isPlatform(platform) ? { platform, riotId } : undefined}
     motion community={persisted && communityMatchIds.has(match.matchId) ? { showStarters: index === 0 } : undefined}/>);
 }
 
-export function OlderGames({ matches, patch, platform, riotId, persisted, lookupHref, rawPage, rawMatch, queueFilter, championFilter }: {
-  matches: MatchSummary[]; patch: string; platform: string; riotId: string; persisted: boolean; lookupHref: string; rawPage?: string; rawMatch?: string;
+export function OlderGames({ matches, patch, platform, riotId, persisted, lookupHref, rawPage, rawMatch, queueFilter, championFilter, showTimeline }: {
+  matches: MatchSummary[]; patch: string; platform: string; riotId: string; persisted: boolean; lookupHref: string; rawPage?: string; rawMatch?: string; showTimeline?: boolean;
   queueFilter: string; championFilter: string;
 }) {
   const page = olderMatchPage(matches, rawPage, rawMatch);
@@ -215,7 +223,7 @@ export function OlderGames({ matches, patch, platform, riotId, persisted, lookup
       <summary>Show {gameCount(page.total)} more</summary>
       <p className={styles.archiveRange}>Older games {page.offset + 1}–{page.offset + page.matches.length} of {page.total}</p>
       {page.matches.map(match => page.selected === match.matchId
-        ? <MatchRow key={match.matchId} match={match} patch={patch} platform={platform} lookupHref={olderMatchHref(base, page.page, match.matchId)} expanded
+        ? <MatchRow key={match.matchId} match={match} patch={patch} platform={platform} lookupHref={olderMatchHref(base, page.page, match.matchId)} expanded timeline={showTimeline && rawMatch === match.matchId}
           discussion={persisted && isPlatform(platform) ? { platform, riotId } : undefined}/>
         : <div key={match.matchId} id={matchSectionId(match.matchId)} tabIndex={-1} className={`${styles.archiveRow} ${styles.matchTarget}`}>
           <MatchPortrait champion={match.champion} size={32}/>

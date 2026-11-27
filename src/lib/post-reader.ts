@@ -1,4 +1,5 @@
 import { buildCatalog, cardItems } from "./build-catalog";
+import { buildKeystone } from "./build-sharing";
 import { clipLink } from "./clip-link";
 import { gameCardMotion } from "./game-card-motion";
 import { postDataProjection, questionDecisionPost } from "./match-card-projection";
@@ -14,12 +15,13 @@ import { isPlatform, playerStatsHref } from "./platforms";
 import { publicAvatar } from "./avatar";
 import { teamBaronFields } from "./pure";
 import { followedReposts, repostableContent } from "./reposts";
+import { quoteProjectionJoin } from "./quote-queries";
 import type { PostView, CommentView } from "./post-types";
 import { feedCursor, type FeedCursor, type HomeFeedTab } from "./feed-pagination";
 
 type Filter = {
   roomId?: number; authorId?: number; postId?: number; following?: boolean; activeReplies?: boolean;
-  builds?: { champion?: string; offMeta?: boolean }; tag?: string; text?: string;
+  builds?: { champion?: string; item?: number; offMeta?: boolean }; tag?: string; text?: string;
   kind?: "poll" | "build"; questions?: boolean;
   page?: { asOf: string; before: FeedCursor | null };
 };
@@ -47,7 +49,7 @@ function publicPostData(kind: unknown, raw: unknown): Record<string, unknown> {
     case "build":
       return { champion: championId(d.champion), items: itemIds(d.items, 6),
         patch: typeof d.patch === "string" && /^\d+\.\d+(?:\.\d+)?$/.test(d.patch) ? d.patch : null,
-        runes: typeof d.runes === "string" ? d.runes.slice(0,240) : "", offMeta: d.offMeta === true };
+        runes: typeof d.runes === "string" ? d.runes.slice(0,240) : "", keystone: buildKeystone(d.keystone), offMeta: d.offMeta === true };
     case "card": {
       const m = record(d.match);
       if (!championId(m.champion) || typeof m.win !== "boolean" ||
@@ -91,14 +93,15 @@ async function reactionsFor(kind: "post" | "comment", ids: number[], viewerId: n
 
 // A fresh answer can surface an older discussion. The same visible-ancestor rules
 // used for threads also apply to this ranking, including legacy nested replies.
+// Group by the stored comment's post ID so PostgreSQL can use its distinct-value statistics.
 function recentDiscussionActivity(asOf: string) { return `, candidates AS (
     SELECT DISTINCT c.post_id FROM wp_comments c WHERE c.status='visible' AND c.created_at BETWEEN ${asOf}-interval '7 days' AND ${asOf}
   ), ${visibleCommentsFor("posts", "candidates")}, activity AS (
-    SELECT DISTINCT ON (t.post_id) t.post_id,c.created_at AS answered_at,c.id AS reply_id FROM thread t
-    JOIN wp_comments c ON c.id=t.id JOIN wp_posts original ON original.id=t.post_id
+    SELECT DISTINCT ON (c.post_id) c.post_id,c.created_at AS answered_at,c.id AS reply_id FROM thread t
+    JOIN wp_comments c ON c.id=t.id JOIN wp_posts original ON original.id=c.post_id
     WHERE c.created_at BETWEEN ${asOf}-interval '7 days' AND ${asOf} AND c.author_id<>original.author_id
       AND c.author_id IS DISTINCT FROM (SELECT id FROM wp_users WHERE email=$11)
-    ORDER BY t.post_id,c.created_at DESC,c.id DESC
+    ORDER BY c.post_id,c.created_at DESC,c.id DESC
   )`; }
 
 async function queryPosts(viewerId: number | null, filter: Filter, limit: number): Promise<PagingPost[]> {
@@ -127,7 +130,11 @@ async function queryPosts(viewerId: number | null, filter: Filter, limit: number
       ${filter.questions ? `AND ${questionDecisionPost} AND EXISTS (SELECT 1 FROM wp_decisions d WHERE d.post_id = p.id)` : ""}
       AND ($7::text IS NULL OR lower(p.data->>'champion') = lower($7))
       AND (NOT $8::boolean OR p.data->'offMeta' = 'true'::jsonb)
-      AND ($9::text IS NULL OR strpos(lower(p.body), lower($9)) > 0)
+      ${filter.builds?.item ? `AND p.data->'items' @> jsonb_build_array(${filter.page ? "$15" : "$12"}::int)` : ""}
+      AND ($9::text IS NULL OR strpos(lower(p.body), lower($9)) > 0
+        OR (p.kind='build' AND strpos(lower(p.data->>'champion'), lower($9)) > 0)
+        OR (p.kind='card' AND p.card_validated AND ${publicQueueSql("(p.data->'matchContext')")}
+          AND strpos(lower(p.data#>>'{matchContext,champion}'), lower($9)) > 0))
       AND ($2::int IS NOT NULL OR $4::int IS NOT NULL
         OR NOT (p.kind='text' AND p.data @> '{"briefing":true}' AND
           p.author_id IS NOT DISTINCT FROM (SELECT id FROM wp_users WHERE email=$11))
@@ -159,11 +166,14 @@ async function queryPosts(viewerId: number | null, filter: Filter, limit: number
         ORDER BY l.is_primary DESC, l.created_at, l.puuid LIMIT 1
       ) player ON TRUE
     )
-    SELECT p.id, p.author_id, p.kind, p.room_id, p.answered_at, p.reply_id, ${postDataProjection} AS data, p.body, p.status, p.created_at,
+    SELECT p.id, p.author_id, p.kind, p.room_id, p.answered_at, p.reply_id, ${postDataProjection} AS data, p.body, p.status, p.replies_closed, p.created_at,
       ${filter.page ? `to_char(p.sort_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at,` : ""}
       ballot.closes_at, ballot.tally AS daily_tally, ballot.closes_at <= now() AS daily_closed, payoff.post_id AS payoff_for,
       p.sharer,p.shared_at,sh.display_name AS sharer_name,
       (p.status='visible' AND p.author_id IS DISTINCT FROM $1 AND ${repostableContent("$11")}) AS can_repost,
+      (p.status='visible' AND ${repostableContent("$11")}) AS can_quote,
+      quoted.post_id IS NOT NULL AS has_quote,quote_preview.id AS quote_source_id,quote_preview.display_name AS quote_author,
+      quote_preview.excerpt AS quote_excerpt,quote_preview.room_name AS quote_room,
       EXISTS (SELECT 1 FROM wp_reposts r WHERE r.user_id=$1 AND r.post_id=p.id AND r.active) AS my_repost,
       u.email=$11 AS is_publisher, rm.champion_id AS room_champion,
       (${questionDecisionPost} AND EXISTS (SELECT 1 FROM wp_decisions d WHERE d.post_id=p.id)) AS is_question,
@@ -175,11 +185,13 @@ async function queryPosts(viewerId: number | null, filter: Filter, limit: number
     LEFT JOIN wp_daily_calls ballot ON ballot.post_id=p.id
     LEFT JOIN wp_daily_calls payoff ON payoff.payoff_post_id=p.id
     LEFT JOIN flair ON flair.author_id = p.author_id
+    ${quoteProjectionJoin}
     ORDER BY p.sort_at DESC, p.id DESC`,
     [viewerId, filter.roomId ?? null, filter.authorId ?? null, filter.postId ?? null,
       Boolean(filter.following), filter.builds ? "build" : filter.kind ?? null, filter.builds?.champion || null,
       Boolean(filter.builds?.offMeta), filter.tag ? '#' + filter.tag : filter.text || null, Math.min(Math.max(limit, 1), 100), PATCH_PUBLISHER,
-      ...(filter.page ? [filter.page.asOf, filter.page.before?.before ?? null, filter.page.before?.id ?? null] : [])]);
+      ...(filter.page ? [filter.page.asOf, filter.page.before?.before ?? null, filter.page.before?.id ?? null] : []),
+      ...(filter.builds?.item ? [filter.builds.item] : [])]);
   if (!rows.length) return [];
   const ids = rows.map(r => Number(r.id));
   const polls = rows.filter(r => r.kind === "poll").map(r => Number(r.id));
@@ -221,7 +233,12 @@ async function queryPosts(viewerId: number | null, filter: Filter, limit: number
       ...(filter.page ? { cursorAt: String(r.cursor_at) } : {}),
       authorAvatar: publicAvatar(r.avatar_ref),
       isQuestion:r.is_question === true,
-      canRepost: r.can_repost === true, myRepost: r.my_repost === true,
+      repliesClosed: r.replies_closed === true,
+      canRepost: r.can_repost === true, myRepost: r.my_repost === true, canQuote: r.can_quote === true,
+      ...(r.has_quote === true ? { quote: { original: r.quote_source_id != null ? {
+        postId: Number(r.quote_source_id), author: String(r.quote_author), body: String(r.quote_excerpt),
+        room: typeof r.quote_room === "string" ? r.quote_room : null,
+      } : null } } : {}),
       ...(r.sharer != null ? {repostedBy: {id: Number(r.sharer), name: String(r.sharer_name), at: String(r.shared_at)}} : {}),
       authorFlair: flair && rankFields ? playerFlair(rankFields, flair[2]) : null,
       ...(authorWinStreak ? { authorWinStreak } : {}),

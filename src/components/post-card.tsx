@@ -3,20 +3,22 @@
 import { signInHref } from "@/lib/signin-return";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
-import { ItemIcons } from "./item-icons";
 import { useRouter } from "next/navigation";
 import type { PostView, CommentView } from "@/lib/social";
 import type { AvatarIdentity } from "@/lib/author-identity";
-import { REACTION_EMOJIS, samePatch } from "@/lib/pure";
+import { REACTION_EMOJIS } from "@/lib/pure";
+import { buildThreadReturn } from "@/lib/build-sharing";
 import { clipLink } from "@/lib/clip-link";
 import { projectMatchContext } from "@/lib/match-context";
 import { PATCH_NOTES_INDEX, publicPatch } from "@/lib/patch-notes";
 import { AvatarProfileLink, PermalinkTime, RichBody, timeAgo } from "./ui";
-import { ChampionPortrait } from "./champion-portrait";
+import { BuildAttachment } from "./build-attachment";
 import { MatchCard } from "./match-card";
 import { MatchDiscussionPreview } from "./match-discussion-preview";
 import { PostLibraryActions } from "./discussion-library-actions";
 import { RepostControl } from "./repost-control";
+import { QuoteControl } from "./quote-control";
+import { QuotePreview } from "./quote-preview";
 import { WithdrawSubmission } from "./withdraw-submission";
 import { CommentSection } from "./comment-section";
 import { ActionFeedback, usePostAction } from "./post-action";
@@ -44,6 +46,7 @@ export function PostCard({
   initialComments,
   viewerIdentity,
   fromMatch,
+  fromBuild,
 }: {
   post: PostView;
   patch: string;
@@ -53,6 +56,7 @@ export function PostCard({
   initialComments?: CommentView[] | null;
   viewerIdentity?: AvatarIdentity | null;
   fromMatch?: string;
+  fromBuild?: string;
 }) {
   const router = useRouter();
   const threadHref = `/post/${post.id}`;
@@ -79,9 +83,6 @@ export function PostCard({
     }, Math.max(0, Date.parse(callCutoff) - Date.now()));
     return () => window.clearTimeout(timer);
   }, [callCutoff, post.dailyCall?.closed, router]);
-  const [buildPatch, setBuildPatch] = useState<string | null>(
-    typeof post.data.patch === "string" ? post.data.patch : null,
-  );
 
   const react = async (emoji: string) => {
     if (!signedIn) {
@@ -115,6 +116,7 @@ export function PostCard({
   const [rankLabel, main] = post.authorFlair?.split(" · ", 2) ?? [];
   const flair = rankLabel && <><RankBadge tier={post.authorTier}>{rankLabel}</RankBadge>{main && ` · ${main}`}</>;
   const d = post.data as Record<string, unknown>;
+  const buildSource = post.kind === "build" ? buildThreadReturn(fromBuild, d.champion, d.items, post.roomSlug) : null;
   const matchContext = post.kind === "card" ? projectMatchContext(d.matchContext) : null;
   const destination = post.kind === "clip" && post.status === "visible" ? clipLink(d.url) : null;
   const likeCount = reactions["❤️"] ?? 0;
@@ -154,6 +156,10 @@ export function PostCard({
           <details className={styles.options} onKeyDown={closeDisclosure}>
             <summary aria-label="Post options" title="Post options"><ThreadIcon name="more" /></summary>
             <div className={styles.optionsPanel}>
+              {visible && signedIn && viewerId === post.authorId &&
+                <button type="button" className="text-btn" disabled={action.busy} onClick={async () => {
+                  if (await action.send("/api/social/reply-policy", {postId:post.id, closed:!post.repliesClosed})) router.refresh();
+                }}>{post.repliesClosed ? "Reopen replies" : "Close replies"}</button>}
               {signedIn && viewerId === post.authorId
                 ? <WithdrawSubmission kind="post" id={post.id} onWithdraw={() => setWithdrawn(true)} />
                 : <SafetyReport kind="post" targetId={post.id} />}
@@ -171,58 +177,11 @@ export function PostCard({
           </div>
         )}
         {post.body && <RichBody body={post.body} threadHref={threadPage ? undefined : threadHref} threadLinkClassName={styles.bodyLink}/>}
+        {post.quote && <QuotePreview original={post.quote.original}/>}
         {post.dailyCallPayoffFor && <p className={styles.discussionLinks}>
           <Link href={`/post/${post.dailyCallPayoffFor}`} prefetch={false}>Read the original Daily Call</Link>
         </p>}
-        {post.kind === "build" && (
-          <div className={styles.buildAttachment}>
-            <div className={styles.attachmentHeading}>
-              {typeof d.champion === "string" && <ChampionPortrait compact id={d.champion} patch={patch} size={36}/>}
-              <div>
-                <strong>{String(d.champion ?? "")} build</strong>
-                <div className="meta">
-                  Patch {publicPatch(buildPatch ?? patch) ?? "unavailable"}
-                  {d.offMeta ? (
-                    <>
-                      {" "}
-                      · <span className="offmeta">OFF-META</span>
-                    </>
-                  ) : null}
-                  {buildPatch && !samePatch(buildPatch, patch) && (
-                    <>
-                      {" "}
-                      ·{" "}
-                      <span className="stale-tag">
-                        Outdated — unconfirmed for patch {publicPatch(patch) ?? "unavailable"}
-                      </span>
-                      {visible && viewerId != null && viewerId === post.authorId && (
-                        <button
-                          type="button"
-                          className={`text-btn ${styles.reconfirm}`}
-                          disabled={action.busy}
-                          onClick={async () => {
-                            const result = await action.send("/api/social/builds/reconfirm", { postId: post.id });
-                            if (typeof result?.patch === "string") setBuildPatch(result.patch);
-                            if (result) router.refresh();
-                          }}
-                        >
-                          Re-confirm for this patch
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-            <ItemIcons ids={Array.isArray(d.items) ? d.items : []} patch={post.itemPatch ?? patch} details={post.itemDetails}/>
-            <a className="text-btn" href={`/builds/compare?build=${post.id}`}>Compare this build</a>
-            {d.runes ? (
-              <div className={styles.runes}>
-                Runes: {String(d.runes)}
-              </div>
-            ) : null}
-          </div>
-        )}
+        {post.kind === "build" && <BuildAttachment post={post} patch={patch} canReconfirm={visible && viewerId === post.authorId}/>}
 
         {d.briefing === true && typeof d.notesUrl === "string" && (
           <p><a href={d.notesUrl} rel="noopener noreferrer" target="_blank">
@@ -273,7 +232,9 @@ export function PostCard({
             <span aria-hidden="true">↗</span>
           </a>
         )}
-        {visible && !threadPage && (matchContext || post.isQuestion || post.lastReplyId) && <div className={styles.discussionLinks}>
+        {visible && !threadPage && (post.kind === "build" || matchContext || post.isQuestion || post.lastReplyId) && <div className={styles.discussionLinks}>
+          {post.kind === "build" && <Link href={buildSource ? `${threadHref}?${new URLSearchParams({ fromBuild: buildSource.href })}` : threadHref}
+            prefetch={false}>Discuss this build →</Link>}
           {matchContext && !post.isQuestion && <Link href={threadHref} prefetch={false}>View discussion →</Link>}
           {post.isQuestion && <Link href={threadHref} prefetch={false}>Discuss this decision →</Link>}
           {post.lastReplyId && post.lastReplyAt && <Link href={`${threadHref}#reply-${post.lastReplyId}`} prefetch={false}>Latest player reply{" "}
@@ -323,6 +284,8 @@ export function PostCard({
             </div>
           </details>
           {post.canRepost && <RepostControl key={String(post.myRepost)} postId={post.id} initial={post.myRepost === true} signedIn={signedIn}/>}
+          {post.canQuote && <QuoteControl original={{ postId:post.id, author:post.authorName, body:post.body.slice(0,180), room:post.roomName }}
+            signedIn={signedIn} viewerId={viewerId}/>}
           <PostLibraryActions postId={post.id} signedIn={signedIn}/>
         </div>}
 
@@ -340,6 +303,7 @@ export function PostCard({
             viewerIdentity={viewerIdentity}
             onVisibleReply={() => setAddedReplies((n) => n + 1)}
             decisionQuestion={post.isQuestion}
+            repliesClosed={post.repliesClosed}
             allowOneFix={post.kind === "card"}
           />}
       </div>}

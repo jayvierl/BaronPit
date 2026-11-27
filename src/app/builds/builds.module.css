@@ -1,0 +1,12 @@
+.header h1 { margin-block: .35rem .2rem; overflow-wrap: anywhere; }
+.header p { margin: .25rem 0 .75rem; }
+.links, .filters, .composeHeading { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem .65rem; }
+.links a { min-height: 44px; }
+.filters { margin-block: 1rem; }
+.filters > input { flex: 1 1 12rem; min-width: 0; }
+.filterCheck { display: inline-flex; align-items: center; min-height: 44px; gap: .35rem; font-size: .86rem; }
+.compose { margin-block: 1rem; padding-block: .7rem; border-block: 1px solid var(--border); }
+.composeHeading { justify-content: space-between; }
+.composeHeading h2 { margin: 0; font-size: 1.05rem; overflow-wrap: anywhere; }
+.inlineLink { color: var(--accent-ink); text-decoration: underline; text-underline-offset: .14em; }
+.empty { color: var(--ink-soft); padding-block: 1rem; border-top: 1px solid var(--border); }

@@ -1,7 +1,7 @@
 import { validId } from "./ids";
 import type { PostView } from "./post-types";
 
-type ConversationPost = Pick<PostView, "id" | "status" | "kind" | "data" | "body" | "createdAt" | "lastReplyAt" | "commentCount" | "roomId" | "roomName">;
+type ConversationPost = Pick<PostView, "id" | "status" | "kind" | "data" | "body" | "createdAt" | "lastReplyAt" | "repliesClosed" | "commentCount" | "roomId" | "roomName">;
 
 const week = 7 * 24 * 60 * 60 * 1000;
 const previewLimit = 86;
@@ -11,7 +11,7 @@ const publicKinds = new Set(["text", "build", "poll", "card", "clip"]);
 export function activeConversations(posts: readonly ConversationPost[], asOf: number, joinedRooms: readonly number[] = []) {
   const joinedIds = new Set(joinedRooms);
   const candidates = posts.flatMap(post => {
-    if (!validId(post.id) || post.status !== "visible" || !publicKinds.has(post.kind) || post.data.briefing === true ||
+    if (!validId(post.id) || post.status !== "visible" || post.repliesClosed || !publicKinds.has(post.kind) || post.data.briefing === true ||
       !Number.isSafeInteger(post.commentCount) || post.commentCount < 0) return [];
 
     const createdAt = Date.parse(post.createdAt);

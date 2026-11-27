@@ -16,6 +16,6 @@ export function roomFeedHref(slug: string, key: typeof roomFeeds[number]["key"])
   return key === "all" ? path : path + "?feed=" + key;
 }
 
-export function readRoomFeed(roomId: number, viewerId: number | null, view: typeof roomFeeds[number]) {
-  return readPosts(viewerId, { roomId, ...view.filter }, 30);
+export function readRoomFeed(roomId: number, viewerId: number | null, view: typeof roomFeeds[number], limit = 30) {
+  return readPosts(viewerId, { roomId, ...view.filter }, limit);
 }

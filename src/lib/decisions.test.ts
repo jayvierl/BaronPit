@@ -9,6 +9,8 @@ import {
   trialOptions,
   setQuestionPreference,
   questionPreference,
+  myDecisionProgress,
+  profileMatchDiscussions,
 } from "./decisions";
 import { q } from "./db";
 import type { User } from "./auth";
@@ -87,6 +89,12 @@ describe("moderated decision questions", () => {
     expect(await questionPreference(2)).toEqual({ role: "Bot", champion: "Ashe" });
     expect(await decisions(2, { mode: "mine" })).toMatchObject([{ postId: question }]);
     expect(await decisions(3, { mode: "mine" })).toEqual([]);
+    await q`UPDATE wp_posts SET replies_closed=true WHERE id=${question}`;
+    expect(await decisions(null, { mode: "unanswered", postId: question })).toEqual([]);
+    expect(await decisions(2, { mode: "mine" })).toEqual([]);
+    expect(await decisions(null, { postId: question })).toMatchObject([{ postId: question }]);
+    await q`UPDATE wp_posts SET replies_closed=false WHERE id=${question}`;
+    expect(await decisions(2, { mode: "mine" })).toMatchObject([{ postId: question }]);
     await setQuestionPreference(2, { role: "Mid" });
     expect(await questionPreference(2)).toEqual({ role: "Mid", champion: null });
     expect(await decisions(2, { mode: "mine" })).toEqual([]);
@@ -152,6 +160,9 @@ describe("moderated decision questions", () => {
     expect(await acceptDecision(3, question, answer)).toBe(false);
     expect(await acceptDecision(1, question, self.ok ? self.postId : 0)).toBe(false);
     expect(await acceptDecision(1, question, answer)).toBe(true);
+    expect((await myDecisionProgress(1,null,true)).entries).toMatchObject([{postId:question,answer:{id:answer},outcome:null}]);
+    expect((await myDecisionProgress(1,question,true)).entries).toEqual([]);
+    expect((await myDecisionProgress(2,null,false)).entries).toEqual([]);
     expect(
       await decisions(null, { mode: "answered", q: "cover the river", opponent: "Caitlyn", topic: "Objective" }),
     ).toMatchObject([{ answer: { id: answer, name: "Helper" } }]);
@@ -195,6 +206,10 @@ describe("moderated decision questions", () => {
         patch:"26.22",queueId:420,kills:4}} });
       expect(JSON.stringify(post)).not.toMatch(/private-source-key|Forged|omit roster|7000/);
       expect(await decisions(null,{postId})).toMatchObject([{matchContext:{authorRole:"spectator",discussionKind:"perspective"}}]);
+      expect((await profileMatchDiscussions(3,null,null)).entries).toMatchObject([{postId,matchContext:{discussionKind:"perspective"}}]);
+      expect((await profileMatchDiscussions(1,null,null)).entries).toEqual([]);
+      expect((await profileMatchDiscussions(3,null,postId)).entries).toEqual([]);
+      expect((await myDecisionProgress(3,null,false)).entries).toEqual([]);
       const neutral = await askDecision(reader,{ ...aram,body:"Should the team reset before this fight?",champion:"Ashe",topic:"Teamfight",confirmPublicMatch:true });
       expect(neutral.ok).toBe(true);
       if(neutral.ok) {
@@ -214,6 +229,7 @@ describe("moderated decision questions", () => {
       expect(await readQuestionMatch(proof,2)).toBeNull();
       expect(await getPost(postId,{...owner,id:2})).toBeNull();
       expect(await decisions(2,{postId})).toEqual([]);
+      expect((await profileMatchDiscussions(3,2,null)).entries).toEqual([]);
       expect((await discussionMetadata(String(postId),2)).openGraph).toBeUndefined();
       await q`UPDATE wp_players SET fetched_at=now()-interval '25 hours',snapshot='{}'::jsonb WHERE puuid='private-source-key'`;
       expect(await readQuestionMatch(proof,3)).toBeNull();
@@ -265,6 +281,14 @@ describe("moderated decision questions", () => {
     expect(await decisions(null, { postId: question })).toMatchObject([
       { outcome: "still-testing", trialMatch: { matchId: "later" } },
     ]);
+    expect((await myDecisionProgress(1,null,true)).entries).toEqual([]);
+    expect((await myDecisionProgress(1,null,false)).entries).toMatchObject([{postId:question,outcome:"still-testing"}]);
+    // Withdrawal can retain a protected reply body for moderators while keeping its status column.
+    await q`UPDATE wp_comments SET withdrawn_at=now() WHERE id=${answer}`;
+    expect(await decisions(null, { postId: question })).toMatchObject([{answer:null,outcome:null,trialMatch:null}]);
+    expect((await myDecisionProgress(1,null,false)).entries).toMatchObject([{postId:question,answer:null,outcome:null}]);
+    expect(await acceptDecision(1,question,answer)).toBe(false);
+    expect(await recordTrial(1,question,answer,"helped",null)).toBe(false);
     await q`UPDATE wp_comments SET status='held' WHERE id=${answer}`;
     expect(await decisions(null, { postId: question })).toMatchObject([
       { answer: null, trialMatch: null, outcome: null },

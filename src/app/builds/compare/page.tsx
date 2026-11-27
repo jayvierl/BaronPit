@@ -26,11 +26,12 @@ export default async function ComparePage({
     .filter((i) => i.shop)
     .sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id);
   const shopIds = new Set(items.map((i) => i.id));
+  const keystoneIds = new Set(catalog.runes.filter(rune => rune.slot === 0).map(rune => rune.id));
   const builds = new Map((community ?? []).map((p) => [p.id, p]));
   if (target) builds.set(target.id, target);
   const choices = [
     ...examplePaths(items, catalog.runes),
-    ...Array.from(builds.values()).flatMap((p) => pathFromPost(p, shopIds) ?? []),
+    ...Array.from(builds.values()).flatMap((p) => pathFromPost(p, shopIds, keystoneIds) ?? []),
   ];
   const selectedItem = items.find((i) => i.id === Number(item));
   if (selectedItem)

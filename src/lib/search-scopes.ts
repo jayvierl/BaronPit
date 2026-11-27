@@ -2,6 +2,8 @@ import { isPlatform, type PlatformId } from "./platforms";
 
 export const searchScopes = [
   { id: "all", label: "All" },
+  { id: "league", label: "Game data" },
+  { id: "builds", label: "Builds" },
   { id: "people", label: "People" },
   { id: "rooms", label: "Rooms" },
   { id: "posts", label: "Posts" },

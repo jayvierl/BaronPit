@@ -72,7 +72,7 @@ export default async function Questions({ searchParams }: { searchParams: Promis
           Answered matchups
         </Link>
         <Link href="/questions?mode=mine" aria-current={mode === "mine" ? "page" : undefined}>
-          My unanswered questions
+          Questions I can help with
         </Link>
       </nav>
       {mode === "mine" &&
@@ -81,7 +81,7 @@ export default async function Questions({ searchParams }: { searchParams: Promis
         ) : (
           <p>
             <Link className="btn small" href={signInHref("/questions?mode=mine")}>
-              Sign in to save your queue
+              Sign in to choose questions to answer
             </Link>
           </p>
         ))}
@@ -138,8 +138,10 @@ export default async function Questions({ searchParams }: { searchParams: Promis
       {mode === "mine" && !saved ? null : rows === null ? (
         <p role="status">Community questions are temporarily unavailable.</p>
       ) : rows.length === 0 ? (
-        <WardEmptyState text={mode === "answered" ? "No answered matchups here yet." : "No questions awaiting a helpful answer here."}
-          action={<Link href="/questions/new">Ask about a decision</Link>}/>
+        <WardEmptyState text={mode === "answered" ? "No answered matchups here yet."
+          : mode === "mine" ? "No open questions match your preferences yet." : "No questions awaiting a helpful answer here."}
+          action={mode === "mine" ? <Link href="/questions?mode=unanswered">Browse open questions</Link>
+            : <Link href="/questions/new">Ask about a decision</Link>}/>
       ) : (
         rows.slice(0, 20).map((d) => (
           <article key={d.postId} className={styles.entry}>

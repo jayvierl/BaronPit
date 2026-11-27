@@ -23,6 +23,11 @@ afterAll(async () => { await postgres.close(); vi.unstubAllEnvs(); });
 it("selects one visible unanswered question, ranking the viewer's role and skipping existing follows", async () => {
   await q`INSERT INTO wp_decision_preferences(user_id,role) VALUES(1,'Support')`;
   expect(await followingStarter(1)).toMatchObject({id:10,authorId:2});
+  await q`UPDATE wp_posts SET replies_closed=true WHERE id=10`;
+  expect(await followingStarter(1)).toMatchObject({id:11});
+  await q`UPDATE wp_posts SET replies_closed=false WHERE id=10`;
+  await q`INSERT INTO wp_comments(post_id,author_id,body,withdrawn_at) VALUES (10,3,'Withdrawn advice',now())`;
+  expect(await followingStarter(1)).toMatchObject({id:10});
   await q`INSERT INTO wp_comments(post_id,author_id,body) VALUES (10,3,'A public reply')`;
   expect(await followingStarter(1)).toMatchObject({id:11});
   await q`INSERT INTO wp_follows(follower_id,followee_id) VALUES(1,3)`;

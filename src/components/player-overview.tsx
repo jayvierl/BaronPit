@@ -36,7 +36,7 @@ export function RecentResults({ matches, historyPath, partial = false }: { match
 export function PlayerOverview({ player, statsPath, historyPath }: { player: Player; statsPath: string; historyPath: string }) {
   const summary = publicPlayerSummary(player);
   const champion = summary.champions[0];
-  const hasSample = summary.sampleGames > 0 && (summary.topRole || champion);
+  const hasSample = summary.sampleGames > 0 && (summary.sampleRecord || summary.topRole || champion);
   const formLength = Math.min(player.snapshot.matches.length, FORM_LENGTH);
   return (
     <section className={styles.overview} aria-label="League overview">
@@ -52,6 +52,7 @@ export function PlayerOverview({ player, statsPath, historyPath }: { player: Pla
               <RankBadge tier={record.tier}>{record.rank}</RankBadge>
               {record.winRate !== null && <span className={styles.meta}>{record.winRate}% win rate</span>}
             </div>
+            {record.wins !== null && record.losses !== null && <p className={styles.meta}>{record.wins}W · {record.losses}L</p>}
           </div>
         )) : <RankBadge>{summary.rank}</RankBadge>}
       </div>
@@ -64,6 +65,7 @@ export function PlayerOverview({ player, statsPath, historyPath }: { player: Pla
         <div className={styles.sample}>
           {summary.sampleGames !== formLength && <p className={styles.meta}>Last {gameCount(summary.sampleGames)} · supported public queues</p>}
           <dl>
+            {summary.sampleRecord && <div><dt>Recent win rate</dt><dd>{summary.sampleRecord.winRate}% <span className={styles.meta}>({summary.sampleRecord.wins}W · {summary.sampleRecord.losses}L)</span></dd></div>}
             {summary.topRole && <div><dt>Top role</dt><dd>{summary.topRole.name} · {gameCount(summary.topRole.games)}{summary.topRole.name.includes(" / ") ? " each" : ""}</dd></div>}
             {champion && <div><dt>Top champion</dt><dd>{champion.name} · {gameCount(champion.games)}</dd></div>}
           </dl>

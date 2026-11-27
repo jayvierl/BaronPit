@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { account, capture, fixtureContext, load, localPost, openFixtureBrowser, submit, visible } from "./browser-helpers.mjs";
 import { startFixtureServer } from "./fixture-server.mjs";
 import { depthMatchId, depthName, depthTag } from "./profile-depth-fixture.mjs";
 
@@ -19,40 +20,8 @@ const playerPath = "/player?" + new URLSearchParams({ platform: "na1", riotId: i
 const matchPath = `${playerPath}#match-${matchId}`;
 const result = { checks: [], screenshots: [] };
 
-async function visible(locator) {
-  await locator.waitFor({ state: "visible" });
-  return locator;
-}
-
-async function load(page, origin, path) {
-  const url = new URL(path, origin);
-  assert.equal(url.origin, origin, "The demo only navigates to its local fixture");
-  const response = await page.goto(url.href, { waitUntil: "domcontentloaded" });
-  assert.equal(response?.status(), 200, url.pathname);
-}
-
-async function localPost(page, origin, path, data, expected) {
-  const response = await page.request.post(origin + path, { data, headers: { origin } });
-  const body = await response.json();
-  assert.equal(response.status(), expected, `${path} returned ${JSON.stringify(body)}`);
-  return body;
-}
-
-async function submit(page, button, apiPath, status) {
-  const [response] = await Promise.all([
-    page.waitForResponse(response => new URL(response.url()).pathname === apiPath && response.request().method() === "POST"),
-    button.click(),
-  ]);
-  const body = await response.json();
-  assert.equal(response.status(), status, `${apiPath} returned ${JSON.stringify(body)}`);
-  assert.equal(body.ok, true);
-  return { ...body, submitted: response.request().postDataJSON() };
-}
-
 async function screenshot(page, file) {
-  const width = page.viewportSize().width;
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width, file + " has horizontal overflow");
-  await page.screenshot({ path: join(output, file), animations: "disabled" });
+  await capture(page, join(output, file));
   result.screenshots.push(file);
 }
 
@@ -64,21 +33,6 @@ async function check(name, run) {
   } catch (error) {
     throw new Error(name + "\n" + error.message, { cause: error });
   }
-}
-
-async function fixtureContext(browser, origin, width, javaScriptEnabled = true) {
-  const context = await browser.newContext({
-    viewport: { width, height: width < 800 ? 844 : 960 },
-    colorScheme: "light", reducedMotion: "reduce", javaScriptEnabled,
-  });
-  await context.route("**/*", route => {
-    const url = new URL(route.request().url());
-    if (url.origin !== origin || (url.pathname === "/_next/image" && /^https?:/.test(url.searchParams.get("url") ?? ""))) {
-      return route.abort();
-    }
-    return route.continue();
-  });
-  return context;
 }
 
 function row(page) {
@@ -101,10 +55,6 @@ async function matchRecord(page) {
   return data;
 }
 
-async function account(context, origin, session) {
-  await context.addCookies([{ name: "wp_session", value: session, url: origin, httpOnly: true }]);
-}
-
 async function hiddenPost(page, origin, path) {
   const response = await page.goto(origin + path, { waitUntil: "domcontentloaded" });
   const html = await response.text();
@@ -118,8 +68,7 @@ async function main() {
   const { origin } = fixture;
   let browser;
   try {
-    const { chromium } = await import(process.env.SMOKE_PLAYWRIGHT_MODULE || "playwright");
-    browser = await chromium.launch({ executablePath: process.env.SMOKE_CHROMIUM || undefined });
+    browser = await openFixtureBrowser();
     const mobile = await fixtureContext(browser, origin, 390);
     const desktop = await fixtureContext(browser, origin, 1440);
     const river = await mobile.newPage();

@@ -62,6 +62,7 @@ export interface PublicPlayerSummary {
   topRole: Count | null;
   champions: Count[];
   sampleGames: number;
+  sampleRecord: { wins: number; losses: number; winRate: number } | null;
   asOf: string | null;
   snapshotFresh: boolean;
 }
@@ -136,6 +137,11 @@ export function publicPlayerSummary(player: Player, now = Date.now()): PublicPla
 
   const { games, champPool, roles } = player.snapshot;
   const sampleGames = isCount(games) && games <= 20 ? games : 0;
+  const matches = player.snapshot.matches;
+  const sampleWins = matches.filter(match => match.win === true).length;
+  const sampleLosses = matches.filter(match => match.win === false).length;
+  const sampleRecord = sampleGames > 0 && matches.length === sampleGames && sampleWins + sampleLosses === sampleGames
+    ? { wins: sampleWins, losses: sampleLosses, winRate: Math.round(100 * sampleWins / sampleGames) } : null;
   const countInSample = (n: unknown): n is number => isCount(n) && n > 0 && n <= sampleGames;
   const champions = champPool.filter(c => countInSample(c.games) && c.champion)
     .map(c => ({name:c.champion, games:c.games})).sort((a,b) => b.games-a.games || a.name.localeCompare(b.name)).slice(0,3);
@@ -147,6 +153,6 @@ export function publicPlayerSummary(player: Player, now = Date.now()): PublicPla
     rank, tier, rankStatus, queue, ...selected,
     rankedGames: total.games, rankedWins: total.wins, rankedLosses: total.losses, rankedWinRate: total.winRate,
     rankedGamesScope: entries !== undefined ? "solo-and-flex" : "selected-queue", hasBothQueues: entries?.length === 2,
-    rankedRecords, topRole, champions, sampleGames, asOf: timing.asOf, snapshotFresh: timing.fresh,
+    rankedRecords, topRole, champions, sampleGames, sampleRecord, asOf: timing.asOf, snapshotFresh: timing.fresh,
   };
 }

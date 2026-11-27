@@ -1,0 +1,13 @@
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .8rem 0; }
+.toolbar input { flex: 1 1 12rem; min-width: 0; }
+.toolbar :is(input, select, button) { min-height: 44px; }
+.clear { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent-ink); font-size: .82rem; font-weight: 650; }
+.result { margin: .45rem 0 .75rem; font-size: .85rem; color: var(--ink-mid); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 9.25rem), 1fr)); gap: .65rem; margin: 0; padding: 0; list-style: none; }
+.card { display: grid; padding: .7rem .7rem .15rem; border: 1px solid var(--border); border-radius: .8rem; }
+.identity { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.identity div { min-width: 0; line-height: 1.2; overflow-wrap: anywhere; }
+.identity strong { display: block; font-size: .89rem; }
+.identity small { color: var(--ink-soft); font-size: .74rem; }
+.links { display: flex; flex-wrap: wrap; gap: 0 .7rem; margin-top: .35rem; }
+.links a { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent-ink); font-size: .81rem; font-weight: 650; }

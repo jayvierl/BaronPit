@@ -30,7 +30,7 @@ import { gameCount, earnedBadges } from "@/lib/pure";
 export const dynamic = "force-dynamic";
 
 export default async function PlayerPage({ searchParams }: {
-  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; match?: string; older?: string; queue?: string; champion?: string; from?: string; fromPlayer?: string; fromDiscussion?: string }>;
+  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; match?: string; older?: string; queue?: string; champion?: string; from?: string; fromPlayer?: string; fromDiscussion?: string; timeline?: string }>;
 }) {
   const sp = await searchParams;
   const platform = sp.platform && isPlatform(sp.platform) ? sp.platform : "na1";
@@ -92,7 +92,7 @@ export default async function PlayerPage({ searchParams }: {
   const incompleteHistory = partial || player.matchHistory?.complete === false;
   const [linked,owner,roomSlugs,masteryCatalog] = await Promise.all([
     user ? q`SELECT 1 FROM wp_links WHERE user_id=${user.id} AND puuid=${player.puuid}` : [],
-    publicRiotOwner(player.puuid, user?.id ?? null),
+    publicRiotOwner(player.puuid, user?.id ?? null).catch(() => null),
     visibleChampionRoomSlugs(analytics.champions.map(entry => entry.id)).catch(() => []),
     masteryNeedsCatalog(player.championMastery) ? championList() : [],
   ]);
@@ -134,7 +134,8 @@ export default async function PlayerPage({ searchParams }: {
               {platform.toUpperCase()}{player.summonerLevel > 0 && ` · Level ${player.summonerLevel}`}
               {streak && <> · <WinStreak wins={streak}/></>}
             </p>
-            {owner && <p className="meta">Verified community profile · <Link href={withSearchReturn(`/u/${owner.id}`, searchReturn)}>{owner.name}</Link></p>}
+            {owner && <p className="meta">Verified community profile · <Link href={withSearchReturn(`/u/${owner.id}`, searchReturn)}>{owner.name}</Link>
+              {" · "}<Link href={withSearchReturn(`/u/${owner.id}?tab=discussions`, searchReturn)} prefetch={false}>Match discussions</Link></p>}
             {badges.length > 0 && <div className={profileStyles.badges} aria-label="Recent 20-game highlights">
               {badges.map(b => <span key={b} className="chip badge">{b}</span>)}
             </div>}
@@ -146,7 +147,7 @@ export default async function PlayerPage({ searchParams }: {
       </header>
       <nav className={profileStyles.profileNav} aria-label="Player sections">
         <a href="#summary">Summary</a><a href="#match-history">Matches</a><a href="#player-champions">Champions</a>
-        <a href="#player-mastery">Mastery</a><a href="#rank-history" aria-label="Rank history">Ranks</a>
+        <a href="#player-mastery">Mastery</a><a href="#rank-history">Rank history</a>
       </nav>
       <div id="summary" className={profileStyles.anchor}>
         <PlayerStats player={player} source={result.source} variant="profile" lookupHref={history.sampleSize ? "#match-history" : undefined} />
@@ -184,13 +185,13 @@ export default async function PlayerPage({ searchParams }: {
       {latest.length > 0 && (
         <LatestGames matches={latest} patch={patch} platform={player.platform} riotId={`${player.gameName}#${player.tagLine}`}
           persisted={!partial} communityMatchIds={new Set(snap.matches.map(m => m.matchId))} lookupHref={lookupHref}
-          queueFilter={history.queue} championFilter={history.champion} rawMatch={sp.match}/>
+          queueFilter={history.queue} championFilter={history.champion} rawMatch={sp.match} showTimeline={sp.timeline === "objectives"}/>
       )}
       {!filtered && frequent.length > 0 && (
         <p className="meta">Also on the same team recently · {frequent.map(([name,games]) => `${name} (${games} games)`).join(", ")}</p>
       )}
       <OlderGames matches={history.matches} patch={patch} platform={player.platform} riotId={`${player.gameName}#${player.tagLine}`} persisted={!partial} lookupHref={lookupHref}
-        rawPage={sp.older} rawMatch={sp.match} queueFilter={history.queue} championFilter={history.champion}/>
+        rawPage={sp.older} rawMatch={sp.match} showTimeline={sp.timeline === "objectives"} queueFilter={history.queue} championFilter={history.champion}/>
 
       <div id="player-champions" className={profileStyles.anchor}>
         <PlayerChampionAnalytics analytics={analytics} partial={incompleteHistory} patch={patch} visibleRooms={publicRooms}/>

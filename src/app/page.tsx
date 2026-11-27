@@ -77,6 +77,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             {!user && <Link className={styles.signUp} href={signInHref("/#compose", "signup")}>Create account</Link>}
           </div>
         </header>
+        <form action="/search" method="get" role="search" aria-label="Community search" className={styles.search}>
+          <input type="search" name="q" enterKeyHint="search" aria-label="Search the community" placeholder="Search players, champions, items or posts" maxLength={80} required />
+          <button type="submit" aria-label="Search"><span aria-hidden="true" /></button>
+        </form>
         <section id="home-feed" tabIndex={-1} className={styles.feed} aria-label="Conversations">
           <HomeComposer viewerId={user?.id ?? null} patch={patch} champions={champions.map(c => c.id)} viewerIdentity={viewerIdentity}/>
           {(unread || duoInvite) && <nav className={styles.activity} aria-label="New activity">
@@ -163,7 +167,7 @@ async function HomeSpotlight({ today, viewerId, patch }: { today: string; viewer
           <div className="meta">{socialRankLabel(spotlight.player, true)}</div>
         </div>
       </div>
-      <MatchCard patch={patch} itemPatch={spotlightItems?.patch} itemDetails={spotlightItems ? cardItems(spotlightItems,spotlightGame.items) : []} data={{ puuid: spotlight.player.puuid, matchId: spotlightGame.matchId, riotId: `${spotlight.player.gameName}#${spotlight.player.tagLine}`, match: spotlightGame }} />
+      <MatchCard patch={patch} itemPatch={spotlightItems?.patch} itemDetails={spotlightItems ? cardItems(spotlightItems,spotlightGame.items) : []} data={{ platform: spotlight.player.platform, matchId: spotlightGame.matchId, riotId: `${spotlight.player.gameName}#${spotlight.player.tagLine}`, match: spotlightGame }} />
       {spotlight.ownerId && (
         <p style={{ margin: "10px 0 0", fontSize: 14.5 }}>
           <Link href={`/u/${spotlight.ownerId}`}>Verified player · {spotlight.ownerName}</Link>

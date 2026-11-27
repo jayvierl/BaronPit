@@ -7,6 +7,7 @@ import { checkNavigation } from "./navigation.mjs";
 import { checkProfileEditor } from "./profile-editor.mjs";
 import { checkPersonalSafety } from "./personal-safety.mjs";
 import { checkDuoShortlist } from "./duo-shortlist.mjs";
+import { checkCommunityWorkflows } from "./community-workflows.mjs";
 import { startFixtureServer } from "./fixture-server.mjs";
 import { checkImage, publicArtwork } from "../public-art.mjs";
 
@@ -113,6 +114,7 @@ try {
   await checkPlayerProfiles(journey);
   await checkPlayerDepth(journey);
   await checkNavigation(journey);
+  await checkCommunityWorkflows(journey);
   const pitBanner = new Date().getUTCMonth() === 11 ? "/rooms/baron-pit-winter" : "/baron-room";
   await journey("/rooms/general", {
     session: true,

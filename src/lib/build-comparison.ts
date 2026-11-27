@@ -1,5 +1,6 @@
 import type { RuneChoice, ShopItem } from "./build-catalog";
 import type { PostView } from "./post-types";
+import { buildKeystone } from "./build-sharing";
 
 export interface BuildPath {
   key: string;
@@ -44,6 +45,7 @@ export function examplePaths(items: ShopItem[], runes: RuneChoice[]): BuildPath[
 export function pathFromPost(
   post: Pick<PostView, "id" | "kind" | "status" | "authorName" | "body" | "data">,
   shopIds: Set<number>,
+  keystoneIds?: ReadonlySet<number>,
 ): BuildPath | null {
   if (post.kind !== "build" || post.status !== "visible") return null;
   const items = post.data.items;
@@ -54,13 +56,14 @@ export function pathFromPost(
     !items.every((id) => Number.isSafeInteger(id) && shopIds.has(id))
   )
     return null;
+  const keystone = buildKeystone(post.data.keystone);
   return {
     key: String(post.id),
     post: post.id,
     title: `${post.data.champion || "Community"} · ${post.authorName}`,
     rationale: post.body,
     items,
-    runes: [],
+    runes: keystone && keystoneIds?.has(keystone.id) ? [keystone.id] : [],
     runeNotes: typeof post.data.runes === "string" ? post.data.runes : "",
     patch: typeof post.data.patch === "string" ? post.data.patch : undefined,
     secondaryTree: "",
