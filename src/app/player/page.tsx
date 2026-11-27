@@ -11,6 +11,9 @@ import { LatestGames, OlderGames } from "./match-history-view";
 import styles from "./history.module.css";
 import profileStyles from "./profile.module.css";
 import { buildPlayerAnalytics } from "@/lib/player-analytics";
+import { buildPerformanceIndex, duoSynergy, formCurve, personalBests, type PoolGame } from "@/lib/performance-index";
+import { performancePool } from "@/lib/performance-pool";
+import { FormCurveSparkline, PerformanceIndexCard, PersonalBestsSection } from "@/components/player-insights";
 import { PlayerActivity, PlayerChampionAnalytics, PlayerPerformance, PlayerPlayStyle } from "@/components/player-analytics";
 import { masteryNeedsCatalog, PlayerMastery } from "@/components/player-mastery";
 import { PlayerRankHistory } from "@/components/player-rank-history";
@@ -145,6 +148,15 @@ export default async function PlayerPage({ searchParams }: {
     for (const id of teammates) mateCounts.set(id,(mateCounts.get(id) ?? 0) + 1);
   }
   const frequent = [...mateCounts].filter(([,games]) => games >= 2);
+  // Retention layer over the same last-20 window. The percentile pool is a
+  // cached sample of other stored snapshots; any failure simply hides the
+  // index — bests, form and duo records are computed from this player alone.
+  const insightWindow = matches.slice(0, 20);
+  const pool: PoolGame[] = await performancePool(user?.id ?? null).catch(() => []);
+  const performanceIndex = buildPerformanceIndex(insightWindow, pool);
+  const bests = personalBests(insightWindow);
+  const form = formCurve(insightWindow);
+  const duo = duoSynergy(insightWindow);
   return (
     <div className={profileStyles.profile}>
       {user?.pilotActive && <PilotVisit kind="stats"/>}
@@ -165,6 +177,9 @@ export default async function PlayerPage({ searchParams }: {
         <RefreshPlayer href={refreshHref} fetchedAt={player.fetchedAt} source={result.source} retryAt={result.retryAt} requested={sp.force === "1"} />
         {user && allowLink && <LinkPlayerButton platform={platform} gameName={player.gameName} tagLine={player.tagLine} />}
       </header>
+      {performanceIndex
+        ? <PerformanceIndexCard index={performanceIndex} bests={bests} bestBaseHref={lookupHref} partial={partial} />
+        : <PersonalBestsSection bests={bests} bestBaseHref={lookupHref} partial={partial} />}
       <div id="summary" className={profileStyles.anchor}>
         <PlayerStats player={player} source={result.source} variant="profile" />
         <RecentResults matches={snap.matches} historyPath={filtered || sp.match || sp.older ? lookupHref : ""} partial={partial} />
@@ -204,6 +219,7 @@ export default async function PlayerPage({ searchParams }: {
               </Form>
           </details>}
         </div>
+        {form && <FormCurveSparkline form={form} />}
         {history.sampleSize > 0 && <p className={styles.result} aria-live="polite">
           {history.winRate === null ? `No matching games among the ${incompleteHistory ? "available" : "latest"} ${publicSample}` : <>
             {filtered ? `${history.matches.length} of ${publicSample}` : incompleteHistory ? `${publicSample} available` : `Latest ${publicSample}`}
@@ -239,6 +255,7 @@ export default async function PlayerPage({ searchParams }: {
         {badges.length > 0 && <p className="meta">{badges.join(" · ")}</p>}
         <PlayerPerformance analytics={analytics} partial={incompleteHistory}/>
         <PlayerActivity analytics={analytics} partial={incompleteHistory}/>
+        {duo && <p className="meta">Duo record · You + {duo.name}#{duo.tag}: {duo.wins}W–{duo.losses}L together across {duo.games} recent games</p>}
         {frequent.length > 0 && <p className="meta">Also on the same team recently · {frequent.map(([name,games]) => `${name} (${games} games)`).join(", ")}</p>}
       </details>
       <details className={profileStyles.disclosure}>
