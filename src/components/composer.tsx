@@ -122,6 +122,7 @@ export function Composer({
   }
   const tagSuggest = useTagSuggest({
     inputRef: bodyRef,
+    limit: 2000,
     value: body,
     apply: (next) => edit({ body: next }),
   });
@@ -239,12 +240,9 @@ export function Composer({
                     ? "What happened in the clip?"
                     : "What’s on your mind?"
             }
-            value={body}
-            onChange={(e) => {
-              edit({ body: e.target.value });
-              tagSuggest.update(e.currentTarget);
-            }}
-            maxLength={2000}
+            value={tagSuggest.display}
+            onChange={e => tagSuggest.change(e.currentTarget)}
+            maxLength={tagSuggest.maxLength}
           />
           {tagSuggest.menu}
         </TagFieldWrap>

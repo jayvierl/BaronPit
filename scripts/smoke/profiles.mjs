@@ -38,18 +38,12 @@ function checkRankedQueues(section, queues) {
   for (const [queue, markers] of Object.entries(queues)) checkMarkers(sectionFrom(section, queue), markers, queue);
 }
 
-function checkStats(html, { queues, recent, combined }) {
+function checkStats(html, { queues }) {
+  assert.match(html.replaceAll("<!-- -->", ""), /Last updated\s+<time datetime="[^"]+">[^<]+ UTC<\/time>/i);
   const section = sectionFrom(html, "League stats");
-  assert.match(section, /Riot snapshot ·\s*<time datetime="[^"]+">[^<]+ UTC<\/time>/i);
   checkRankedQueues(section, queues);
-  const totals = section.match(/<details\b[^>]*>\s*<summary>Combined ranked record<\/summary>([\s\S]*?)<\/details>/)?.[1];
-  if (combined) {
-    assert.ok(totals, "Missing combined ranked record");
-    checkMarkers(totals, combined, "Combined ranked record");
-  } else {
-    assert.doesNotMatch(section, /Combined ranked record|Across Solo\/Duo and Flex/);
-  }
-  checkMarkers(section, recent, "Recent games");
+  checkMarkers(section, ["Latest 3 public games", "Main role Support", "Most played Nami, Vi"], "Profile snapshot");
+  assert.match(sectionFrom(html, "Recent form"), /aria-label="W · Victory on Nami, game 1"/);
 }
 
 function checkLookupStats(html, queues) {
@@ -94,8 +88,6 @@ export async function checkPlayerProfiles(journey) {
       "Ranked Solo/Duo": ["Platinum III · 64 LP", "Ranked games 20", "Win rate 80%", "16W · 4L"],
       "Ranked Flex": ["Silver IV · 11 LP", "Ranked games 10", "Win rate 10%", "1W · 9L"],
     },
-    combined: ["Across Solo/Duo and Flex", "30 games", "57% win rate", "17W · 13L"],
-    recent: ["Latest 3 public games", "Most played role Support (2 games)", "Nami (2 games)", "Vi (1 game)"],
   };
   for (const session of [false, true]) {
     const options = { html: true, session };
@@ -144,7 +136,9 @@ export async function checkPlayerProfiles(journey) {
     assert.equal(linkFrom(replies, /View conversation/), "/post/521#reply-531");
     const claimStats = await journey(linkFrom(claim, /^Player stats$/), options);
     assert.match(claimStats, /Unverified Riot link/);
-    assert.doesNotMatch(claimStats, /aria-label="League stats"/);
+    assert.match(claimStats, /aria-label="League stats"/);
+    assert.match(claimStats, /Gold IV · 23 LP/);
+    assert.match(claimStats, /62%/);
     const teammate = linkFrom(lookup, /^Fixture Archer#NA1$/);
     sameLookup(linkFrom(claim, /View stats for Fixture Archer#NA1/), teammate);
     const legacy = await journey(teammate, options);

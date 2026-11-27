@@ -6,12 +6,14 @@ import {
   championIconUrl,
   itemIconUrl,
   pickSuggestion,
+  plainBodyText,
   type Suggestion,
   type TagCatalog,
   type TagChampion,
   type TagItem,
   type TagRef,
 } from "@/lib/game-tags";
+import { editedTagDraft, sliceTagDraft } from "@/lib/tag-editing";
 import { loadTagCatalog } from "@/lib/game-tags-client";
 import styles from "./tag-suggest.module.css";
 
@@ -39,21 +41,25 @@ export function useTagSuggest({
   value,
   apply,
   enabled = true,
+  limit,
 }: {
   inputRef: RefObject<Field | null>;
   value: string;
   apply: (next: string) => void;
   enabled?: boolean;
+  limit: number;
 }) {
   const [catalog, setCatalog] = useState<TagCatalog | null>(null);
   const [candidate, setPick] = useState<Suggestion | null>(null);
+  const [limitNotice, setLimitNotice] = useState("");
   const [active, setActive] = useState(0);
   const suppressedFor = useRef<string | null>(null);
   const pendingCaret = useRef<number | null>(null);
 
   // External value changes (draft restore, clear after posting) invalidate
   // a pick that no longer matches the text at its position.
-  const pick = enabled && candidate && value.slice(candidate.start, candidate.start + candidate.phrase.length) === candidate.phrase
+  const display = plainBodyText(value);
+  const pick = enabled && candidate && display.slice(candidate.start, candidate.start + candidate.phrase.length) === candidate.phrase
     ? candidate : null;
 
   useEffect(() => {
@@ -71,7 +77,7 @@ export function useTagSuggest({
     if (enabled && !catalog) void loadTagCatalog().then(setCatalog);
   }
 
-  function update(field: Field) {
+  function update(field: Field, body = value) {
     if (!enabled) {
       setPick(null);
       return;
@@ -84,7 +90,7 @@ export function useTagSuggest({
       return;
     }
     const next = pickSuggestion(catalog, field.value, field.selectionStart ?? field.value.length);
-    setPick(next);
+    setPick(next && sliceTagDraft(body, next.start, next.end) === field.value.slice(next.start, next.end) ? next : null);
     setActive(0);
   }
 
@@ -98,14 +104,22 @@ export function useTagSuggest({
   function choose(option: Option) {
     if (!pick) return;
     const tag: TagRef = { kind: option.kind, id: String(option.entry.id), name: option.entry.name };
-    const result = applyTag(value, pick, tag);
-    pendingCaret.current = result.caret;
+    const before = sliceTagDraft(value, 0, pick.start);
+    const after = sliceTagDraft(value, pick.end);
+    const result = applyTag(before + display.slice(pick.start, pick.end) + after,
+      { ...pick, start: before.length, end: before.length + pick.end - pick.start }, tag);
+    if (result.value.length > limit) {
+      setLimitNotice("This tag exceeds the character limit.");
+      setPick(null);
+      return;
+    }
+    pendingCaret.current = plainBodyText(result.value.slice(0, result.caret)).length;
     setPick(null);
     apply(result.value);
   }
 
   function onKeyDown(event: KeyboardEvent<Field>) {
-    if (!pick || options.length === 0) return;
+    if (event.nativeEvent.isComposing || !pick || options.length === 0) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setActive((index) => (index + 1) % options.length);
@@ -142,11 +156,8 @@ export function useTagSuggest({
             <button
               type="button"
               className={styles.option}
-              aria-selected={i === active}
-              onMouseDown={(event) => {
-                event.preventDefault();
-                choose(option);
-              }}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => choose(option)}
               onMouseEnter={() => setActive(i)}
             >
               <img src={icon} alt="" width={24} height={24} loading="lazy" />
@@ -162,5 +173,13 @@ export function useTagSuggest({
     </ul>
   ) : null;
 
-  return { update, fieldProps, menu };
+  function change(field: Field) {
+    setLimitNotice("");
+    const body = editedTagDraft(value, field.value, field.selectionEnd ?? field.value.length);
+    apply(body);
+    update(field, body);
+  }
+  return { display, change, maxLength: limit - (value.length - display.length), fieldProps,
+    menu: limitNotice ? <small role="status">{limitNotice}</small> : menu };
+
 }

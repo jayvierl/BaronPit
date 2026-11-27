@@ -7,15 +7,17 @@ import { playerFromRow, type Player } from "./riot";
 import { fnvHash } from "./pure";
 import { publicAvatar } from "./avatar";
 import { publicQueueSql } from "./public-match-queues";
-import { SOCIAL_PLAYER_SELECT } from "./social-player-select";
+import { SOCIAL_PLAYER_SELECT, socialPlayerSelect } from "./social-player-select";
 
-function linkedRows(userId: number, includeMatches: boolean) {
-  const columns = includeMatches ? SOCIAL_PLAYER_SELECT
+function linkedRows(userId: number, includeMatches: boolean, viewerId: number | null = null, includeRatings = false) {
+  const columns = includeMatches ? socialPlayerSelect(includeRatings)
     : "p.puuid,p.platform,p.game_name,p.tag_line,p.profile_icon,p.rank_tier,p.rank_div,p.rank_lp,p.fetched_at,p.snapshot->'rankedEntries' AS entries";
-  return queryRows(`SELECT ${columns}, l.is_primary,
+  return queryRows(`${includeMatches ? `WITH ${HIDDEN_AUTHORS}` : ""} SELECT ${columns}, l.is_primary,
     (l.verified AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.verified AND other.puuid=l.puuid AND other.user_id<>l.user_id)) AS verified
-    FROM wp_links l JOIN wp_players p ON p.puuid=l.puuid WHERE l.user_id=$1
-    ORDER BY verified DESC,l.is_primary DESC,l.created_at,l.puuid`, [userId]);
+    FROM wp_links l JOIN wp_players p ON p.puuid=l.puuid WHERE l.user_id=${includeMatches ? "$2" : "$1"}
+      ${includeMatches ? `AND NOT EXISTS (SELECT 1 FROM wp_links owner
+        WHERE owner.puuid=p.puuid AND owner.verified AND owner.user_id IN (SELECT id FROM hidden))` : ""}
+    ORDER BY verified DESC,l.is_primary DESC,l.created_at,l.puuid`, includeMatches ? [viewerId,userId] : [userId]);
 }
 
 export async function linkedPlayerIdentities(userId: number) {
@@ -27,8 +29,8 @@ export async function linkedPlayerIdentities(userId: number) {
   }));
 }
 
-export async function linkedPlayers(userId: number) {
-  const rows = await linkedRows(userId, true);
+export async function linkedPlayers(userId: number, viewerId: number | null = null, includeRatings = false) {
+  const rows = await linkedRows(userId, true, viewerId, includeRatings);
   return rows.map(row => {
     const player = playerFromRow(row);
     const verified = row.verified === true;

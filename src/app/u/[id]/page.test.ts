@@ -15,7 +15,8 @@ vi.mock("@/lib/social", () => ({
 }));
 vi.mock("@/lib/decisions", () => ({ profileMatchDiscussions }));
 
-const player = { puuid: "fixture", platform: "na1", gameName: "Player", tagLine: "NA1", verified: false };
+const player = { puuid: "fixture", platform: "na1", gameName: "Player", tagLine: "NA1", verified: false,
+  snapshot: { games: 0, wins: 0, losses: 0, matches: [], champPool: [], roles: {} } };
 const visit = (tab?: string, before?: string, from?: string, id = "42") =>
   ProfilePage({ params: Promise.resolve({ id }), searchParams: Promise.resolve({ tab, before, from }) });
 
@@ -59,8 +60,12 @@ describe("profile tab queries", () => {
     expect(renderToStaticMarkup(await visit())).toBe(unavailable);
   });
   it("skips the post query when displaying linked players", async () => {
-    await visit("players");
-    expect(linkedPlayers).toHaveBeenCalledTimes(1);
+    const html = renderToStaticMarkup(await visit("players"));
+    expect(html).toContain("Unverified Riot link");
+    expect(html).toContain('aria-label="League stats"');
+    expect(html).toContain("Ranked Solo/Duo");
+    expect(html).toContain("No recent public games available.");
+    expect(linkedPlayers).toHaveBeenCalledWith(42, null, true);
     expect(feedByAuthor).not.toHaveBeenCalled();
   });
   it.each(["stats", "players"])("keeps an unlinked guest on the stats tab for ?tab=%s", async (tab) => {

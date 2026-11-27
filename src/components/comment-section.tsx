@@ -104,6 +104,7 @@ export function CommentSection({
   const tagSuggest = useTagSuggest({
     inputRef,
     value: draft,
+    limit: 1000,
     apply: (next) => setDraft(next),
     enabled: signedIn,
   });
@@ -180,7 +181,7 @@ export function CommentSection({
   function resumeAfterAuth() {
     if (unavailableTarget) return;
     // Guests can type into the first HTML before React receives input events.
-    const body = inputRef.current?.value ?? draft;
+    const body = signedIn ? draft : inputRef.current?.value ?? draft;
     const mode = action.authStep === "enrol" ? "enrol" : undefined;
     if (!body.trim() && !replyTarget) { router.push(signInHref(destination, mode)); return; }
     try {
@@ -387,8 +388,8 @@ export function CommentSection({
             {decisionQuestion ? (
               <TagFieldWrap>
                 <textarea ref={setInputRef} {...tagSuggest.fieldProps} className={styles.replyInput} aria-label="Your reply" rows={3}
-                  disabled={action.busy} placeholder="What would you try in this game?" value={signedIn ? draft : undefined}
-                  onChange={signedIn ? e => { setDraft(e.target.value); tagSuggest.update(e.currentTarget); } : undefined} maxLength={1000} />
+                  disabled={action.busy} placeholder="What would you try in this game?" value={signedIn ? tagSuggest.display : undefined}
+                  onChange={signedIn ? e => tagSuggest.change(e.currentTarget) : undefined} maxLength={tagSuggest.maxLength} />
                 {tagSuggest.menu}
               </TagFieldWrap>
             ) : <TagFieldWrap>
@@ -398,9 +399,9 @@ export function CommentSection({
                 disabled={action.busy}
                 aria-label="Your reply"
                 placeholder={oneFix ? "What would you change, and why?" : "Add your reply…"}
-                value={signedIn ? draft : undefined}
-                onChange={signedIn ? e => { setDraft(e.target.value); tagSuggest.update(e.currentTarget); } : undefined}
-                maxLength={1000}
+                value={signedIn ? tagSuggest.display : undefined}
+                onChange={signedIn ? e => tagSuggest.change(e.currentTarget) : undefined}
+                maxLength={tagSuggest.maxLength}
               />
               {tagSuggest.menu}
             </TagFieldWrap>}

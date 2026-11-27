@@ -71,7 +71,7 @@ export function ChampionDirectory({ champions, patch, roomSlugs, initial, search
               <div className={styles.identity}>
                 <ChampionPortrait id={champion.id} patch={patch} size={44} />
                 <div>
-                  <strong>{champion.name}</strong>
+                  <Link href={`/champions/${encodeURIComponent(champion.id)}`} prefetch={false}><strong>{champion.name}</strong></Link>
                   <small>{champion.tags.join(" · ")}</small>
                 </div>
               </div>

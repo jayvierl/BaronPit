@@ -44,7 +44,7 @@
   cursor: pointer;
 }
 
-.option[aria-selected="true"] {
+li[aria-selected="true"] > .option {
   background: var(--hover);
 }
 
