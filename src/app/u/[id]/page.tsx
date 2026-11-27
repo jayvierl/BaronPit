@@ -70,7 +70,7 @@ export default async function ProfilePage({ params, searchParams }: {
   if (profile === undefined) return <ProfileUnavailable retryHref={retryHref} />;
   if (!profile) notFound();
   const content = await Promise.all([
-    activeTab === "posts" ? currentPatch() : "", followCounts(userId), endorsementCounts(userId), readLinkedPlayers(userId),
+    activeTab === "posts" ? currentPatch() : "", followCounts(userId), endorsementCounts(userId), readLinkedPlayers(userId, viewer?.id ?? null),
     viewer && viewer.id !== userId ? isFollowing(viewer.id,userId) : false,
     activeTab === "posts" ? feedByAuthor(userId,viewer,20).catch(() => null) : [],
     profile.link ? readProfileLink(profile.link, viewer?.id ?? null) : null,
@@ -160,8 +160,7 @@ export default async function ProfilePage({ params, searchParams }: {
           return <section className={styles.account} key={p.puuid} aria-label={`${p.gameName}#${p.tagLine}`}>
             <h2>{p.gameName}#{p.tagLine}</h2>
             <p className="meta">{p.platform.toUpperCase()} · {p.verified ? "Verified Riot link" : "Unverified Riot link"}</p>
-            {p.verified ? <PlayerStats player={p} lookupHref={`${href}#match-history`}/>
-              : <Link className={styles.link} href={href}>View stats for {p.gameName}#{p.tagLine} →</Link>}
+            <PlayerStats player={p} lookupHref={`${href}#match-history`}/>
           </section>;
         }) : <div className={styles.empty}>
           <h2>{isSelf ? "Link your Riot ID to show player stats" : "No Riot account linked"}</h2>

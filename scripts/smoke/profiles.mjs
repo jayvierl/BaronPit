@@ -144,7 +144,9 @@ export async function checkPlayerProfiles(journey) {
     assert.equal(linkFrom(replies, /View conversation/), "/post/521#reply-531");
     const claimStats = await journey(linkFrom(claim, /^Player stats$/), options);
     assert.match(claimStats, /Unverified Riot link/);
-    assert.doesNotMatch(claimStats, /aria-label="League stats"/);
+    assert.match(claimStats, /aria-label="League stats"/);
+    assert.match(claimStats, /Gold IV · 23 LP/);
+    assert.match(claimStats, /62%/);
     const teammate = linkFrom(lookup, /^Fixture Archer#NA1$/);
     sameLookup(linkFrom(claim, /View stats for Fixture Archer#NA1/), teammate);
     const legacy = await journey(teammate, options);
