@@ -1,0 +1,10 @@
+.panel { margin: 1.25rem 0; scroll-margin-top: 86px; }
+.panel h2 { margin: 0; font-size: 1.05rem; }
+.caption { margin: .3rem 0 .6rem; color: var(--ink-soft); font-size: .82rem; }
+.leaders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; margin: .65rem 0 0; padding: 0; list-style: none; }
+.leader { display: flex; align-items: center; min-width: 0; gap: .55rem; padding: .52rem .6rem; border: 1px solid var(--border); border-radius: .75rem; }
+.leader div { flex: 1; min-width: 0; line-height: 1.3; overflow-wrap: anywhere; }
+.leader strong { display: block; font-size: .86rem; }
+.points { display: block; margin-top: .15rem; color: var(--ink-soft); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.level { flex: none; padding: .17rem .34rem; border-radius: .4rem; background: var(--win-tint); color: var(--accent-ink); font-weight: 650; font-size: .73rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 480px) { .leaders { grid-template-columns: 1fr; } }

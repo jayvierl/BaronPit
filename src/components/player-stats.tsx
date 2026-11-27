@@ -1,21 +1,55 @@
 import Link from "next/link";
 import { gameCount } from "@/lib/pure";
 import { publicPlayerSummary } from "@/lib/player-summary";
+import { playerDisplayTime } from "@/lib/player-display-time";
 import type { Player } from "@/lib/riot";
 import { RankBadge } from "./rank-badge";
 import styles from "./player-stats.module.css";
 
 const integer = new Intl.NumberFormat("en-US");
-const timestamp = new Intl.DateTimeFormat("en-US", {
-  month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC",
-});
+const queues = ["Ranked Solo/Duo", "Ranked Flex"] as const;
 
-export function PlayerStats({ player, source = "cache", lookupHref }: {
+export function PlayerStats({ player, source = "cache", lookupHref, variant = "shared" }: {
   player: Player;
   source?: "cache" | "live" | "stale" | "partial";
   lookupHref?: string;
+  variant?: "shared" | "profile";
 }) {
   const stats = publicPlayerSummary(player);
+  if (variant === "profile") {
+    return (
+      <section className={styles.profilePanel} aria-label="League stats">
+        <header className={styles.header}>
+          <h2>League stats</h2>
+          {lookupHref && <Link href={lookupHref}>View match history <span aria-hidden="true">→</span></Link>}
+        </header>
+        <div className={styles.profileCards}>
+          {queues.map(queue => {
+            const record = stats.rankedRecords.find(entry => entry.queue === queue);
+            return <section key={queue} className={styles.profileQueue} aria-label={queue}>
+              <h3>{queue}</h3>
+              {record ? <>
+                <RankBadge tier={record.tier}>{record.rank}</RankBadge>
+                <dl className={styles.profileRecord}>
+                  <div>
+                    <dt>Ranked games</dt>
+                    <dd>{record.games === null ? "Unavailable" : integer.format(record.games)}</dd>
+                  </div>
+                  <div>
+                    <dt>Win rate</dt>
+                    <dd>{record.winRate === null ? "—" : `${record.winRate}%`}</dd>
+                    {record.wins !== null && record.losses !== null && <dd className={styles.profileWins}>{integer.format(record.wins)}W · {integer.format(record.losses)}L</dd>}
+                  </div>
+                </dl>
+              </> : <RankBadge>{player.rankedEntries !== undefined ? "Unranked" : "Rank unavailable"}</RankBadge>}
+            </section>;
+          })}
+        </div>
+      </section>
+    );
+  }
+
+  const recordedAt = playerDisplayTime(stats.asOf ?? undefined);
   return (
     <section className={styles.panel} aria-label="League stats">
       <header className={styles.header}>
@@ -25,9 +59,9 @@ export function PlayerStats({ player, source = "cache", lookupHref }: {
       <p className={styles.note}>
         {source === "stale" ? "Riot couldn’t refresh this record. " : ""}
         {source === "partial" ? "Riot returned part of this profile. Some recent matches or queue records may be missing. " : ""}
-        {stats.asOf ? <>
+        {recordedAt ? <>
           {source === "stale" || !stats.snapshotFresh ? "Last known Riot records" : "Riot snapshot"}
-          {" · "}<time dateTime={stats.asOf}>{timestamp.format(new Date(stats.asOf))} UTC</time>
+          {" · "}<time dateTime={recordedAt.dateTime}>{recordedAt.label}</time>
         </> : "Snapshot date unavailable."}
       </p>
       <div className={styles.records}>

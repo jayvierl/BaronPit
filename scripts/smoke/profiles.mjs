@@ -32,12 +32,16 @@ function checkMarkers(markup, markers, label) {
   for (const marker of markers) assert.ok(text.includes(marker), `${label} missing ${marker} in ${text}`);
 }
 
-function checkStats(html, { queues, recent, combined }) {
-  const section = sectionFrom(html, "League stats");
-  assert.match(section, /Riot snapshot ·\s*<time datetime="[^"]+">[^<]+ UTC<\/time>/i);
+function checkRankedQueues(section, queues) {
   const visibleQueues = [...section.matchAll(/<section\b[^>]*\baria-label="([^"]+)"[^>]*>/g)].map(tag => tag[1]);
   assert.deepEqual(visibleQueues, Object.keys(queues));
   for (const [queue, markers] of Object.entries(queues)) checkMarkers(sectionFrom(section, queue), markers, queue);
+}
+
+function checkStats(html, { queues, recent, combined }) {
+  const section = sectionFrom(html, "League stats");
+  assert.match(section, /Riot snapshot ·\s*<time datetime="[^"]+">[^<]+ UTC<\/time>/i);
+  checkRankedQueues(section, queues);
   const totals = section.match(/<details\b[^>]*>\s*<summary>Combined ranked record<\/summary>([\s\S]*?)<\/details>/)?.[1];
   if (combined) {
     assert.ok(totals, "Missing combined ranked record");
@@ -46,6 +50,14 @@ function checkStats(html, { queues, recent, combined }) {
     assert.doesNotMatch(section, /Combined ranked record|Across Solo\/Duo and Flex/);
   }
   checkMarkers(section, recent, "Recent games");
+}
+
+function checkLookupStats(html, queues) {
+  const header = [...html.matchAll(/<header\b[^>]*>[\s\S]*?<\/header>/g)].find(([markup]) => markup.includes('name="force"'));
+  assert.ok(header, "Missing header Update form");
+  assert.match(header[0].replaceAll("<!-- -->", ""), /Last updated\s+<time datetime="[^"]+">[^<]+ UTC<\/time>/i);
+  assert.match(header[0], /<input\b[^>]*name="force"[^>]*value="1"/);
+  checkRankedQueues(sectionFrom(html, "League stats"), queues);
 }
 
 function sameLookup(a, b) {
@@ -115,7 +127,7 @@ export async function checkPlayerProfiles(journey) {
     sameLookup(match, history);
     sameLookup(linkFrom(feed, /^Platinum III · Nami main$/), history);
     const lookup = await journey(match, options);
-    checkStats(lookup, verifiedStats);
+    checkLookupStats(lookup, verifiedStats.queues);
     assert.ok(lookup.includes('href="/builds?champ=Nami"'), "Unseeded Nami room uses a Builds link.");
     assert.ok(!lookup.includes('href="/rooms/champ-nami"'), "Unseeded Nami room must not link to a missing page.");
     assert.match(lookup, /id="match-NA1_999999" tabindex="-1"/i);
@@ -140,9 +152,9 @@ export async function checkPlayerProfiles(journey) {
     assert.equal(linkFrom(legacy, /Back to previous player/), sourceMatch);
     assert.match(sourceMatch ?? "", /#match-NA1_999999$/);
     assert.ok(legacy.includes('href="/rooms/champ-ashe"'), "The visible Ashe room stays linked.");
-    checkStats(legacy, {
-      queues: { "Ranked Solo/Duo": ["Gold IV · 23 LP", "Ranked games 100", "Win rate 62%", "62W · 38L"] },
-      recent: ["Last 1 game · all queues", "Most played role Bot (1 game)", "Ashe (1 game)"],
+    checkLookupStats(legacy, {
+      "Ranked Solo/Duo": ["Gold IV · 23 LP", "Ranked games 100", "Win rate 62%", "62W · 38L"],
+      "Ranked Flex": ["Rank unavailable"],
     });
     sameLookup(linkFrom(legacy, /^Fixture Support#WAVE$/), history);
   }

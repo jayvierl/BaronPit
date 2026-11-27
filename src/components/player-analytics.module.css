@@ -1,0 +1,35 @@
+.panel { margin-block: 18px; padding: 13px 14px; border-block: 1px solid var(--border); }
+.panel h2 { margin: 0 0 3px; font-size: 1.05rem; }
+.panel h3 { margin: 14px 0 4px; font-size: .90rem; }
+.meta { margin: 3px 0 6px; color: var(--ink-soft); font-size: .79rem; }
+.bars, .champions { margin: 6px 0 0; padding: 0; list-style: none; }
+.bars { display: grid; gap: 6px; }
+.bars li { display: grid; grid-template-columns: minmax(62px, max-content) minmax(12px, 1fr) minmax(34px, max-content); align-items: center; gap: 8px; font-size: .81rem; }
+.bars li > :last-child { text-align: end; font-variant-numeric: tabular-nums; }
+.track { display: flex; overflow: hidden; block-size: 7px; border-radius: 8px; background: var(--field); }
+.track i { display: block; background: var(--accent); }
+.recordBar i + i { background: var(--border-strong); }
+.numbers { color: var(--ink-mid); }
+.metrics { width: 100%; margin-block: 9px; border-collapse: collapse; font-size: .86rem; }
+.metrics th, .metrics td { padding: 7px 4px; border-bottom: 1px solid var(--border); text-align: start; vertical-align: top; }
+.metrics thead th { color: var(--ink-soft); font-size: .76rem; font-weight: 600; }
+.metrics th[scope="row"] { font-weight: 650; }
+.metrics td { font-variant-numeric: tabular-nums; }
+.metrics small { display: block; color: var(--ink-soft); font-size: .72rem; }
+.hourGrid { display: grid; grid-template-columns: 23px repeat(12, minmax(0,1fr)); align-items: center; gap: 3px; max-width: 410px; margin: 4px 0 9px; font-size: .72rem; }
+.hour { block-size: 15px; border-radius: 3px; background: var(--field); }
+.hour[data-active="true"] { background: var(--accent); }
+.tick { text-align: center; color: var(--ink-soft); font-size: .70rem; }
+.disclosure { margin: 9px 0; color: var(--ink-mid); font-size: .84rem; }
+.disclosure summary { cursor: pointer; padding-block: 6px; }
+.champions li { display: grid; grid-template-columns: 32px minmax(0,1fr) auto; align-items: center; gap: 9px; padding-block: 8px; border-bottom: 1px solid var(--border); }
+.champions li p { margin: 2px 0; }
+.champions li > div { overflow-wrap: anywhere; }
+.more { display: inline-flex; align-items: center; min-height: 32px; color: var(--accent-ink); font-size: .78rem; font-weight: 650; }
+
+@media (max-width: 380px) {
+  .panel { padding-inline: 9px; }
+  .metrics { font-size: .77rem; }
+  .metrics thead th, .metrics small { font-size: .70rem; }
+  .bars li { gap: 5px; }
+}

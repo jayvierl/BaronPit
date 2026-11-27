@@ -1,0 +1,12 @@
+.identity { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.identityText { min-width: 0; }
+.identity h1 { overflow-wrap: anywhere; margin: 0; }
+.tag { color: var(--ink-soft); font-weight: 500; }
+.identityText p { margin: .22rem 0; }
+.identityText a { color: var(--accent-ink); font-weight: 600; }
+.badges { display: flex; gap: .35rem; flex-wrap: wrap; margin-top: .55rem; }
+.profileNav { display: flex; flex-wrap: wrap; align-items: center; gap: 0 .95rem; border-block: 1px solid var(--border); margin: .9rem 0 .4rem; }
+.profileNav a { display: inline-flex; align-items: center; min-height: 42px; font-size: .85rem; font-weight: 600; color: var(--ink-mid); }
+.profileNav a:is(:hover, :focus-visible) { color: var(--accent-ink); }
+.anchor { scroll-margin-top: calc(80px + env(safe-area-inset-top)); }
+@media (max-width: 440px) { .profileNav { gap: 0 .73rem; } }

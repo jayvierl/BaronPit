@@ -47,6 +47,10 @@ export async function checkNavigation(journey) {
   const exact = "/search?scope=players&q=Fixture+Support%23WAVE&region=na1";
   const returnTo = exact + "&results=1";
   const player = "/player?" + new URLSearchParams({platform:"na1", riotId:"Fixture Support#WAVE", from:returnTo});
+  // Home and the default Search field submit the same native GET. Back must stay on results.
+  const globalSearch = "/search?q=Fixture+Support%23WAVE";
+  await journey(globalSearch, {redirectTo:"/player?platform=na1&riotId=Fixture+Support%23WAVE&from=" + encodeURIComponent(globalSearch + "&results=1")});
+  await journey(globalSearch + "&results=1", {includes:["Search categories"]});
   await journey(exact, {redirectTo:player});
   const lookedUp = await journey(player, {html:true});
   assert.ok(lookedUp.includes('href="' + returnTo.replaceAll("&", "&amp;") + '"') && lookedUp.includes("Back to search"));

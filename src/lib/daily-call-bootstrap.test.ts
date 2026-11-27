@@ -36,7 +36,7 @@ async function callCount() {
   return (await postgres.query("SELECT count(*)::int AS n FROM wp_daily_calls")).rows;
 }
 
-it("publishes one launch poll after committing generation 2 and leaves other bootstrap state intact", async () => {
+it("publishes one launch poll after committing the current generation and leaves other bootstrap state intact", async () => {
   await coldStart();
   const migrate = testQueries.findIndex(statement => statement.includes("INSERT INTO wp_meta(key,value) VALUES ('schema_generation'"));
   const open = testQueries.findIndex(statement => statement.includes("INSERT INTO wp_daily_calls(day,post_id"));
@@ -89,7 +89,7 @@ it("honors a publication pause and lets the ordinary cron recover", async () => 
 
 it("skips automatic publication on a newer schema generation even if the launch marker is absent", async () => {
   await clearLaunchFixture();
-  await postgres.exec("UPDATE wp_meta SET value='3' WHERE key='schema_generation'");
+  await postgres.exec("UPDATE wp_meta SET value='4' WHERE key='schema_generation'");
   await coldStart();
   expect(testQueries).toHaveLength(1);
   expect(await callCount()).toEqual([{ n: 0 }]);

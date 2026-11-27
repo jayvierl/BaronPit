@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { publicAvatarIdentity } from "@/lib/author-identity";
 import { searchAll } from "@/lib/social";
 import { currentPatch } from "@/lib/riot";
-import { isPlatform, playerStatsHref, PLATFORMS } from "@/lib/platforms";
+import { isPlatform, playerStatsHref, splitRiotId, PLATFORMS } from "@/lib/platforms";
 import { isExactRiotId, searchHref, searchScope, searchScopes, withSearchReturn } from "@/lib/search-scopes";
 import { RankBadge } from "@/components/rank-badge";
 import { Avatar } from "@/components/ui";
@@ -28,8 +28,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const playersOnly = scope === "players";
   const region = typeof params.region === "string" && isPlatform(params.region) ? params.region : undefined;
   const searchReturn = searchHref(scope, term, region, true);
-  if (playersOnly && region && params.results !== "1" && isExactRiotId(term)) {
-    redirect(withSearchReturn(playerStatsHref(region, term), searchReturn));
+  if ((scope === "all" || (playersOnly && region)) && params.results !== "1" && isExactRiotId(term)) {
+    const platform = region ?? "na1";
+    const { gameName, tagLine } = splitRiotId(term, platform);
+    redirect(withSearchReturn(playerStatsHref(platform, gameName + "#" + tagLine), searchReturn));
   }
 
   const user = await getCurrentUser();
@@ -78,7 +80,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
     {empty && <WardEmptyState text={`No matches for “${term}”`} status action={scope === "all"
       ? <Link href="/rooms">Browse rooms</Link>
       : playersOnly ? <Link href={withSearchReturn("/player", searchReturn)}>Look up a Riot ID</Link>
-      : <Link href={searchHref("all", term, region)}>Search all categories</Link>}/>}
+      : <Link href={searchHref("all", term, region, true)}>Search all categories</Link>}/>}
     {results && <>
       {results.users.length > 0 && <section>
         <h2 className="section">Community profiles</h2>

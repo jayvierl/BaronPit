@@ -1,38 +1,35 @@
-import { Suspense } from "react";
 import { PilotVisit } from "@/components/pilot-visit";
-import { buildCatalog, cardItems } from "@/lib/build-catalog";
-import { ItemIcons } from "@/components/item-icons";
-import { GameCardArt } from "@/components/game-card-art";
 import { WinStreak } from "@/components/win-streak";
 import { currentWinStreak } from "@/lib/current-win-streak";
-import { TeamBaronTag } from "@/components/team-baron-tag";
-import { MatchQuestionLinks } from "@/components/match-question-links";
-import { MatchFragmentFocus } from "./match-fragment-focus";
-import { ChampionPortrait } from "@/components/champion-portrait";
 import { Avatar } from "@/components/ui";
 import Link from "next/link";
 import Form from "next/form";
 import { MATCH_DETAIL_LIMIT, matchQueueName, matchSectionId, recentMatchHistory } from "@/lib/match-history";
-import { gameCardMotion } from "@/lib/game-card-motion";
+import { LatestGames, OlderGames } from "./match-history-view";
 import styles from "./history.module.css";
+import profileStyles from "./profile.module.css";
+import { buildPlayerAnalytics } from "@/lib/player-analytics";
+import { PlayerActivity, PlayerChampionAnalytics, PlayerPerformance, PlayerPlayStyle } from "@/components/player-analytics";
+import { masteryNeedsCatalog, PlayerMastery } from "@/components/player-mastery";
+import { PlayerRankHistory } from "@/components/player-rank-history";
 import { RefreshPlayer } from "@/components/refresh-player";
 import { getCurrentUser } from "@/lib/auth";
-import { lookupPlayer, isPlatform, PLATFORMS, currentPatch, profileIconUrl } from "@/lib/riot";
+import { lookupPlayer, isPlatform, PLATFORMS, currentPatch, championList, profileIconUrl } from "@/lib/riot";
 import { q } from "@/lib/db";
 import { publicRiotOwner } from "@/lib/player-insights";
 import { visibleChampionRoomSlugs } from "@/lib/rooms";
 import { playerStatsHref, splitRiotId } from "@/lib/platforms";
 import { readSearchReturn, searchHref, withSearchReturn } from "@/lib/search-scopes";
 import { safeReturnTo } from "@/lib/signin-return";
-import { LinkPlayerButton, LookupForm, ShareCardButton } from "@/components/social-ui";
+import { LinkPlayerButton, LookupForm } from "@/components/social-ui";
 import { PlayerStats } from "@/components/player-stats";
 import { RecentResults } from "@/components/player-overview";
-import { gameCount, earnedBadges, formReads, type MatchSummary } from "@/lib/pure";
+import { gameCount, earnedBadges } from "@/lib/pure";
 
 export const dynamic = "force-dynamic";
 
 export default async function PlayerPage({ searchParams }: {
-  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; queue?: string; champion?: string; from?: string; fromPlayer?: string }>;
+  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; match?: string; older?: string; queue?: string; champion?: string; from?: string; fromPlayer?: string }>;
 }) {
   const sp = await searchParams;
   const platform = sp.platform && isPlatform(sp.platform) ? sp.platform : "na1";
@@ -61,7 +58,7 @@ export default async function PlayerPage({ searchParams }: {
   }
 
   const [result,patch,user] = await Promise.all([
-    lookupPlayer(platform,name,tag),
+    lookupPlayer(platform, name, tag, { profile: true, force: sp.force === "1" }),
     currentPatch(),getCurrentUser(),
   ]);
   if (!result.ok) {
@@ -86,25 +83,36 @@ export default async function PlayerPage({ searchParams }: {
   const player = result.player;
   const partial = result.source === "partial";
   const snap = player.snapshot;
-  const [linked,owner,roomSlugs] = await Promise.all([
+  const matches = player.matchHistory?.matches ?? snap.matches;
+  const analytics = buildPlayerAnalytics(matches);
+  const incompleteHistory = partial || player.matchHistory?.complete === false;
+  const [linked,owner,roomSlugs,masteryCatalog] = await Promise.all([
     user ? q`SELECT 1 FROM wp_links WHERE user_id=${user.id} AND puuid=${player.puuid}` : [],
     publicRiotOwner(player.puuid, user?.id ?? null),
-    visibleChampionRoomSlugs(snap.champPool.map(entry => entry.champion)).catch(() => []),
+    visibleChampionRoomSlugs(analytics.champions.map(entry => entry.id)).catch(() => []),
+    masteryNeedsCatalog(player.championMastery) ? championList() : [],
   ]);
   const publicRooms = new Set(roomSlugs);
   const linkedByMe = linked.length > 0;
   const badges = earnedBadges(snap);
   const streak = partial ? null : currentWinStreak(snap, player.fetchedAt);
-  const history = recentMatchHistory(snap.matches, sp.queue, sp.champion);
+  const history = recentMatchHistory(matches, sp.queue, sp.champion);
   const latest = history.matches.slice(0, MATCH_DETAIL_LIMIT);
   const filtered = Boolean(history.queue || history.champion);
-  const lookupHref = withSearchReturn(playerStatsHref(player.platform, player.gameName + "#" + player.tagLine), searchReturn);
+  const route = new URL(withSearchReturn(playerStatsHref(player.platform, player.gameName + "#" + player.tagLine), searchReturn), "https://lookup.invalid");
+  if (playerReturn) route.searchParams.set("fromPlayer", playerReturn);
+  const lookupHref = route.pathname + route.search;
+  if (history.queue) route.searchParams.set("queue", history.queue);
+  if (history.champion) route.searchParams.set("champion", history.champion);
+  if (typeof sp.match === "string" && matchSectionId(sp.match)) route.searchParams.set("match", sp.match);
+  if (typeof sp.older === "string" && /^\d{1,3}$/.test(sp.older)) route.searchParams.set("older", sp.older);
+  const refreshHref = route.pathname + route.search;
   const historyHref = `${lookupHref}#match-history`;
-  const reads = formReads(snap);
 
   // Match history establishes shared games only. Older snapshots have names without tags.
   const mateCounts = new Map<string,number>();
   for (const game of snap.matches.slice(0,3)) {
+    if (game.queueId === 0) continue;
     const teammates = new Set((game.teammates ?? []).filter(t => t.name && t.tag).map(t => `${t.name}#${t.tag}`));
     for (const id of teammates) mateCounts.set(id,(mateCounts.get(id) ?? 0) + 1);
   }
@@ -113,44 +121,40 @@ export default async function PlayerPage({ searchParams }: {
     <div>
       {user?.pilotActive && <PilotVisit kind="stats"/>}
       {searchLink ?? <Link className={styles.searchLink} href={searchHref("players", "", platform)}>Search for another player</Link>}
-      <div style={{ padding: "6px 2px 14px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-          <div style={{ flex: "1 1 120px", minWidth: 0 }}>
-            <h1 className="profile-name">
-              {player.gameName}
-              <span style={{ color: "var(--ink-soft)", fontWeight: 500 }}>#{player.tagLine}</span>
-            </h1>
-            <div className="meta" style={{ marginTop: 3 }}>
+      <header>
+        <div className={profileStyles.identity}>
+          <div className={profileStyles.identityText}>
+            <h1 className="profile-name">{player.gameName}<span className={profileStyles.tag}>#{player.tagLine}</span></h1>
+            <p className="meta">
               {platform.toUpperCase()}{player.summonerLevel > 0 && ` · Level ${player.summonerLevel}`}
               {streak && <> · <WinStreak wins={streak}/></>}
-            </div>
-            {owner && (
-              <div className="meta" style={{ marginTop: 3 }}>
-                Verified community profile · <Link href={withSearchReturn(`/u/${owner.id}`, searchReturn)} style={{ fontWeight: 600 }}>{owner.name}</Link>
-              </div>
-            )}
-            {badges.length > 0 && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                {badges.map((b) => <span key={b} className="chip badge">{b}</span>)}
-              </div>
-            )}
+            </p>
+            {owner && <p className="meta">Verified community profile · <Link href={withSearchReturn(`/u/${owner.id}`, searchReturn)}>{owner.name}</Link></p>}
+            {badges.length > 0 && <div className={profileStyles.badges} aria-label="Recent 20-game highlights">
+              {badges.map(b => <span key={b} className="chip badge">{b}</span>)}
+            </div>}
           </div>
           <Avatar name={player.gameName} hue={265} size={84} imageUrl={profileIconUrl(patch, player.profileIcon)} />
         </div>
-        <RecentResults matches={snap.matches} historyPath={filtered ? lookupHref : ""} partial={partial} />
-        <PlayerStats player={player} source={result.source} lookupHref={history.sampleSize ? "#match-history" : undefined} />
-        <div className="profile-actions">
-          <RefreshPlayer />
-          {user && !linkedByMe && !partial && <LinkPlayerButton platform={platform} gameName={player.gameName} tagLine={player.tagLine} />}
-        </div>
+        <RefreshPlayer href={refreshHref} fetchedAt={player.fetchedAt} source={result.source} retryAt={result.retryAt} requested={sp.force === "1"} />
+        {user && !linkedByMe && !partial && <LinkPlayerButton platform={platform} gameName={player.gameName} tagLine={player.tagLine} />}
+      </header>
+      <nav className={profileStyles.profileNav} aria-label="Player sections">
+        <a href="#summary">Summary</a><a href="#match-history">Matches</a><a href="#player-champions">Champions</a>
+        <a href="#player-mastery">Mastery</a><a href="#rank-history" aria-label="Rank history">Ranks</a>
+      </nav>
+      <div id="summary" className={profileStyles.anchor}>
+        <PlayerStats player={player} source={result.source} variant="profile" lookupHref={history.sampleSize ? "#match-history" : undefined} />
+        <RecentResults matches={snap.matches} historyPath={filtered || sp.match || sp.older ? lookupHref : ""} partial={partial} />
+        <PlayerPlayStyle analytics={analytics} partial={incompleteHistory}/>
       </div>
-
       <h2 id="match-history" className={styles.heading}>Match history</h2>
       {history.sampleSize > 0 && <>
         <Form action="/player#match-history" className={styles.filters} key={JSON.stringify([player.puuid, history.queue, history.champion])}>
           <input type="hidden" name="platform" value={platform}/>
           <input type="hidden" name="riotId" value={player.gameName + "#" + player.tagLine}/>
           {searchReturn && <input type="hidden" name="from" value={searchReturn}/>}
+          {playerReturn && <input type="hidden" name="fromPlayer" value={playerReturn}/>}
           <label>Queue<select name="queue" defaultValue={history.queue}>
             <option value="">All queues</option>
             {history.queue && !history.queues.includes(history.queue) && <option value={history.queue}>Outside this sample</option>}
@@ -164,8 +168,8 @@ export default async function PlayerPage({ searchParams }: {
           <button className="btn secondary small">Apply</button>
         </Form>
         <p className={styles.result} aria-live="polite">
-          {history.winRate === null ? `No matching games in ${partial ? "the available" : "the last"} ${gameCount(history.sampleSize)}` : <>
-            {filtered ? `${history.matches.length} of ${gameCount(history.sampleSize)}` : partial ? `${gameCount(history.sampleSize)} available` : `Last ${gameCount(history.sampleSize)}`}
+          {history.winRate === null ? `No matching games in ${incompleteHistory ? "the available" : "the last"} ${gameCount(history.sampleSize)}` : <>
+            {filtered ? `${history.matches.length} of ${gameCount(history.sampleSize)}` : incompleteHistory ? `${gameCount(history.sampleSize)} available` : `Last ${gameCount(history.sampleSize)}`}
             {" · "}{history.wins}W–{history.losses}L · {history.winRate}% win rate
           </>}
           {filtered && <Link href={historyHref} className={styles.reset}>Clear filters</Link>}
@@ -173,134 +177,25 @@ export default async function PlayerPage({ searchParams }: {
       </>}
       {history.sampleSize === 0 && <p className="meta">{partial ? "Riot couldn’t provide recent matches for this lookup." : "No recent matches found for this player."}</p>}
       {latest.length > 0 && (
-        <LatestGames matches={latest} patch={patch} platform={platform} puuid={player.puuid} persisted={!partial} signedIn={Boolean(user)} lookupHref={lookupHref} />
+        <LatestGames matches={latest} patch={patch} platform={platform} puuid={player.puuid} persisted={!partial} communityMatchIds={new Set(snap.matches.map(m => m.matchId))} signedIn={Boolean(user)} lookupHref={lookupHref} queueFilter={history.queue} championFilter={history.champion} rawMatch={sp.match}/>
       )}
       {!filtered && frequent.length > 0 && (
         <p className="meta">Also on the same team recently · {frequent.map(([name,games]) => `${name} (${games} games)`).join(", ")}</p>
       )}
-      {history.matches.length > MATCH_DETAIL_LIMIT && <details className="card" key={historyHref + history.queue + history.champion}>
-        <summary>Show {gameCount(history.matches.length - MATCH_DETAIL_LIMIT)} more</summary>
-        {history.matches.slice(MATCH_DETAIL_LIMIT).map(m => <div key={m.matchId} id={matchSectionId(m.matchId)} tabIndex={-1} className={`match-row ${styles.matchTarget}`}>
-          <ChampionPortrait id={m.champion} patch={patch} size={32} />
-          <strong>{m.champion}</strong><span className={m.win ? "win" : "loss"}>{m.win ? "Victory" : "Defeat"}</span>
-          <span className="meta">{m.kills}/{m.deaths}/{m.assists} · {new Date(m.playedAt).toLocaleDateString()}</span>
-          <TeamBaronTag match={m} />
-        </div>)}
-      </details>}
+      <OlderGames matches={history.matches} patch={patch} platform={platform} lookupHref={lookupHref}
+        rawPage={sp.older} rawMatch={sp.match} queueFilter={history.queue} championFilter={history.champion}/>
 
-      {reads.length > 0 && (
-        <>
-          <h2 className="section">Recent performance</h2>
-          <div>
-            {reads.map((r) => (
-              <div key={r.label} className="read-row">
-                <span className={`read-dot ${r.tone}`} />
-                <span style={{ fontWeight: 600, minWidth: 108 }}>{r.label}</span>
-                <span className="display" style={{ fontWeight: 600 }}>{r.value}</span>
-                <span className="meta">{r.note}</span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {snap.champPool.length > 0 && (
-        <details className="card">
-          <summary>Champion pool · wins, losses and KDA</summary>
-          {snap.champPool.map((c) => {
-            const slug = `champ-${c.champion.toLowerCase()}`;
-            const hasRoom = publicRooms.has(slug);
-            return <div key={c.champion} className="match-row">
-              <ChampionPortrait id={c.champion} patch={patch} size={32} />
-              <strong style={{ flex: 1 }}>{c.champion}</strong>
-              <span className="meta">{gameCount(c.games)} · {c.wins}W–{c.games - c.wins}L{c.games > 0 && ` · ${Math.round(100 * c.wins / c.games)}% WR`}</span>
-              <span className="kda">{c.kda.toFixed(2)} KDA</span>
-              <Link className="text-btn" prefetch={false} href={hasRoom ? `/rooms/${slug}` : `/builds?champ=${encodeURIComponent(c.champion)}`}>
-                {hasRoom ? "Room" : "Builds"} <span aria-hidden="true">→</span>
-              </Link>
-            </div>;
-          })}
-        </details>
-      )}
+      <div id="player-champions" className={profileStyles.anchor}>
+        <PlayerChampionAnalytics analytics={analytics} partial={incompleteHistory} patch={patch} visibleRooms={publicRooms}/>
+      </div>
+      <PlayerPerformance analytics={analytics} partial={incompleteHistory}/>
+      <PlayerActivity analytics={analytics} partial={incompleteHistory}/>
+      <div id="player-mastery" className={profileStyles.anchor}>
+        <PlayerMastery mastery={player.championMastery} patch={patch} champions={masteryCatalog}/>
+      </div>
+      <div id="rank-history" className={profileStyles.anchor}>
+        <PlayerRankHistory puuid={player.puuid} platform={platform}/>
+      </div>
     </div>
   );
-}
-
-function LatestGames({ matches, patch, platform, puuid, persisted, signedIn, lookupHref }: {
-  matches: MatchSummary[];
-  patch: string;
-  platform: string;
-  puuid: string;
-  persisted: boolean;
-  signedIn: boolean;
-  lookupHref: string;
-}) {
-  const catalog = matches.some(match => match.items.length > 0) ? buildCatalog(patch) : null;
-  const rows = matches.map((m, index) => {
-    const details = catalog && m.items.length ? catalog.then(source => ({ patch: source.patch, items: cardItems(source, m.items) })) : null;
-    const question = { showStarters: index === 0, puuid, matchId: m.matchId };
-    const matchId = matchSectionId(m.matchId);
-    const matchPlatform = m.matchId.split("_", 1)[0].toLowerCase();
-    const teammatePlatform = isPlatform(matchPlatform) ? matchPlatform : platform;
-    const fromMatch = encodeURIComponent(matchId ? `${lookupHref}#${matchId}` : lookupHref);
-    return (
-      <div key={m.matchId} id={matchSectionId(m.matchId)} tabIndex={-1} className={`game-row ${m.win ? "win" : "loss"} ${styles.matchTarget}`}>
-        {typeof m.win === "boolean" && <GameCardArt motion={gameCardMotion(m.win)} />}
-        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap:"wrap" }}>
-          <ChampionPortrait id={m.champion} patch={patch} size={48} />
-          <div style={{ flex: "1 1 120px", minWidth: 0 }}>
-            <span className={m.win ? "win" : "loss"}>{m.win ? "Victory" : "Defeat"}</span>
-            <span className="meta"> · {m.champion} · {Math.floor(m.durationSec / 60)}m {m.durationSec % 60}s · {new Date(m.playedAt).toLocaleDateString()}</span>
-            <TeamBaronTag match={m} />
-            <div className="kda" style={{ fontSize: 16.5 }}>
-              {m.kills} / {m.deaths} / {m.assists}
-              <span className="meta" style={{ fontWeight: 400, fontFamily: "Inter, sans-serif" }}>
-                {" "}· {m.cs} CS ({(m.cs / Math.max(1, m.durationSec / 60)).toFixed(1)}/min)
-                {m.gold != null ? ` · ${(m.gold / 1000).toFixed(1)}k gold` : ""}
-                {m.role ? ` · ${m.role.toLowerCase()}` : ""}
-              </span>
-            </div>
-          </div>
-          {details && <Suspense fallback={<noscript className="meta">Item details require JavaScript.</noscript>}>
-            <MatchItems ids={m.items} details={details}/>
-          </Suspense>}
-        </div>
-        {persisted && (details ? <Suspense fallback={<MatchQuestionLinks {...question}/>}>
-          <MatchQuestions question={question} details={details}/>
-        </Suspense> : <MatchQuestionLinks {...question}/>)}
-        {(m.teammates ?? []).length > 0 && (
-          <div className="teammates">
-            <span className="meta" style={{ marginRight: 2 }}>Played with:</span>
-            {(m.teammates ?? []).map((t, i) => (
-              <span key={i} className="teammate">
-                <ChampionPortrait id={t.champion} patch={patch} size={18} />
-                {t.name && t.tag ? <Link prefetch={false} href={`${playerStatsHref(teammatePlatform, t.name + "#" + t.tag)}&fromPlayer=${fromMatch}`}>{t.name}#{t.tag}</Link> : t.champion}
-              </span>
-            ))}
-          </div>
-        )}
-        {signedIn && persisted && (
-          <div style={{ marginTop: 9 }}>
-            <ShareCardButton puuid={puuid} match={m} />
-          </div>
-        )}
-      </div>
-    );
-  });
-  return <>{rows}<MatchFragmentFocus /></>;
-}
-
-type MatchItemDetails = Promise<{ patch: string; items: ReturnType<typeof cardItems> }>;
-
-async function MatchItems({ ids, details }: { ids: number[]; details: MatchItemDetails }) {
-  const { patch, items } = await details;
-  return <ItemIcons ids={ids} details={items} patch={patch}/>;
-}
-
-async function MatchQuestions({ question, details }: {
-  question: { showStarters: boolean; puuid: string; matchId: string };
-  details: MatchItemDetails;
-}) {
-  const { items } = await details;
-  return <MatchQuestionLinks {...question} items={items}/>;
 }

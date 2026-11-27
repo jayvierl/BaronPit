@@ -18,18 +18,15 @@ import { duoSchema } from "./duo-schema";
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 
 /**
- * Data layer — Neon Postgres, lazy schema.
- *
- * Design rule from the build brief: MINIMAL RETENTION. We cache a player's
- * recent form (last ~20 matches) briefly and keep social content. There is
- * deliberately NO match archive: wp_players holds only the latest snapshot
- * per player and it is overwritten on refresh.
+ * Data layer for Neon Postgres with lazy schema initialization.
+ * Each player has one replaceable cache of up to 100 recent matches. Durable
+ * rank history holds only daily queue observations from successful refreshes.
  */
 
 type Sql = NeonQueryFunction<false, false>;
 // Keep the deployed pre-generation bundle from replaying old DDL during a rolling release.
 const LEGACY_SCHEMA_REVISION = "baron-profile-avatar-20261126-1";
-const SCHEMA_GENERATION = 2;
+const SCHEMA_GENERATION = 3;
 let client: Sql | undefined;
 let ready: Promise<void> | undefined;
 
@@ -57,10 +54,10 @@ function readSchemaGeneration(sql: Sql) {
 }
 
 async function maybeSeedDailyCall(sql: Sql, generation: number, launched = false) {
-  if (SCHEMA_GENERATION !== 2 || generation !== 2 || launched || process.env.VERCEL_ENV !== "production") return;
+  if (generation !== SCHEMA_GENERATION || launched || process.env.VERCEL_ENV !== "production") return;
   try {
     const { seedFirstDailyCall } = await import("./daily-call");
-    await seedFirstDailyCall(sql);
+    await seedFirstDailyCall(sql, generation);
   } catch {
     console.warn("Daily Call launch publication did not finish. The scheduled job will retry.");
   }
@@ -150,7 +147,7 @@ export function schemaStatements(sql: Sql, checkAfterLock = false) {
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
-  // Recent-form cache ONLY (overwritten per refresh; no history kept).
+  // Replaceable recent-form cache.
     sql`CREATE TABLE IF NOT EXISTS wp_players (
     puuid TEXT PRIMARY KEY,
     platform TEXT NOT NULL,
@@ -165,6 +162,20 @@ export function schemaStatements(sql: Sql, checkAfterLock = false) {
   )`,
     sql`CREATE INDEX IF NOT EXISTS wp_players_name_idx ON wp_players (lower(game_name), lower(tag_line), platform)`,
     sql`CREATE INDEX IF NOT EXISTS wp_players_fetched_at_idx ON wp_players (fetched_at)`,
+    sql`CREATE TABLE IF NOT EXISTS wp_rank_history (
+      puuid TEXT NOT NULL REFERENCES wp_players(puuid) ON DELETE CASCADE,
+      platform TEXT NOT NULL,
+      queue TEXT NOT NULL CHECK (queue IN ('RANKED_SOLO_5x5', 'RANKED_FLEX_SR')),
+      observed_day DATE NOT NULL,
+      tier TEXT NOT NULL CHECK (tier IN ('IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER')),
+      division TEXT NOT NULL CHECK (division IN ('I', 'II', 'III', 'IV')),
+      lp BIGINT NOT NULL,
+      wins BIGINT NOT NULL CHECK (wins >= 0),
+      losses BIGINT NOT NULL CHECK (losses >= 0),
+      captured_at TIMESTAMPTZ NOT NULL,
+      PRIMARY KEY (puuid, queue, observed_day),
+      CHECK (observed_day = (captured_at AT TIME ZONE 'UTC')::date)
+    )`,
   // Account <-> Riot player links. verified stays false until RSO ships.
     sql`CREATE TABLE IF NOT EXISTS wp_links (
     user_id INT NOT NULL REFERENCES wp_users(id) ON DELETE CASCADE,

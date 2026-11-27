@@ -20,12 +20,15 @@ const row = (fetched_at: Date) => ({
   } satisfies PlayerSnapshot,
 });
 const lookup = () => lookupPlayer("na1", "Fixture", "NA1");
+const profile = (force = false) => lookupPlayer("na1", "Fixture", "NA1", { profile: true, force });
+let fixtureKey = 0;
 describe("recent-form refresh", () => {
   beforeEach(() => {
-    vi.stubEnv("RIOT_API_KEY", "dev-test-only");
+    vi.stubEnv("RIOT_API_KEY", `dev-fixture-${++fixtureKey}`);
     mocked.q.mockReset();
   });
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -198,5 +201,121 @@ describe("recent-form refresh", () => {
     });
     expect(await lookup()).toMatchObject({ok:true, source:"partial", fresh:false, player:{rankedEntries:[], snapshot:{games:0}}});
     expect(mocked.q).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads fresh public scoreboard details and independent top mastery without exposing hidden identity fields", async () => {
+    mocked.q.mockResolvedValueOnce([]).mockImplementationOnce(async (_sql, ...args) => [{
+      ...row(new Date()), snapshot: JSON.parse(args[11]),
+    }]);
+    const me = { puuid:"ref", championName:"Ashe", teamId:100, win:true, kills:3, deaths:1, assists:7,
+      totalMinionsKilled:100, neutralMinionsKilled:15, goldEarned:8500, teamPosition:"BOTTOM", champLevel:12,
+      item0:3085,item2:3031,item6:3340,summoner1Id:4,summoner2Id:7,
+      perks:{styles:[{description:"subStyle",style:8400,selections:[{perk:8473}]},
+        {description:"primaryStyle",style:8000,selections:[{perk:8005},{perk:9104}]}]},
+    };
+    const heroes = ["Ahri","Darius","LeeSin","Nami","Draven","Lux","Garen","Amumu","Morgana"];
+    const others = heroes.map((championName,index) => ({ ...me, championName, teamId:index < 4 ? 100 : 200,
+      puuid:`never-serialize-${index}`, kills: index < 4 ? 5 : 2, teamPosition: index === 4 ? "BOTTOM" : "UTILITY",
+      riotIdGameName:index === 4 ? "Enemy" : index === 5 ? "HiddenAlias" : undefined,
+      riotIdTagline:index === 4 ? "NA1" : undefined,
+    }));
+    const transport = vi.fn(async (url:string) => {
+      if (url.includes("/riot/account/")) return Response.json({puuid:"ref",gameName:"Fixture",tagLine:"NA1"});
+      if (url.includes("/summoner/")) return Response.json({summonerLevel:32,profileIconId:1});
+      if (url.includes("/league/")) return Response.json([]);
+      if (url.includes("/ids?")) return Response.json(["NA1_17"]);
+      if (url.includes("/champion-mastery/")) return Response.json([
+        {championId:22,championPoints:125_000,championLevel:14,puuid:"do-not-store"},
+        {championId:888,championPoints:272_130,championLevel:21},
+      ]);
+      return Response.json({metadata:{matchId:"NA1_17"},info:{gameDuration:1_700,gameEndTimestamp:Date.now(),
+        queueId:420,participants:[me,...others],teams:[{teamId:100,objectives:{champion:{kills:20}}}]}});
+    });
+    vi.stubGlobal("fetch",transport);
+    const result = await profile();
+    expect(result).toMatchObject({ ok:true, source:"live", player:{
+      championMastery:{ fetchedAt:expect.any(String), champions:[{championId:888,points:272_130,level:21}, {championId:22,points:125_000,level:14}] },
+      matchHistory:{complete:true},snapshot:{games:1,matches:[{
+        championLevel:12,spellIds:[4,7],runes:{keystone:8005,primaryStyle:8000,secondaryStyle:8400},
+        teamKills:20,killParticipation:.5,items:[3085,3031,3340],opponentChampion:"Draven",
+        teams:{allies:expect.arrayContaining([{champion:"Ashe",isPlayer:true}]),opponents:expect.arrayContaining([{champion:"Draven",name:"Enemy",tag:"NA1"},{champion:"Lux"}])},
+      }]},
+    } });
+    expect(JSON.stringify(result)).not.toMatch(/HiddenAlias|never-serialize-|do-not-store/);
+    expect(transport.mock.calls.find(([url]) => url.includes("/champion-mastery/"))?.[0]).toContain("/by-puuid/ref/top?count=8");
+  });
+
+  it("preserves the prior mastery observation if optional mastery fails without blocking a fresh profile", async () => {
+    const previous = { fetchedAt:new Date(0).toISOString(), champions:[{championId:888,points:272_130,level:21}] };
+    const cached = row(new Date(0));
+    mocked.q.mockResolvedValueOnce([{...cached,snapshot:{...cached.snapshot,championMastery:previous}}])
+      .mockImplementationOnce(async (_sql, ...args) => [{...cached, snapshot:JSON.parse(args[11])}]);
+    vi.stubGlobal("fetch", async (url:string) => {
+      if (url.includes("/riot/account/")) return Response.json({puuid:"ref",gameName:"Fixture",tagLine:"NA1"});
+      if (url.includes("/summoner/")) return Response.json({summonerLevel:32,profileIconId:1});
+      return url.includes("/champion-mastery/") ? new Response(null,{status:503}) : Response.json([]);
+    });
+    expect(await profile()).toMatchObject({ok:true,source:"live",player:{championMastery:previous,matchHistory:{complete:true}}});
+  });
+
+  it("publishes a full recent 20 when an older request is throttled, then fills to 100 without repeating known matches", async () => {
+    vi.useFakeTimers({toFake:["Date","setTimeout","clearTimeout"]});
+    const ids = Array.from({length:100},(_, index) => `NA1_${500-index}`);
+    const transfers: string[] = [];
+    let stored: Record<string, unknown> | undefined;
+    let persistedCooldown: string | undefined;
+    let blockOlder = true;
+    mocked.q.mockImplementation(async (strings: TemplateStringsArray, ...args) => {
+      const sql = strings.join(" ");
+      if (sql.includes("AS riot_retry_at")) return stored || persistedCooldown ? [{...stored,riot_retry_at:persistedCooldown}] : [];
+      if (sql.includes("ARRAY[]::timestamptz[]")) { persistedCooldown = args[1]; return []; }
+      if (sql.includes("INSERT INTO wp_action_windows")) return [{bucket:args[0]}];
+      stored = {...row(new Date(args[12])), snapshot:JSON.parse(args[11])};
+      return [stored];
+    });
+    vi.stubGlobal("fetch", async (url:string) => {
+      if (url.includes("/riot/account/")) return Response.json({puuid:"ref",gameName:"Fixture",tagLine:"NA1"});
+      if (url.includes("/summoner/")) return Response.json({summonerLevel:32,profileIconId:1});
+      if (url.includes("/league/") || url.includes("/champion-mastery/")) return Response.json([]);
+      if (url.includes("/ids?")) { expect(url).toContain("count=100"); return Response.json(ids); }
+      const matchId = url.split("/").at(-1)!;
+      transfers.push(matchId);
+      if (blockOlder && matchId === ids[20]) return new Response(null,{status:429,headers:{"Retry-After":"125"}});
+      return Response.json({metadata:{matchId},info:{gameDuration:1700,gameEndTimestamp:Date.now(),queueId:420,
+        participants:[{puuid:"ref",championName:"Ashe",teamId:100,win:true,kills:3,deaths:1,assists:7,
+          totalMinionsKilled:100,neutralMinionsKilled:15,teamPosition:"BOTTOM"}]}});
+    });
+    const initial = profile();
+    await vi.runAllTimersAsync();
+    const first = await initial;
+    if (!first.ok) throw new Error(first.code);
+    expect(first).toMatchObject({source:"live",player:{snapshot:{games:20},matchHistory:{complete:false}}});
+    expect(first.player.snapshot.matches.map(match => match.matchId)).toEqual(ids.slice(0,20));
+    expect(first.player.matchHistory?.matches.some(match => match.matchId === ids[21])).toBe(true);
+    expect(transfers).toEqual(ids.slice(0,24));
+    expect(first.retryAt).toBe(persistedCooldown);
+    expect(await profile(true)).toMatchObject({source:"cache",retryAt:persistedCooldown});
+    expect(transfers).toHaveLength(24);
+
+    blockOlder = false;
+    vi.setSystemTime(new Date(Date.parse(persistedCooldown!) + 10));
+    const continuation = profile(true);
+    await vi.runAllTimersAsync();
+    const second = await continuation;
+    if (!second.ok) throw new Error(second.code);
+    expect(second.player.matchHistory?.matches.map(match => match.matchId)).toEqual(ids);
+    expect(second.player.matchHistory?.complete).toBe(true);
+    expect(second.player.snapshot.matches).toHaveLength(20);
+    expect(transfers.slice(24)).toEqual([ids[20],...ids.slice(24)]);
+    expect((stored?.snapshot as Record<string, unknown>).olderMatches).toHaveLength(80);
+  });
+
+  it("honors a shared Riot retry window even when a cold worker has no cached profile", async () => {
+    const until = new Date(Date.now()+60_000).toISOString();
+    mocked.q.mockResolvedValue([{riot_retry_at:until}]);
+    const transport = vi.fn();
+    vi.stubGlobal("fetch",transport);
+    expect(await profile(true)).toEqual({ok:false,code:"rate_limited",retryAt:until});
+    expect(transport).not.toHaveBeenCalled();
   });
 });
