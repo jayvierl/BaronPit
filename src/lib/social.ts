@@ -18,7 +18,7 @@ export type { PostView, CommentView } from "./post-types";
 
 import { getSql, q, queryRows } from "./db";
 import { screenText } from "./managed-text-screen";
-import { scoreContent, bodyFingerprint } from "./moderation";
+import { scoreContent, bodyFingerprint, publishOutcome } from "./moderation";
 import { rateLimit, type User } from "./auth";
 import { confirmedPatch } from "./riot";
 import { buildCatalog } from "./build-catalog";
@@ -56,18 +56,22 @@ export async function createPost(user: User, input: CreatePostInput, decision?: 
             VALUES ('post', ${user.id}, ${mod.score}, 'block', ${mod.hits.join(",")})`;
     return { ok: false, error: "That post can't be published — it trips our community safety filter. If you think this is a mistake, rephrase and try again." };
   }
-  if (mod.action === "hold" && !input.submitForReview && !mod.hits.includes("screening-unavailable")) {
+  const outcome = publishOutcome(mod, { lowTrust });
+  if (outcome === "hold" && !input.submitForReview && !mod.hits.includes("screening-unavailable")) {
     return { ok: false, reconsider: true, error: "This wording may break the community guidelines. Edit your draft or submit it for a moderator to review." };
   }
   // Duplicate spam: identical body three times in an hour -> hold.
-  let status: "visible" | "held" = mod.action === "hold" ? "held" : "visible";
+  let status: "visible" | "held" = outcome === "hold" ? "held" : "visible";
   // A provider link is never published automatically.
-  if (input.kind === "clip" || lowTrust) status = "held";
+  if (input.kind === "clip") status = "held";
   if (status === "visible" && body.length > 0) {
     const fp = bodyFingerprint(body);
     const recent = await q`SELECT body FROM wp_posts WHERE author_id = ${user.id} AND created_at > now() - interval '1 hour'`;
     if (recent.filter((r) => bodyFingerprint(String(r.body)) === fp).length >= 2) status = "held";
   }
+  // Borderline work from an established account is already public at this
+  // point; flag it for the reviewer sweep instead of holding it.
+  const flagged = outcome === "publish-flagged" && status === "visible";
 
   let rows;
   try {
@@ -91,11 +95,11 @@ export async function createPost(user: User, input: CreatePostInput, decision?: 
     SELECT inserted.id,original.id,original.author_id FROM inserted CROSS JOIN original
   ), audit AS (
     INSERT INTO wp_mod_log (target_kind, target_id, author_id, score, action, detail)
-    SELECT 'post',id,$1,$22,'hold',$23 FROM inserted WHERE $6='held'
+    SELECT 'post',id,$1,$22,CASE WHEN $6='held' THEN 'hold' ELSE 'flag' END,$23 FROM inserted WHERE $6='held' OR $24
   ) SELECT id FROM inserted`, [user.id,input.kind,body,roomId,JSON.stringify(data),status,input.kind === "clip",input.kind === "card",key,hash,
     input.kind === "clip" || includesRoomLink(fields),!!decision,decision?.champion ?? null,decision?.opponent ?? null,decision?.role ?? null,
     decision?.topic ?? null,decision?.patch ?? null,decision?.itemId ?? null,decision?.itemName ?? null,PATCH_PUBLISHER,quotedPostId ?? null,
-    mod.score,mod.hits.join(",")]),key,user.id);
+    mod.score,mod.hits.join(","),flagged]),key,user.id);
   } catch(error) { return await priorSubmission("post",user.id,key,hash) ?? {ok:false,error:roomWriteError(error)}; }
   if (!rows.length) return await priorSubmission("post",user.id,key,hash) ?? { ok: false,
     error: quotedPostId ? "The original post is unavailable to quote." : "That room is unavailable." };
@@ -172,10 +176,14 @@ export async function addComment(user: User, postId: number, bodyRaw: string, pa
     await q`INSERT INTO wp_mod_log (target_kind, author_id, score, action, detail) VALUES ('comment', ${user.id}, ${mod.score}, 'block', ${mod.hits.join(",")})`;
     return { ok: false, error: "That comment can't be published — it trips our community safety filter." };
   }
-  if (mod.action === "hold" && !submitForReview && !mod.hits.includes("screening-unavailable")) {
+  const outcome = publishOutcome(mod, { lowTrust });
+  if (outcome === "hold" && !submitForReview && !mod.hits.includes("screening-unavailable")) {
     return { ok: false, reconsider: true, error: "This reply may break the guidelines. Edit it or submit for moderator review." };
   }
-  const status = lowTrust || mod.action === "hold" ? "held" : "visible";
+  const status = outcome === "hold" ? "held" : "visible";
+  // Borderline replies from established accounts publish flagged for the
+  // reviewer sweep, exactly like posts (moderation-automation spec).
+  const flagged = outcome === "publish-flagged";
   let rows;
   try {
     const sql = await getSql();
@@ -193,9 +201,9 @@ export async function addComment(user: User, postId: number, bodyRaw: string, pa
     RETURNING id
   ), hold_log AS (
     INSERT INTO wp_mod_log (target_kind, target_id, author_id, score, action, detail)
-    SELECT 'comment', id, $1, $7, 'hold', $8 FROM submitted WHERE $5 = 'held'
+    SELECT 'comment', id, $1, $7, CASE WHEN $5='held' THEN 'hold' ELSE 'flag' END, $8 FROM submitted WHERE $5 = 'held' OR $12
   ) SELECT id FROM submitted`,
-  [user.id, postId, parentId ?? null, body, status, oneFix, mod.score, mod.hits.join(","),includesRoomLink([body]),key,hash]),key,user.id);
+  [user.id, postId, parentId ?? null, body, status, oneFix, mod.score, mod.hits.join(","),includesRoomLink([body]),key,hash,flagged]),key,user.id);
   } catch(error) { return await priorSubmission("comment",user.id,key,hash) ?? {ok:false,error:roomWriteError(error)}; }
   if (!rows.length) return await priorSubmission("comment",user.id,key,hash) ?? { ok: false, error: oneFix ? "One Fix needs an available game card." : "Replies are closed or this conversation is unavailable." };
   return { ok: true, postId: Number(rows[0].id), status };

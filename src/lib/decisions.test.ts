@@ -75,7 +75,11 @@ describe("moderated decision questions", () => {
     expect(
       await decisions(null, { mode: "unanswered", opponent: "Caitlyn", role: "Bot", patch: "16.23", topic: "Objective" }),
     ).toMatchObject([{ postId: question, champion: "Ashe", answer: null }]);
-    const held = await askDecision({ ...owner, id: 4, createdAt: new Date().toISOString() }, draft);
+    // A borderline question from a new account is still held for review.
+    const held = await askDecision(
+      { ...owner, id: 4, createdAt: new Date().toISOString() },
+      { ...draft, body: "fuck shit, where should I set up before the second dragon?", submitForReview: true },
+    );
     expect(held).toMatchObject({ ok: true, status: "held" });
     expect(await decisions(null)).toHaveLength(1);
     expect(await decisions(null, { topic: "Objective" })).toMatchObject([{ postId: question }]);

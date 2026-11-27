@@ -24,7 +24,9 @@ beforeAll(async()=>{
 afterAll(async()=>{await postgres.close();vi.unstubAllEnvs();});
 
 it("commits exactly one concurrent held post and audit entry, scoped per author",async()=>{
-  const draft = {kind:"text" as const,body:"Which ward would you keep for dragon?",submissionId:randomUUID()};
+  // Borderline wording from a probation account, submitted for review: the
+  // one path that still lands a post in the held state at publish time.
+  const draft = {kind:"text" as const,body:"fuck shit, which ward would you keep for dragon?",submitForReview:true,submissionId:randomUUID()};
   const [a,b] = await Promise.all([createPost(actor(1,true),draft),createPost(actor(1,true),draft)]);
   expect(a).toEqual(b); expect(a.ok && a.status).toBe("held");
   if (!a.ok) throw Error(a.error);

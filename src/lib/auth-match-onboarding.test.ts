@@ -51,7 +51,7 @@ beforeAll(async () => {
 
 afterAll(async () => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); await postgres.close(); });
 
-it("sends a welcome through the isolated mail boundary, signs up once, and holds a new spectator's discussion", async () => {
+it("sends a welcome through the isolated mail boundary, signs up once, and publishes a new spectator's discussion", async () => {
   const writer: CookieJar = {}, replayBrowser: CookieJar = {};
   let mailCount = 0;
   let welcome = false;
@@ -112,8 +112,9 @@ it("sends a welcome through the isolated mail boundary, signs up once, and holds
   const receipt = await post(postQuestion, "/api/questions", question, writer);
   expect(receipt.status).toBe(201);
   const { postId, status } = await receipt.json();
-  expect(status).toBe("held");
-  const [held] = await q`SELECT author_id,status,data#>>'{matchContext,authorRole}' AS role FROM wp_posts WHERE id=${postId}`;
-  expect(held).toMatchObject({ author_id: user.id, status: "held", role: "spectator" });
-  expect(await getPost(postId, null)).toBeNull();
+  // Clean posts publish immediately now, even from a brand-new account.
+  expect(status).toBe("visible");
+  const [published] = await q`SELECT author_id,status,data#>>'{matchContext,authorRole}' AS role FROM wp_posts WHERE id=${postId}`;
+  expect(published).toMatchObject({ author_id: user.id, status: "visible", role: "spectator" });
+  expect(await getPost(postId, null)).not.toBeNull();
 });
