@@ -97,12 +97,15 @@ it("measures the production discussion queries using a private in-memory Postgre
     const viewer: User = { id:1,email:"u1@bench.localhost",displayName:"Player 1",avatarHue:1,bio:"",createdAt:"2020-01-01",bannedUntil:null,strikeCount:0,ageBand:"adult",termsCurrent:true };
     const ref = { platform:"na1",riotId:"Player 1#NA1",matchId:"NA1_100001" };
     const now = Date.now();
-    if (process.env.CAPACITY_PLAN === "tonight") {
+    const planFor = process.env.CAPACITY_PLAN;
+    if (planFor === "tonight" || planFor === "feed") {
       const recorder = vi.spyOn(postgres,"query");
-      await tonightInThePit(viewer.id,now);
-      const recorded = recorder.mock.calls.find(([text])=>text.includes("wp_players"));
+      if (planFor === "tonight") await tonightInThePit(viewer.id,now);
+      else await readHomeFeedPage(viewer.id,"everyone",null,now);
+      const marker = planFor === "tonight" ? "wp_players" : "flair AS MATERIALIZED";
+      const recorded = recorder.mock.calls.find(([text])=>text.includes(marker));
       recorder.mockRestore();
-      if (!recorded) throw new Error("Missing summary query");
+      if (!recorded) throw new Error(`Missing ${planFor} query`);
       const plan = await postgres.query("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) "+recorded[0],recorded[1]);
       console.log(JSON.stringify(plan.rows));
       return;

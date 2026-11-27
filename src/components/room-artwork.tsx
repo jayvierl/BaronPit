@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { roomArt } from "@/lib/room-art";
 import type { Room } from "@/lib/rooms";
 import { splashUrl } from "@/lib/pure";
@@ -9,9 +10,8 @@ import styles from "./room-artwork.module.css";
 const number = new Intl.NumberFormat("en-US");
 
 export function RoomBanner({ slug, championId }: Pick<Room, "slug" | "championId">) {
-  if (championId) return <div className={`${styles.banner} ${styles.champion}`}>
-    <Image unoptimized width={1215} height={717} src={splashUrl(championId)} alt="" loading="eager" fetchPriority="high"/>
-  </div>;
+  if (championId) return <div className={`${styles.banner} ${styles.champion}`} aria-hidden="true"
+    style={{ "--champion-splash": `url("${splashUrl(encodeURIComponent(championId))}")` } as CSSProperties}/>;
   const art = roomArt(slug);
   if (!art) return null;
   return <picture className={styles.banner}>

@@ -1,0 +1,22 @@
+.icon {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  inline-size: var(--game-asset-size);
+  block-size: var(--game-asset-size);
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: .35rem;
+  background: var(--field);
+  color: var(--ink-mid);
+  font-size: clamp(.55rem, calc(var(--game-asset-size) / 3.3), .8rem);
+  font-weight: 700;
+  line-height: 1;
+}
+.icon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--game-asset) center / cover no-repeat;
+}

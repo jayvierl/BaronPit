@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import { useId } from "react";
 import type { PostDraft } from "@/lib/composer-draft";
 import { publicPatch } from "@/lib/patch-notes";
+import { GameAssetIcon } from "./game-asset-icon";
 import styles from "./composer.module.css";
 
 export type BuildShop = { patch: string; current: boolean; choices: { id: number; name: string }[]; keystones: { id: number; name: string; tree: string }[] };
@@ -53,7 +53,7 @@ export function BuildFields({ draft, edit, champions, lockedChampion, patch, sho
       {selected.length > 0 && <ol className={styles.buildChoices} aria-label="Selected items in build order">
         {selected.map(([id, name], index) => <li key={`${id}:${index}`}>
           <button type="button" className="chip" aria-label={`Remove ${name ?? `item ${id}`}, slot ${index + 1}`} onClick={() => edit({ items: items.filter((_, i) => i !== index) })}>
-            {name && <Image src={`https://ddragon.leagueoflegends.com/cdn/${patch}/img/item/${id}.png`} alt="" width={22} height={22} unoptimized/>}
+            {name && <GameAssetIcon src={`https://ddragon.leagueoflegends.com/cdn/${patch}/img/item/${id}.png`} name={name} size={22}/>}
             <span>{name ?? `Item ${id}${shop ? " unavailable" : ""}`}</span><span aria-hidden="true">×</span>
           </button>
         </li>)}

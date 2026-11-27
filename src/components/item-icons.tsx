@@ -1,5 +1,5 @@
-import Image from "next/image";
 import type { CardItem } from "@/lib/build-catalog";
+import { GameAssetIcon } from "./game-asset-icon";
 import styles from "./item-icons.module.css";
 
 export function ItemIcons({
@@ -30,12 +30,9 @@ export function ItemIcons({
             className={styles.item}
             aria-label={`${item.name}, ${item.gold} gold. View item details`}
           >
-            <Image
-              unoptimized
-              width={30}
-              height={30}
+            <GameAssetIcon
+              size={30} name={item.name}
               src={`https://ddragon.leagueoflegends.com/cdn/${patch}/img/item/${id}.png`}
-              alt=""
             />
             <span className={styles.tip} aria-hidden="true">
               <strong>{item.name}</strong> · {item.gold} gold

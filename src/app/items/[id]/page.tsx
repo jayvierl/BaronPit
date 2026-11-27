@@ -1,7 +1,7 @@
 import { publicPatch } from "@/lib/patch-notes";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { GameAssetIcon } from "@/components/game-asset-icon";
 import { buildCatalog } from "@/lib/build-catalog";
 import { buildItemId, buildsHref } from "@/lib/build-sharing";
 import { readSearchReturn } from "@/lib/search-scopes";
@@ -22,12 +22,8 @@ export default async function ItemPage({ params, searchParams }: {
       <Link className={styles.inlineLink} href={searchReturn ?? "/builds"}>{searchReturn ? "← Back to search" : "← Back to builds"}</Link>
       <h1 className="page-title">{item.name}</h1>
       <section className="card">
-        <Image
-          unoptimized
-          width={56}
-          height={56}
+        <GameAssetIcon size={56} name={item.name}
           src={`https://ddragon.leagueoflegends.com/cdn/${catalog.patch}/img/item/${item.id}.png`}
-          alt=""
         />
         <p>
           <strong>{item.gold.toLocaleString("en-US")} gold</strong> · Patch {publicPatch(catalog.patch) ?? "unavailable"}

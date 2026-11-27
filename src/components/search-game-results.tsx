@@ -1,6 +1,6 @@
 import Link from "next/link";
-import Image from "next/image";
 import { ChampionPortrait } from "./champion-portrait";
+import { GameAssetIcon } from "./game-asset-icon";
 import { publicPatch } from "@/lib/patch-notes";
 import { withSearchReturn } from "@/lib/search-scopes";
 import type { searchGameData } from "@/lib/game-search";
@@ -22,7 +22,7 @@ export function SearchGameResults({ result, from }: { result: Awaited<ReturnType
     {result.items.length > 0 && <section aria-labelledby="found-items">
       <h2 id="found-items" className="section">Items <span className={styles.caption}>Patch {publicPatch(result.itemPatch) ?? result.itemPatch}</span></h2>
       {result.items.map(item => <Link key={item.id} className={styles.result} href={withSearchReturn("/items/" + item.id, from)} prefetch={false}>
-        <Image unoptimized width={36} height={36} alt="" className={styles.itemArt} src={`https://ddragon.leagueoflegends.com/cdn/${result.itemPatch}/img/item/${item.id}.png`}/>
+        <GameAssetIcon size={36} name={item.name} src={`https://ddragon.leagueoflegends.com/cdn/${result.itemPatch}/img/item/${item.id}.png`}/>
         <span className={styles.identity}><strong>{item.name}</strong><small>{item.gold.toLocaleString("en-US")} gold</small></span>
       </Link>)}
     </section>}

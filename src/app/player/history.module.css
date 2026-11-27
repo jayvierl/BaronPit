@@ -65,7 +65,6 @@
   overflow-wrap: anywhere;
   font-size: .75rem;
 }
-.loadout img { flex: none; border-radius: .2rem; }
 .teamMembers li { min-height: 32px; padding: .25rem 0; }
 .participantName { display: grid; min-width: 0; overflow-wrap: anywhere; }
 .participantName a { color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: .15em; }

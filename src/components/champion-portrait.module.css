@@ -1,0 +1,6 @@
+.current::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--champion-current-art) center / cover no-repeat;
+}

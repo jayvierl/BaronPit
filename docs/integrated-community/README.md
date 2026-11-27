@@ -25,6 +25,18 @@ A champion hub samples up to 20 public games each from up to 300 recently refres
 - A quote stores the new author’s words and a pointer to the original post. A block, mute, moderation hold or withdrawal changes which text the viewer can see. If the original is withdrawn, the other author's eligible commentary survives without an excerpt. Closed replies are enforced in the same database operation that inserts a comment, including nested replies and One Fix. Protection, reporting, withdrawal and existing reply visibility remain available.
 - Costs follow normal feed and hub SQL reads, static asset delivery, and the explicitly opened timelines. Pilot staffing, actual Neon transfer, awarded Riot limits and third-party access must be checked against provider records before broad rollout. The capacity harness and operator gates are reproducible. [Provider and capacity evidence](../match-discussion/capacity.md) · [Safety procedures](../../COMMUNITY-SAFETY.md)
 
+## Measured feed cost
+
+Enabling native quotes changed the database planner’s estimate for the newest reply on each post. At 10,000 posts and 30,000 replies, the first Discover page initially discarded 35.3 million candidate row pairs while looking up eligible activity. Grouping by the stored comment’s indexed post identifier preserves the same eligible reply and ordering, and lets PostgreSQL use its column statistics.
+
+| Optimized server reader | Before correction, median | After correction, median | After correction, P95 |
+| --- | ---: | ---: | ---: |
+| Discover, first 30 posts | 2,466 ms | 121 ms | 630 ms |
+| Following, first 30 posts | 30 ms | 28 ms | 431 ms |
+| Match attachment preview | 2 ms | 1 ms | 1 ms |
+
+These are ten warm samples on shared local hardware and an in-memory PostgreSQL fixture. They time application database readers. End-user latency on Neon and Vercel includes different network, compute and rendering costs. The fixture returned the same 30-post page shape using four queries, had zero duplicate post IDs across pages, and made zero outbound vendor calls. To inspect the query plan, run `CAPACITY_PLAN=feed npx vitest run --config scripts/capacity/vitest.config.ts`. [Harness and data distribution](../match-discussion/capacity.md)
+
 ## Review and rollout
 
 1. Reproduce the optimized app with the local isolated PostgreSQL fixture. Run type checking, Vitest, lint, the production build, built-app HTTP smoke and the browser walkthrough. The reference player, email sessions and published content in the walkthrough are synthetic. [Walkthrough and screenshots](demo.md) · [CHECKER findings](review.md) · [CHALLENGER findings](challenger.md)

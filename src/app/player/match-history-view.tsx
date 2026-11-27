@@ -1,8 +1,8 @@
 import { ObjectiveTimeline } from "./objective-timeline";
-import Image from "next/image";
 import Link from "next/link";
 import { cache, Suspense } from "react";
 import { GameCardArt } from "@/components/game-card-art";
+import { GameAssetIcon } from "@/components/game-asset-icon";
 import { ItemIcons } from "@/components/item-icons";
 import { MatchQuestionLinks } from "@/components/match-question-links";
 import { TeamBaronTag } from "@/components/team-baron-tag";
@@ -67,7 +67,7 @@ function LoadoutGroup({ title, entries }: { title: string; entries: { name: stri
     <h4>{title}</h4>
     {entries.length ? <ul className={styles.loadout}>
       {entries.map(({ name, icon }, index) => <li key={index}>
-        {icon && <Image unoptimized src={icon} alt="" width={20} height={20}/>}{name}
+        {icon && <GameAssetIcon src={icon} size={20}/>}{name}
       </li>)}
     </ul> : <p className="meta">{title} unavailable for this match.</p>}
   </div>;

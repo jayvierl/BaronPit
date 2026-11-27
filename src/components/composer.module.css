@@ -12,7 +12,6 @@
 .buildRow { display: grid; gap: .65rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); }
 .buildChoices { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0; padding: 0; list-style: none; }
 .buildChoices button { display: inline-flex; align-items: center; gap: .3rem; min-height: 36px; cursor: pointer; text-align: start; }
-.buildChoices img { border-radius: .2rem; }
 .buildItems { display: grid; gap: .35rem; }
 .buildFields .offMeta { display: flex; align-items: center; gap: .35rem; min-height: 40px; width: fit-content; }
 @media (max-width: 480px) {
