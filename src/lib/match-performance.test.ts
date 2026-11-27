@@ -56,6 +56,9 @@ describe("Baron Match Rating v2", () => {
     expect(read().teams!.allies[1].ratingBadge).toBeUndefined();
     rows[4].performanceRating = NaN;
     expect(read().ratingBadge).toBeUndefined();
+    expect(read().performanceRating).toBeUndefined();
+    expect(read().ratingReason).toBeUndefined();
+    expect(read().teams!.opponents.every(p => p.performanceRating === undefined && p.ratingBadge === undefined)).toBe(true);
   });
 
   it.each<[string, (raw: Fixture) => void]>([

@@ -144,6 +144,17 @@ export function readStoredMatches(raw: unknown, limit: number, existing: readonl
     const rated = m.detailsVersion === MATCH_DETAILS_VERSION && eligibleForMatchRating(m.queueId, m.durationSec);
     const allies = roster(m.teams?.allies, true, m.queueId === 0, rated, m.win);
     const opponents = roster(m.teams?.opponents, false, m.queueId === 0, rated, !m.win);
+    // v2 scores are produced together from ten comparable roles. A mixed or
+    // damaged cache row can still supply a roster, but cannot explain a score.
+    const entries = [...(allies ?? []), ...(opponents ?? [])];
+    const partialRatings = entries.some(p => p.performanceRating !== undefined) &&
+      (entries.length !== 10 || entries.some(p => p.performanceRating === undefined));
+    if (partialRatings) {
+      for (const entry of entries) {
+        delete entry.performanceRating;
+        delete entry.ratingBadge;
+      }
+    }
     const teams = allies && opponents && allies.filter(player => player.isPlayer).length === 1 ? { allies, opponents } : undefined;
     const ratedPlayer = teams?.allies.find(p => p.isPlayer);
     const teamKills = count(m.teamKills);
@@ -164,7 +175,7 @@ export function readStoredMatches(raw: unknown, limit: number, existing: readonl
       spellIds: spellIds(m.spellIds?.[0], m.spellIds?.[1]), runes: runes(m.runes),
       teamKills, killParticipation: killParticipation(teamKills, m.kills, m.assists), teams,
       performanceRating: ratedPlayer?.performanceRating, ratingBadge: ratedPlayer?.ratingBadge, vision: count(m.vision),
-      ratingReason: m.detailsVersion === MATCH_DETAILS_VERSION && typeof m.ratingReason === "string" ? m.ratingReason.slice(0, 180) : undefined,
+      ratingReason: !partialRatings && m.detailsVersion === MATCH_DETAILS_VERSION && typeof m.ratingReason === "string" ? m.ratingReason.slice(0, 180) : undefined,
       detailsVersion: m.detailsVersion === 1 || m.detailsVersion === 2 || m.detailsVersion === MATCH_DETAILS_VERSION ? m.detailsVersion : undefined,
     });
   }
