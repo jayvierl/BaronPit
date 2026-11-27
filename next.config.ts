@@ -2,6 +2,14 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  async redirects() {
+    return [{
+      source: "/:path*",
+      has: [{ type: "host", value: "www.baronpit.com" }],
+      destination: "https://baronpit.com/:path*",
+      permanent: true,
+    }];
+  },
   images: {
     // Only public, versioned Riot icons may enter the shared image cache.
     localPatterns: [],

@@ -11,12 +11,27 @@ import navStyles from "@/components/navigation.module.css";
 import { APP_NAME, APP_DESCRIPTION, SAFETY_CENTER, SUPPORT_EMAIL } from "@/lib/brand";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://baronpit.com"),
   title: `${APP_NAME} — League of Legends, together`,
   description: APP_DESCRIPTION,
   applicationName: APP_NAME,
   icons: {
     icon: { url: "/baron-icon-32.png", sizes: "32x32", type: "image/png" },
     apple: { url: "/baron-icon-180.png", sizes: "180x180", type: "image/png" },
+  },
+  openGraph: {
+    type: "website",
+    siteName: APP_NAME,
+    title: `${APP_NAME} — League of Legends, together`,
+    description: APP_DESCRIPTION,
+    url: "https://baronpit.com",
+    images: [{ url: "/baron-hero.png", alt: `${APP_NAME} — League of Legends, together` }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${APP_NAME} — League of Legends, together`,
+    description: APP_DESCRIPTION,
+    images: ["/baron-hero.png"],
   },
 };
 
