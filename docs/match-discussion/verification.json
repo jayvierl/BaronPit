@@ -1,0 +1,20 @@
+{
+  "checks": [
+    "Guest searches Riot ID and opens public match discussion with the keyboard",
+    "A script-disabled guest cannot submit or expose a draft in the URL",
+    "Unlinked author saves interests and returns to the public draft",
+    "Publication requires consent and yields a stable public match discussion",
+    "An independent account finds the thread in the feed and matchup hub",
+    "Second account likes, saves, follows and replies using the real controls",
+    "Author opens the exact reply from Activity and returns to unchanged match stats",
+    "Mute, block and author withdrawal respect viewer visibility"
+  ],
+  "screenshots": [
+    "01-match-mobile.png",
+    "02-public-preview-mobile.png",
+    "02b-attachment-consent-mobile.png",
+    "03-published-thread-mobile.png",
+    "04-matchup-hub-desktop.png",
+    "05-reply-activity-mobile.png"
+  ]
+}

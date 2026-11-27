@@ -1,10 +1,3 @@
-import { spawn } from "node:child_process";
-import { access } from "node:fs/promises";
-import { once } from "node:events";
-import { randomBytes } from "node:crypto";
-import { createServer } from "node:net";
-import { setTimeout as delay } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { checkSubmissions } from "./submissions.mjs";
 import { checkCommunityDuo } from "./community-duo.mjs";
@@ -14,63 +7,10 @@ import { checkNavigation } from "./navigation.mjs";
 import { checkProfileEditor } from "./profile-editor.mjs";
 import { checkPersonalSafety } from "./personal-safety.mjs";
 import { checkDuoShortlist } from "./duo-shortlist.mjs";
-import { fixturePhotoEnv } from "./photo-scanner.mjs";
+import { startFixtureServer } from "./fixture-server.mjs";
 import { checkImage, publicArtwork } from "../public-art.mjs";
 
-const root = fileURLToPath(new URL("../../", import.meta.url));
-await access(new URL("../../.next/BUILD_ID", import.meta.url)).catch(() => {
-  throw new Error("Run npm run build before npm run smoke.");
-});
-const reservation = createServer();
-reservation.listen(0, "127.0.0.1");
-await once(reservation, "listening");
-const port = reservation.address().port;
-await new Promise((resolve) => reservation.close(resolve));
-const origin = "http://localhost:" + port;
-const session = randomBytes(32).toString("hex");
-const helperSession = randomBytes(32).toString("hex");
-const server = spawn(
-  process.execPath,
-  [
-    "--import",
-    "./scripts/smoke/transport.mjs",
-    "node_modules/next/dist/bin/next",
-    "start",
-    "--hostname",
-    "127.0.0.1",
-    "--port",
-    String(port),
-  ],
-  {
-    cwd: root,
-    env: {
-      PATH: process.env.PATH,
-      HOME: process.env.HOME,
-      TMPDIR: process.env.TMPDIR,
-      NODE_ENV: "production",
-      NEXT_TELEMETRY_DISABLED: "1",
-      DATABASE_URL: "postgresql://fixture:fixture@ep-fixture.invalid/ward_smoke",
-      SMOKE_ORIGIN: origin,
-      SMOKE_SESSION: session,
-      SMOKE_HELPER_SESSION: helperSession,
-      // A smoke runner never receives real provider keys or a shared database URL.
-      RIOT_API_KEY: "fixture-only",
-      __NEXT_PROCESSED_ENV: "true",
-      CRON_SECRET: "",
-      RESEND_API_KEY: "",
-      BLOB_READ_WRITE_TOKEN: "",
-      ...fixturePhotoEnv,
-      VERCEL_ENV: "development",
-      DUO_MATCHING_ENABLED: "false",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  },
-);
-let output = "";
-for (const stream of [server.stdout, server.stderr])
-  stream.on("data", (b) => {
-    output = (output + b.toString()).slice(-4000);
-  });
+const { origin, port, session, helperSession, stop, output } = await startFixtureServer();
 const signed = { cookie: "wp_session=" + session };
 let completed = 0;
 async function journey(
@@ -139,25 +79,19 @@ async function journey(
   return res.headers.get("content-type")?.includes("json") ? JSON.parse(text) : res.status;
 }
 try {
-  let ready = false;
-  for (let i = 0; i < 150; i++) {
-    if (server.exitCode !== null) throw new Error("Production server exited");
-    if (output.includes("Ready in") || output.includes("Ready on")) {
-      ready = true;
-      break;
-    }
-    await delay(100);
-  }
-  if (!ready) throw new Error("Production server startup timed out");
   await journey("/", {
     includes: [
       'aria-label="Conversations"', 'aria-label="Discover"', 'aria-label="Community search"',
       "Fixture win condition", "Fixture offrole question", "Fixture blocked discussion",
       "Never take Baron alone.", "/baron-emblem-96.webp", "/baron-icon-32.png",
       "Lobby rally clock", "Community objective progress", "Resets at 00:00 UTC",
-      "Hand of Baron · community spotlight", "Fixture Support",
+      "Hand of Baron · community spotlight", "Fixture Support", 'href="/?summary=tonight#tonight-in-the-pit-title"',
     ],
-    excludes: ["BARON IS UP", "Objective progress is temporarily unavailable"],
+    excludes: ["BARON IS UP", "Objective progress is temporarily unavailable", 'id="tonight-in-the-pit-title"'],
+  });
+  await journey("/?summary=tonight", {
+    includes: ['aria-labelledby="tonight-in-the-pit-title"', 'id="tonight-in-the-pit-title">Tonight in the pit', "Fixture win condition"],
+    excludes: ["Recent match activity is temporarily unavailable."],
   });
   await journey("/?tab=following", {status:307, signInReturn:"/?tab=following"});
   await journey("/?tab=following", {
@@ -240,14 +174,20 @@ try {
   await journey("/questions", {includes:["Matchup notebook"]});
   await journey("/pilot", {includes:["Four weeks with NA players"]});
   await journey("/pilot/phone-test", {includes:["Try a matchup thread on your phone","look for a duo partner"]});
+  const questionMatch = {platform:"na1",riotId:"Fixture Archer#NA1",matchId:"NA1_999999"};
+  const guestPreview = "/questions/new?" + new URLSearchParams({...questionMatch,starter:"recall"});
+  await journey(guestPreview, {
+    includes:["Public match preview", "When would you recall in this situation?", "Sign in to ask"],
+    excludes:["fixture-owner"],
+  });
   await journey("/questions/new?puuid=fixture-owner&matchId=NA1_999999&starter=recall", {
-    includes:["When should I have recalled?", "Sign in to ask"],
+    includes:["Public match preview", "When would you recall in this situation?", "Sign in to ask"],
   });
   await journey("/api/pilot", {session:"helper",method:"POST",body:{action:"join",consent:true,channel:"club",role:"BOTTOM"},includes:['"ok":true']});
   await journey("/api/pilot", {session:"helper",method:"POST",body:{action:"visit",kind:"stats"},includes:['"ok":true']});
   await journey("/api/pilot", {session:"helper",method:"POST",body:{action:"leave"},includes:['"ok":true']});
   const question = await journey("/api/questions", {session:true,method:"POST",status:201,
-    body:{action:"ask",role:"Bot",topic:"Objective",champion:"Ashe",body:"Should Ashe rotate before the next dragon?",puuid:"fixture-owner",matchId:"NA1_999999"},includes:['"status":"visible"']});
+    body:{action:"ask",role:"Bot",topic:"Objective",champion:"Ashe",body:"Should Ashe rotate before the next dragon?",...questionMatch,confirmPublicMatch:true},includes:['"status":"visible"']});
   const postId=question.postId;
   await journey("/post/"+postId, {includes:["Help me frame my answer", "Sign in to reply", "topic=Objective"]});
   await journey("/questions?role=Bot&topic=Objective", {includes:["Should Ashe rotate before the next dragon?","<option selected=\"\">Objective</option>"]});
@@ -280,12 +220,8 @@ try {
   await checkDuoShortlist(journey);
   console.log(completed + " production HTTP journeys passed against the local PostgreSQL fixture.");
 } catch (error) {
-  console.error(output);
+  console.error(output());
   throw error;
 } finally {
-  server.kill("SIGTERM");
-  const killTimer = setTimeout(() => server.kill("SIGKILL"), 3500);
-  killTimer.unref();
-  if (server.exitCode === null && server.signalCode === null) await once(server, "exit");
-  clearTimeout(killTimer);
+  await stop();
 }

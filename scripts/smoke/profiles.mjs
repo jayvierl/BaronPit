@@ -95,7 +95,7 @@ export async function checkPlayerProfiles(journey) {
       "Ranked Flex": ["Silver IV · 11 LP", "Ranked games 10", "Win rate 10%", "1W · 9L"],
     },
     combined: ["Across Solo/Duo and Flex", "30 games", "57% win rate", "17W · 13L"],
-    recent: ["Last 3 games · all queues", "Most played role Support (2 games)", "Nami (2 games)", "Vi (1 game)"],
+    recent: ["Last 3 games · supported public queues", "Most played role Support (2 games)", "Nami (2 games)", "Vi (1 game)"],
   };
   for (const session of [false, true]) {
     const options = { html: true, session };
@@ -108,8 +108,8 @@ export async function checkPlayerProfiles(journey) {
     const verified = await journey(linkFrom(feed, /^Fixture Other$/), options);
     assert.match(verified, /Verified Riot link/);
     const overview = sectionFrom(verified, "League overview");
-    checkMarkers(overview, ["Ranked Solo/Duo", "Platinum III · 64 LP", "80% win rate", "Ranked Flex", "Silver IV · 11 LP", "10% win rate", "Last 3 games · all queues", "Top role Support · 2 games", "Top champion Nami · 2 games"], "League overview");
-    assert.equal(visibleText(overview).match(/Last 3 games · all queues/g)?.length, 1);
+    checkMarkers(overview, ["Ranked Solo/Duo", "Platinum III · 64 LP", "80% win rate", "Ranked Flex", "Silver IV · 11 LP", "10% win rate", "Last 3 games · supported public queues", "Top role Support · 2 games", "Top champion Nami · 2 games"], "League overview");
+    assert.equal(visibleText(overview).match(/Last 3 games · supported public queues/g)?.length, 1);
     const form = sectionFrom(overview, "Recent form");
     assert.match(form, /aria-label="W · Victory on Nami, game 1"/);
     assert.match(form, /aria-label="L · Defeat on Nami, game 2"/);
