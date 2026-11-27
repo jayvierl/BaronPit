@@ -156,7 +156,6 @@ export function useTagSuggest({
             <button
               type="button"
               className={styles.option}
-              aria-selected={i === active}
               onPointerDown={(event) => event.preventDefault()}
               onClick={() => choose(option)}
               onMouseEnter={() => setActive(i)}
