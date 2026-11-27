@@ -107,6 +107,9 @@ describe("thread controls", () => {
     expect(time).toBeGreaterThan(room);
     expect(message).toBeGreaterThan(time);
     expect(html.indexOf("Ashe build")).toBeGreaterThan(message);
+    expect(html).toContain("Patch unavailable");
+    expect(html).toContain("Off-meta");
+    expect(html).toContain("Discuss this build");
   });
 
   it("opens a feed thread from its text without hijacking hashtags or official links", () => {

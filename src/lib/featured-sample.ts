@@ -1,3 +1,4 @@
+import { questionDecisionPost } from "./match-card-projection";
 import { featuredMatchup } from "./community-review";
 import { HIDDEN_AUTHORS, visiblePostForInteraction } from "./community-queries";
 import { q, queryRows } from "./db";
@@ -25,7 +26,7 @@ export async function observeFeaturedStep(userId: number, featuredId: number, op
     return false;
   const result = await queryRows(
     `WITH ${HIDDEN_AUTHORS} UPDATE wp_pilot_feature_samples f SET another_thread=true,
-        new_question=f.new_question OR (p.author_id=$1 AND p.created_at>f.opened_at AND d.post_id IS NOT NULL)
+        new_question=f.new_question OR (p.author_id=$1 AND p.created_at>f.opened_at AND d.post_id IS NOT NULL AND ${questionDecisionPost})
       FROM wp_posts p LEFT JOIN wp_decisions d ON d.post_id=p.id, wp_pilot_members m
       WHERE f.user_id=$1 AND m.user_id=f.user_id AND m.joined_at>now()-interval '28 days'
         AND f.opened_at<=now() AND f.opened_at>now()-interval '30 minutes'

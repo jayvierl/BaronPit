@@ -65,7 +65,6 @@
   overflow-wrap: anywhere;
   font-size: .75rem;
 }
-.loadout img { flex: none; border-radius: .2rem; }
 .teamMembers li { min-height: 32px; padding: .25rem 0; }
 .participantName { display: grid; min-width: 0; overflow-wrap: anywhere; }
 .participantName a { color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: .15em; }
@@ -108,3 +107,11 @@
   .teams, .loadoutGroups { grid-template-columns: minmax(0, 1fr); }
   .archiveRow { gap: .33rem; }
 }
+
+.timelineLink { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent-ink); text-decoration: underline; text-underline-offset: 3px; }
+.timeline { margin-block: 1rem; }
+.timeline h4 { margin: 0 0 .35rem; }
+.timeline small { color: var(--ink-mid); }
+.timeline ol { list-style: none; padding: 0; margin: .65rem 0; border-inline-start: 2px solid var(--border); }
+.timeline li { display: flex; gap: .65rem; flex-wrap: wrap; align-items: baseline; padding: .45rem .75rem; }
+.timeline li > span { min-width: 3.3rem; font-variant-numeric: tabular-nums; color: var(--ink-mid); }

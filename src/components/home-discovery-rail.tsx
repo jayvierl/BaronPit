@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
-import { APP_NAME } from "@/lib/brand";
 import catalog from "@/lib/champion-catalog.json";
 import { dbAvailable } from "@/lib/db";
 import { duoEnabled } from "@/lib/duo";
@@ -21,6 +20,7 @@ type Props = {
   activeTab: "everyone" | "following";
   asOf: number;
   roomsRead: ReturnType<typeof listFeaturedRooms>;
+  interestsRead?: Promise<readonly number[]>;
   patch: string;
   viewerId: number | null;
 };
@@ -28,19 +28,13 @@ type Props = {
 const championNames = new Map(catalog.list.map(({ id, name }) => [id, name]));
 const number = new Intl.NumberFormat("en");
 
-export function HomeDiscoveryRail({ posts, activeTab, asOf, roomsRead, patch, viewerId }: Props) {
+export function HomeDiscoveryRail({ posts, activeTab, asOf, roomsRead, interestsRead, patch, viewerId }: Props) {
   const matching = duoEnabled();
-  const conversations = activeConversations(posts, asOf);
   return (
     <aside aria-label="Discover" className={styles.rail}>
-      <form action="/search" method="get" role="search" aria-label="Community search" className={styles.search}>
-        <input type="search" name="q" enterKeyHint="search" aria-label="Search the community" placeholder={`Search ${APP_NAME}`} maxLength={80} required />
-        <button type="submit" aria-label="Search"><span aria-hidden="true" /></button>
-      </form>
 
-      {conversations.length > 0
-        ? <ActiveConversations conversations={conversations} following={activeTab === "following"} />
-        : <Suspense fallback={null}><ChampionActivity patch={patch} /></Suspense>}
+
+      <Suspense fallback={null}><DiscoverConversations viewerId={viewerId} posts={posts} asOf={asOf} activeTab={activeTab} interestsRead={interestsRead} patch={patch}/></Suspense>
 
       <section className={`${styles.section} ${styles.duo}`} aria-labelledby="discovery-duo-title">
         <div>
@@ -59,18 +53,28 @@ export function HomeDiscoveryRail({ posts, activeTab, asOf, roomsRead, patch, vi
   );
 }
 
-function ActiveConversations({ conversations, following }: {
+async function DiscoverConversations({ viewerId, posts, asOf, activeTab, interestsRead, patch }: Pick<Props, "viewerId" | "posts" | "asOf" | "activeTab" | "interestsRead" | "patch">) {
+  const interests = await interestsRead ?? [];
+  const conversations = activeConversations(posts, asOf, interests);
+  return conversations.length > 0
+    ? <ActiveConversations conversations={conversations} following={activeTab === "following"} hasInterests={interests.length > 0}/>
+    : <ChampionActivity patch={patch} viewerId={viewerId}/>;
+}
+
+function ActiveConversations({ conversations, following, hasInterests }: {
   conversations: ReturnType<typeof activeConversations>;
   following: boolean;
+  hasInterests: boolean;
 }) {
   return (
     <section className={styles.section} aria-labelledby="discovery-conversations-title">
       <h2 id="discovery-conversations-title">{following ? "Active in your feed" : "Active conversations"}</h2>
+      <p>{hasInterests ? "Recent posts and replies from this page. Rooms you joined appear first." : "Recent posts and replies from this page."}</p>
       <ul className={styles.list}>
-        {conversations.map(({ id, preview, replies }) => <li key={id}>
+        {conversations.map(({ id, preview, replies, room }) => <li key={id}>
           <Link href={`/post/${id}`} className={styles.conversation} prefetch={false}>
             <strong>{preview}</strong>
-            <small>{`${number.format(replies)} ${replies === 1 ? "reply" : "replies"}`}</small>
+            <small>{room ? `Joined room · ${room} · ` : "Recent discussion · "}{replies === 0 ? "No replies yet" : `${number.format(replies)} ${replies === 1 ? "reply" : "replies"}`}</small>
           </Link>
         </li>)}
       </ul>
@@ -78,8 +82,8 @@ function ActiveConversations({ conversations, following }: {
   );
 }
 
-async function ChampionActivity({ patch }: Pick<Props, "patch">) {
-  const sample = dbAvailable() ? await trendingChampions().catch(() => []) : [];
+async function ChampionActivity({ patch,viewerId }: Pick<Props, "patch" | "viewerId">) {
+  const sample = dbAvailable() ? await trendingChampions(viewerId).catch(() => []) : [];
   const trends = sample
     .filter(({ champion, games }) => /^[a-z\d]+$/i.test(champion) && Number.isSafeInteger(games) && games > 0)
     .slice(0, 4);
@@ -118,6 +122,7 @@ async function FeaturedRooms({ roomsRead, asOf, viewerId }: Pick<Props, "roomsRe
   return (
     <section className={styles.section} aria-labelledby="discovery-rooms-title">
       <h2 id="discovery-rooms-title">Featured rooms</h2>
+      <p>Join rooms for the champions and topics you want to see in Following.</p>
       {rooms.length > 0 && <ul className={styles.list}>
         {rooms.map(room => <li className={styles.room} key={room.id}>
           <RoomThumbnail slug={room.slug} asOf={date}/>
@@ -129,7 +134,7 @@ async function FeaturedRooms({ roomsRead, asOf, viewerId }: Pick<Props, "roomsRe
           {viewerId !== null && <JoinButton roomId={room.id} initial={room.joined} />}
         </li>)}
       </ul>}
-      <Link href="/rooms" className={styles.more} prefetch={false}>Browse rooms <span aria-hidden="true">→</span></Link>
+      <Link href="/rooms#room-directory" className={styles.more} prefetch={false}>Choose room interests <span aria-hidden="true">→</span></Link>
     </section>
   );
 }

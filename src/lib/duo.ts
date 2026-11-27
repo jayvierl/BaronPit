@@ -1,3 +1,4 @@
+import { publicSampleSql } from "./public-match-queues";
 import { RANKED_QUEUE, NORMAL_QUEUE, isSessionQueue, type SessionQueue, SESSION_MINUTES, parseSessionOffer, sessionWindow } from "./duo-session";
 import { confirmedBeforeCancellation, sharedGame } from "./verified-duo-game";
 import { getSql, q, queryRows } from "./db";
@@ -114,7 +115,8 @@ export function reviewedDuoRequestState(request: string, hold: string) {
 }
 const board = `${eligible}, board AS (
   SELECT l.*,peer.platform,peer.rank_tier,peer.rank_div,peer.rank_lp,peer.rank_wins,peer.rank_losses,
-    peer.snapshot->>'wins' AS wins,peer.snapshot->>'games' AS games
+    CASE WHEN ${publicSampleSql('peer.snapshot')} THEN peer.snapshot->>'wins' END AS wins,
+    CASE WHEN ${publicSampleSql('peer.snapshot')} THEN peer.snapshot->>'games' END AS games
   FROM me JOIN eligible peer ON peer.age_band=me.age_band AND peer.platform=me.platform
   JOIN wp_lfg l ON l.puuid=peer.puuid AND l.user_id=peer.id
   WHERE l.safe_listing AND l.expires_at>now()
@@ -284,7 +286,7 @@ export async function createDuoListing(user: User, data: unknown) {
         `, proposed AS (SELECT id,$12::timestamptz AS session_start,$12::timestamptz + interval '${SESSION_MINUTES} minutes' AS expires_at FROM me)
       INSERT INTO wp_lfg (user_id,puuid,roles,champs,blocks,voice,vibe,note,status,safe_listing,partner_role,play_windows,session_queue,session_start,expires_at)
       SELECT me.id,me.puuid,$3::text[],ARRAY(SELECT c->>'champion' FROM jsonb_array_elements(
-        CASE WHEN jsonb_typeof(me.snapshot->'champPool')='array' THEN me.snapshot->'champPool' ELSE '[]'::jsonb END) c
+        CASE WHEN ${publicSampleSql('me.snapshot')} AND jsonb_typeof(me.snapshot->'champPool')='array' THEN me.snapshot->'champPool' ELSE '[]'::jsonb END) c
         WHERE c->>'champion' ~ '^[A-Za-z0-9]{1,30}$' LIMIT 5),$4::text[],$5::bool,$6,$7,$8,true,$9,$10::int4multirange,$11,proposed.session_start,proposed.expires_at FROM me JOIN proposed ON proposed.id=me.id
       WHERE me.platform='na1' AND ($11='${NORMAL_QUEUE}' OR me.pilot_tier IS NOT NULL) AND proposed.session_start>clock_timestamp() AND NOT ${bookedSession("proposed","me.id")} AND NOT EXISTS (SELECT 1 FROM wp_lfg l WHERE l.user_id=$1 AND l.safe_listing AND l.status IN ('open','held') AND l.expires_at>now())
       RETURNING id`,

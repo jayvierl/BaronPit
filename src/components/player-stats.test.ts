@@ -29,7 +29,7 @@ it("shows separately tinted Solo/Duo and Flex records before the combined disclo
   expect(flex).toContain('data-tier="SILVER"');
   expect(flex).toMatch(/<dt>Win rate<\/dt><dd>15%<small>3W · 17L<\/small><\/dd>/);
   for (const value of ["Gold IV", "Silver II", "Combined ranked record", "30 games", "33%",
-    "Last 2 games · all queues", "Bot / Support", "1 game each", "Ashe", "View match history"]) expect(html).toContain(value);
+    "Last 2 games · supported public queues", "Bot / Support", "1 game each", "Ashe", "View match history"]) expect(html).toContain(value);
 });
 
 it("shows just a Flex placement and does not borrow the legacy Solo/Duo rank", () => {

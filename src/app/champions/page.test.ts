@@ -58,3 +58,13 @@ it("keeps the fallback catalog and build paths usable without room storage", asy
     state.current = true;
   }
 });
+
+it("renders the name and class filters from the URL and gives the room an exact directory return", async () => {
+  state.list = [champion("Ashe"), { ...champion("Ahri"), tags: ["Assassin"] }];
+  const html = renderToStaticMarkup(await ChampionsPage({ searchParams: Promise.resolve({ q: "As", class: "Mage" }) }));
+  expect(html).toContain("1 matching champion");
+  expect(html).toContain('name="class"');
+  expect(html).toContain('href="/rooms/champ-ashe?from=%2Fchampions%3Fq%3DAs%26class%3DMage"');
+  expect(html).not.toContain('href="/builds?champ=Ahri"');
+  expect(html).toContain('action="/champions"');
+});

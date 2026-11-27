@@ -1,0 +1,11 @@
+# Feed, room interests, and activity
+
+People choose interests by joining champion or topic rooms in the [room directory](../../src/app/rooms/page.tsx). An eligible signed-in account can join or leave rooms before linking a Riot account. The link from Discover or an empty Following feed goes directly to the directory. Guests return to that section after signing in.
+
+**For you** surfaces visible public discussions in order of recent post or reply activity. **Following** shows your public posts, posts from people you follow, posts in joined rooms, and eligible reposts from the people you follow. A single original appears once. A repost takes its place in the chronology at its original share time. Replies, votes, reactions, and saves do not change Following order.
+
+**Discover** considers public, previewable posts on the current feed page with activity in the past seven days. Joined-room discussions appear first, followed by the other recent discussions. Each row says which rule surfaced it. Visible reply counts give context. Likes, votes, and reply totals do not determine the recommendation order. New accounts and visitors get the same recent-content rule without room preferences. When a page has no fresh discussions, the existing champion-pool activity and featured-room links remain available.
+
+Both Home feeds use native **Older posts** and **Back to latest posts** links. Each cursor keeps the first page’s time cutoff, the last activity timestamp at database precision, and the post ID as a tie breaker. New posts, replies, and reposts appear when you return to the latest page. Visibility, author restrictions, blocks, mutes, room holds, and current memberships are checked whenever a page is read. Those changes can remove candidates from an older page.
+
+Replies, positive reactions, new saves, and opting into all replies use the existing discussion permissions. Saves are private in Playbook. A thread’s notification menu offers replies to you, all replies, and mute. Signed-in people can mute or reduce reply delivery, remove their own saves, and mark replies as read even when posting is restricted. The existing Activity lists expose replies, watched threads, and muted threads. Notifications are computed from visible replies and their visible ancestors at read time. The feed uses no separate preference or notification store.

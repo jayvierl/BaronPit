@@ -8,7 +8,7 @@ export function matchSectionId(matchId: string): string | undefined {
 
 const queueNames: Record<number, string> = {
   0: "Custom", 400: "Normal Draft", 420: "Ranked Solo/Duo", 430: "Blind Pick",
-  440: "Ranked Flex", 450: "ARAM", 490: "Quickplay", 700: "Clash",
+  440: "Ranked Flex", 450: "ARAM", 480: "Swiftplay", 490: "Quickplay", 700: "Clash",
 };
 function queueKey(queueId: number): string {
   return Number.isSafeInteger(queueId) && queueId >= 0 ? String(queueId) : "unknown";

@@ -48,7 +48,7 @@ const prefs = {
   vibe: "chill",
   note: "Practice lane trades",
 };
-const sample = { games: 10, wins: 6, champPool: [{ champion: "Ashe" }], matches: [{ matchId: "NA1_1" }] };
+const sample = { games: 10, wins: 6, champPool: [{ champion: "Ashe" }], matches: Array.from({length:10},(_,i)=>({ matchId: "NA1_"+(i+1), queueId:420, win:i<6, champion:"Ashe" })) };
 beforeAll(async () => {
   vi.stubEnv("DATABASE_URL", "postgresql://fixture.invalid/duo");
   vi.stubEnv("VERCEL_ENV", "development");

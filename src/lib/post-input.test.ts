@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 const riot = vi.hoisted(() => ({championCatalog:vi.fn(),confirmedPatch:vi.fn(),getCachedPlayer:vi.fn()}));
+const match = vi.hoisted(() => ({ resolveQuestionMatch: vi.fn() }));
 vi.mock("./riot", () => riot);
+vi.mock("./question-match", () => match);
 import { preparePost, scoreSubmission } from "./post-input";
 import { BARON_CALL_OPTIONS } from "./poll";
 afterEach(() => {vi.clearAllMocks();vi.unstubAllGlobals();});
@@ -34,20 +36,27 @@ describe("public post payloads", () => {
     riot.confirmedPatch.mockResolvedValue("16.23.1");
     riot.championCatalog.mockResolvedValue({current:true,patch:"16.23.1",list:[{name:"Ashe",id:"Ashe"}]});
     vi.stubGlobal("fetch",async()=>Response.json({data:{"3006":{name:"Boots"}}}));
-    expect(await preparePost({kind:"build",body:"Early boots",data:{champion:"ashe",items:[3006],patch:"35.9",offMeta:true}})).toMatchObject({ok:true,data:{patch:"16.23.1",champion:"Ashe",offMeta:true}});
+    const data = {champion:"ashe",items:[3006],offMeta:true,keystoneId:8465,keystone:{id:1,name:"Injected"}};
+    const draft = {kind:"build" as const,body:"Early boots"};
+    expect(await preparePost({...draft,data:{...data,patch:"16.23.1"}})).toMatchObject({ok:true,data:{patch:"16.23.1",champion:"Ashe",offMeta:true,keystone:{id:8465,name:"Guardian"}}});
+    expect(await preparePost({...draft,data})).toMatchObject({ok:true,data:{patch:"16.23.1"}});
+    expect(await preparePost({...draft,data:{...data,patch:"35.9"}})).toMatchObject({ok:false,error:expect.stringContaining("The patch changed")});
+    expect(await preparePost({...draft,data:{...data,keystoneId:1}})).toMatchObject({ok:false});
+    expect(await preparePost({...draft,body:"   ",data})).toMatchObject({ok:false,error:expect.stringContaining("Explain")});
     expect((await preparePost({kind:"build",body:"Unknown item",data:{champion:"Ashe",items:[99999]}})).ok).toBe(false);
     riot.championCatalog.mockResolvedValue({current:false,patch:"16.22.1",list:[{name:"Ashe",id:"Ashe"}]});
     expect((await preparePost({kind:"build",body:"Catalog expired",data:{champion:"Ashe",items:[3006]}})).ok).toBe(false);
   });
   it.each([[true, "victory", "defeat"], [false, "defeat", "victory"]] as const)(
     "derives %s cards and motion from the snapshot without persisting client overrides", async (win, motion, supplied) => {
-    riot.getCachedPlayer.mockResolvedValue({gameName:"Example",tagLine:"NA1",puuid:"player",snapshot:{matches:[{matchId:"NA1_1",kills:3,champion:"Ashe",win,items:[],teamBaronKills:2}]}});
+    match.resolveQuestionMatch.mockResolvedValue({sourcePuuid:"player",preview:{platform:"na1",riotId:"Example#NA1",matchId:"NA1_1",
+      kills:3,deaths:2,assists:5,cs:93,champion:"Ashe",win,items:[],authorRole:"spectator"},baron:{teamBaronKills:2}});
     const result = await preparePost({kind:"card",body:"Last match",data:{puuid:"player",matchId:"NA1_1",motion:supplied,match:{win:!win,kills:100,teamBaronKills:99},extra:"private"}});
     expect(result).toMatchObject({ok:true,data:{riotId:"Example#NA1",motion,match:{win,kills:3,teamBaronKills:2}}});
     if(result.ok) expect(result.data).not.toHaveProperty("extra");
   });
   it("does not assign motion to an incomplete match record", async () => {
-    riot.getCachedPlayer.mockResolvedValue({snapshot:{matches:[{matchId:"NA1_1",champion:"Ashe"}]}});
+    match.resolveQuestionMatch.mockResolvedValue(null);
     expect(await preparePost({kind:"card",body:"Last match",data:{puuid:"player",matchId:"NA1_1",motion:"victory"}})).toMatchObject({ok:false});
   });
 });

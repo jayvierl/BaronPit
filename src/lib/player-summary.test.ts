@@ -72,11 +72,11 @@ describe("public Riot profile summary", () => {
     }));
     const player = playerFromRow({...row,snapshot:{matches,rankedEntries:[solo]}});
     expect(publicPlayerSummary(player)).toMatchObject({
-      sampleGames:20,topRole:{name:"Mid / Support",games:8},
+      sampleGames:20,sampleRecord:{wins:0,losses:20,winRate:0},topRole:{name:"Mid / Support",games:8},
       champions:[{name:"Ashe",games:8},{name:"Jhin",games:8},{name:"Janna",games:4}],rankedGames:100,
     });
     expect(publicPlayerSummary(playerFromRow({...row,snapshot:{
       games:3,wins:1,losses:2,kda:2,roles:{"":3},champPool:[{champion:"Ashe",games:3,wins:1,kda:2}],
-    }}))).toMatchObject({sampleGames:3,topRole:null,champions:[{name:"Ashe",games:3}]});
+    }}))).toMatchObject({sampleGames:0,sampleRecord:null,topRole:null,champions:[]});
   });
 });

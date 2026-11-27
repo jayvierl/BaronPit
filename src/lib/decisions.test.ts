@@ -9,10 +9,14 @@ import {
   trialOptions,
   setQuestionPreference,
   questionPreference,
+  myDecisionProgress,
+  profileMatchDiscussions,
 } from "./decisions";
 import { q } from "./db";
 import type { User } from "./auth";
-import { addComment } from "./social";
+import { addComment, getPost } from "./social";
+import { readQuestionMatch } from "./question-match";
+import { discussionMetadata } from "./discussion-library-preview";
 
 vi.mock("@neondatabase/serverless", async () => ({
   neon: (await import("../../test/postgres")).neonForTests,
@@ -85,6 +89,12 @@ describe("moderated decision questions", () => {
     expect(await questionPreference(2)).toEqual({ role: "Bot", champion: "Ashe" });
     expect(await decisions(2, { mode: "mine" })).toMatchObject([{ postId: question }]);
     expect(await decisions(3, { mode: "mine" })).toEqual([]);
+    await q`UPDATE wp_posts SET replies_closed=true WHERE id=${question}`;
+    expect(await decisions(null, { mode: "unanswered", postId: question })).toEqual([]);
+    expect(await decisions(2, { mode: "mine" })).toEqual([]);
+    expect(await decisions(null, { postId: question })).toMatchObject([{ postId: question }]);
+    await q`UPDATE wp_posts SET replies_closed=false WHERE id=${question}`;
+    expect(await decisions(2, { mode: "mine" })).toMatchObject([{ postId: question }]);
     await setQuestionPreference(2, { role: "Mid" });
     expect(await questionPreference(2)).toEqual({ role: "Mid", champion: null });
     expect(await decisions(2, { mode: "mine" })).toEqual([]);
@@ -93,7 +103,7 @@ describe("moderated decision questions", () => {
   });
   it("retains only an actual inventory item and its catalog name on the submitted game decision", async () => {
     const match = {
-      matchId: "first",
+      matchId: "NA1_101",
       gamePatch: "16.22",
       champion: "Ashe",
       items: [3031],
@@ -105,16 +115,17 @@ describe("moderated decision questions", () => {
       deaths: 2,
       assists: 11,
       cs: 186,
-      playedAt: Date.now(),
+      playedAt: Date.now() - 1000,
     };
-    await q`UPDATE wp_players SET snapshot=${JSON.stringify({ matches: [match] })}::jsonb WHERE puuid='player'`;
+    await q`UPDATE wp_players SET fetched_at=now(), snapshot=${JSON.stringify({ matches: [match] })}::jsonb WHERE puuid='player'`;
     const draft = {
       body: "Was this item right before dragon?",
       champion: "Ashe",
       role: "Bot",
       topic: "Laning",
       puuid: "player",
-      matchId: "first",
+      matchId: "NA1_101",
+      confirmPublicMatch: true,
       itemId: 3031,
       itemName: "Invented item name",
       patch: "26.99",
@@ -149,6 +160,9 @@ describe("moderated decision questions", () => {
     expect(await acceptDecision(3, question, answer)).toBe(false);
     expect(await acceptDecision(1, question, self.ok ? self.postId : 0)).toBe(false);
     expect(await acceptDecision(1, question, answer)).toBe(true);
+    expect((await myDecisionProgress(1,null,true)).entries).toMatchObject([{postId:question,answer:{id:answer},outcome:null}]);
+    expect((await myDecisionProgress(1,question,true)).entries).toEqual([]);
+    expect((await myDecisionProgress(2,null,false)).entries).toEqual([]);
     expect(
       await decisions(null, { mode: "answered", q: "cover the river", opponent: "Caitlyn", topic: "Objective" }),
     ).toMatchObject([{ answer: { id: answer, name: "Helper" } }]);
@@ -158,12 +172,81 @@ describe("moderated decision questions", () => {
     expect(await decisions(3, { mode: "answered", topic: "Objective" })).toEqual([]);
     expect(await decisions(3, { q: "cover the river" })).toEqual([]);
   });
+  it("lets an unlinked spectator attach recent public evidence without claiming ownership or duplicating retries", async () => {
+    const playedAt = Date.now() - 60_000;
+    const match = { matchId:"NA1_8871",champion:"Ashe",opponentChampion:"Caitlyn",gamePatch:"16.22",queueId:420,
+      playedAt, durationSec:1900,win:true,kills:4,deaths:2,assists:11,cs:186,role:"BOTTOM",items:[3031],
+      teams:{allies:[{name:"omit roster"}]} };
+    const proof = { platform:"na1",riotId:"Target Name#LAB",matchId:match.matchId };
+    const hidden = { ...proof, matchId:"NA1_8872" };
+    const aram = { ...proof, matchId:"NA1_8873" };
+    await q`INSERT INTO wp_users(id,email,display_name) VALUES(5,'source@example.test','Match Owner')`;
+    await q`INSERT INTO wp_players(puuid,platform,game_name,tag_line,snapshot)
+      VALUES('private-source-key','na1','Target Name','LAB',${JSON.stringify({matches:[{...match,matchId:hidden.matchId,queueId:0}],
+        olderMatches:[match,{...match,matchId:aram.matchId,queueId:450}]})}::jsonb)`;
+    await q`INSERT INTO wp_links(user_id,puuid,verified) VALUES(5,'private-source-key',true)`;
+    expect(await readQuestionMatch(proof,3)).toMatchObject({ authorRole:"spectator",queueId:420,region:"na1",patch:"26.22",items:[3031],
+      matchHref:"/player?platform=na1&riotId=Target+Name%23LAB&match=NA1_8871#match-NA1_8871" });
+    expect(await readQuestionMatch(proof,5)).toMatchObject({ authorRole:"player" });
+    expect(await readQuestionMatch(hidden,5)).toBeNull();
+    expect(await readQuestionMatch(aram,3)).toMatchObject({ role:"TEAM", queueId:450 });
+    expect(await readQuestionMatch({...proof,platform:"euw1"},3)).toBeNull();
+    const reader = {...owner,id:3};
+    const draft = { ...proof, body:"Would Ashe save the cooldown for the next dragon?",champion:"Ashe",role:"Bot",topic:"Objective",
+      discussionKind:"perspective", submissionId:"ebdf20ac-2040-4918-b988-997dca4affbd",authorRole:"player",queueId:0,patch:"99.99",
+      matchContext:{ kills:7000, riotId:"Forged" } };
+    expect(await askDecision(reader,draft)).toMatchObject({ok:false,error:expect.stringContaining("public before posting")});
+    expect(await askDecision(reader,{...draft,confirmPublicMatch:true,champion:"Caitlyn"})).toMatchObject({ok:false});
+    const result = await askDecision(reader,{...draft, confirmPublicMatch:true});
+    if (!result.ok) throw Error(result.error);
+    const { postId } = result;
+    try {
+      const post = await getPost(postId,null);
+      expect(post).toMatchObject({ authorId:3,isQuestion:false,roomSlug:"champ-ashe",data:{matchContext:{authorRole:"spectator",discussionKind:"perspective",
+        patch:"26.22",queueId:420,kills:4}} });
+      expect(JSON.stringify(post)).not.toMatch(/private-source-key|Forged|omit roster|7000/);
+      expect(await decisions(null,{postId})).toMatchObject([{matchContext:{authorRole:"spectator",discussionKind:"perspective"}}]);
+      expect((await profileMatchDiscussions(3,null,null)).entries).toMatchObject([{postId,matchContext:{discussionKind:"perspective"}}]);
+      expect((await profileMatchDiscussions(1,null,null)).entries).toEqual([]);
+      expect((await profileMatchDiscussions(3,null,postId)).entries).toEqual([]);
+      expect((await myDecisionProgress(3,null,false)).entries).toEqual([]);
+      const neutral = await askDecision(reader,{ ...aram,body:"Should the team reset before this fight?",champion:"Ashe",topic:"Teamfight",confirmPublicMatch:true });
+      expect(neutral.ok).toBe(true);
+      if(neutral.ok) {
+        expect(await decisions(null,{postId:neutral.postId})).toMatchObject([{role:"Team",matchContext:{role:"TEAM"}}]);
+        await q`DELETE FROM wp_posts WHERE id=${neutral.postId}`;
+      }
+      expect(await askDecision(reader,{body:"How can I play the next teamfight?",champion:"Ashe",role:"Team",topic:"Teamfight"})).toMatchObject({ok:false});
+      expect(await decisions(null,{postId,mode:"unanswered"})).toEqual([]);
+      const reply = await addComment({...owner,id:1},postId,"That depends on how the wave pushes.");
+      expect(reply.ok).toBe(true);
+      if (reply.ok) {
+        expect(await acceptDecision(3,postId,reply.postId)).toBe(false);
+        expect(await recordTrial(3,postId,reply.postId,"helped",null)).toBe(false);
+      }
+      expect((await discussionMetadata(String(postId))).title).toContain("perspective");
+      await q`INSERT INTO wp_blocks(blocker_id,blocked_id) VALUES (5,2)`;
+      expect(await readQuestionMatch(proof,2)).toBeNull();
+      expect(await getPost(postId,{...owner,id:2})).toBeNull();
+      expect(await decisions(2,{postId})).toEqual([]);
+      expect((await profileMatchDiscussions(3,2,null)).entries).toEqual([]);
+      expect((await discussionMetadata(String(postId),2)).openGraph).toBeUndefined();
+      await q`UPDATE wp_players SET fetched_at=now()-interval '25 hours',snapshot='{}'::jsonb WHERE puuid='private-source-key'`;
+      expect(await readQuestionMatch(proof,3)).toBeNull();
+      expect(await askDecision(reader,{...draft,confirmPublicMatch:true})).toMatchObject({ok:true,postId});
+      expect(await getPost(postId,null)).toMatchObject({body:draft.body,data:{matchContext:{matchId:match.matchId}}});
+    } finally {
+      await q`DELETE FROM wp_posts WHERE id=${postId}`;
+    }
+  });
   it("verifies game ownership and time for optional evidence, preserves a chosen result, and suppresses hidden answers", async () => {
+    await q`UPDATE wp_decisions SET accepted_at=now()-interval '10 minutes' WHERE post_id=${question}`;
     const matches = [
       {
         matchId: "later",
         champion: "Ashe",
-        playedAt: Date.now() + 3600000,
+        playedAt: Date.now() - 1000,
+        queueId: 420,
         win: true,
         kills: 3,
         deaths: 2,
@@ -173,13 +256,14 @@ describe("moderated decision questions", () => {
         matchId: "earlier",
         champion: "Ashe",
         playedAt: Date.now() - 3600000,
+        queueId: 420,
         win: false,
         kills: 0,
         deaths: 2,
         assists: 1,
       },
     ];
-    await q`UPDATE wp_players SET snapshot=${JSON.stringify({ matches })}::jsonb WHERE puuid='player'`;
+    await q`UPDATE wp_players SET fetched_at=now(),snapshot=${JSON.stringify({ matches })}::jsonb WHERE puuid='player'`;
     expect(await trialOptions(1, question)).toEqual([]);
     expect(await recordTrial(2, question, answer, "helped", null)).toBe(false);
     expect(await recordTrial(1, question, answer, "mixed", "later")).toBe(false);
@@ -197,6 +281,14 @@ describe("moderated decision questions", () => {
     expect(await decisions(null, { postId: question })).toMatchObject([
       { outcome: "still-testing", trialMatch: { matchId: "later" } },
     ]);
+    expect((await myDecisionProgress(1,null,true)).entries).toEqual([]);
+    expect((await myDecisionProgress(1,null,false)).entries).toMatchObject([{postId:question,outcome:"still-testing"}]);
+    // Withdrawal can retain a protected reply body for moderators while keeping its status column.
+    await q`UPDATE wp_comments SET withdrawn_at=now() WHERE id=${answer}`;
+    expect(await decisions(null, { postId: question })).toMatchObject([{answer:null,outcome:null,trialMatch:null}]);
+    expect((await myDecisionProgress(1,null,false)).entries).toMatchObject([{postId:question,answer:null,outcome:null}]);
+    expect(await acceptDecision(1,question,answer)).toBe(false);
+    expect(await recordTrial(1,question,answer,"helped",null)).toBe(false);
     await q`UPDATE wp_comments SET status='held' WHERE id=${answer}`;
     expect(await decisions(null, { postId: question })).toMatchObject([
       { answer: null, trialMatch: null, outcome: null },

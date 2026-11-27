@@ -2,6 +2,7 @@ import { DuoEveningTotals } from "@/components/duo-evening";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser, isAdmin, isBanned } from "@/lib/auth";
+import { matchDiscussionMetrics } from "@/lib/match-discussion-metrics";
 import { pilotDashboard } from "@/lib/pilot";
 import { featuredResults } from "@/lib/featured-sample";
 import { DuoPilotResults } from "@/components/duo-pilot-results";
@@ -24,7 +25,7 @@ export default async function AdminPilotPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/signin?next=%2Fadmin%2Fpilot");
   if (!isAdmin(user.email) || isBanned(user)) notFound();
-  const [data, feature] = await Promise.all([pilotDashboard().catch(() => null), featuredResults().catch(() => null)]);
+  const [data, feature, discussions] = await Promise.all([pilotDashboard().catch(() => null), featuredResults().catch(() => null), matchDiscussionMetrics().catch(() => null)]);
   if (!data)
     return (
       <div>
@@ -143,6 +144,20 @@ export default async function AdminPilotPage() {
           </p>
         </article>
       ))}
+      <section aria-labelledby="match-loop-results">
+        <h2 id="match-loop-results" className="section">Match discussions</h2>
+        {discussions ? <>
+          <p className="meta">Public posting activity during the past 28 days, including people without a linked Riot account. Counts exclude hosts, service accounts, designated test accounts and withdrawn content.</p>
+          <dl>
+            <dt>First visible match discussion among public posting authors</dt><dd>{fraction(discussions.firstPost, discussions.postingAuthors)}</dd>
+            <dt>Posted on at least two UTC dates</dt><dd>{fraction(discussions.repeatPost, discussions.contextualAuthors)}</dd>
+            <dt>Match questions with an independent reply within 24 hours</dt><dd>{fraction(discussions.answered, discussions.questions)}</dd>
+            <dt>Median time from submission to first qualifying reply</dt><dd>{discussions.medianMinutes === null ? "No qualifying replies yet" : Math.round(discussions.medianMinutes) + " min"}</dd>
+            <dt>Day-seven return in the separate opt-in ranked bot/support pilot (up to 40 entrants)</dt><dd>{fraction(discussions.returned, discussions.returnEligible)}</dd>
+          </dl>
+          <p className="meta">The reply rate covers currently visible questions submitted at least 24 hours ago. Time in moderation counts toward those 24 hours. Counted replies are currently visible top-level responses from another player. Use the reviewed sample above to assess usefulness.</p>
+        </> : <p role="status">Match discussion measurements are unavailable.</p>}
+      </section>
       <PilotReview reviews={data.reviews} monday={mondayUtc()} />
       <Link href="/pilot">View enrollment</Link>
     </div>

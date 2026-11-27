@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ChampionPortrait } from "./champion-portrait";
 import { useSyncExternalStore } from "react";
+import { championClasses, championDirectoryFilters, championDirectoryHref } from "@/lib/champion-navigation";
 import type { ChampionInfo } from "@/lib/riot";
+import { ChampionPortrait } from "./champion-portrait";
+import styles from "./champion-directory.module.css";
 
 function subscribe(onChange: () => void) {
   window.addEventListener("popstate", onChange);
@@ -13,83 +15,70 @@ function subscribe(onChange: () => void) {
     window.removeEventListener("champion-filter", onChange);
   };
 }
-function setFilter(value: string) {
+
+function setFilter(name: "q" | "class", value: string) {
   const url = new URL(window.location.href);
-  if (value) url.searchParams.set("q", value);
-  else url.searchParams.delete("q");
+  if (value) url.searchParams.set(name, value);
+  else url.searchParams.delete(name);
   window.history.replaceState(null, "", url);
   window.dispatchEvent(new Event("champion-filter"));
 }
 
-export function ChampionDirectory({ champions, patch, roomSlugs }: {
-  champions: ChampionInfo[]; patch: string; roomSlugs: string[];
+export function ChampionDirectory({ champions, patch, roomSlugs, initial }: {
+  champions: ChampionInfo[];
+  patch: string;
+  roomSlugs: string[];
+  initial: ReturnType<typeof championDirectoryFilters>;
 }) {
-  const query = useSyncExternalStore(
-    subscribe,
-    () => new URLSearchParams(window.location.search).get("q") || "",
-    () => "",
-  );
-  const filter = query.trim().toLowerCase();
+  const search = useSyncExternalStore(subscribe, () => window.location.search, () => championDirectoryHref(initial).slice("/champions".length));
+  const query = new URLSearchParams(search);
+  const filters = championDirectoryFilters(query.get("q"), query.get("class"));
+  const needle = filters.q.trim().toLowerCase();
+  const filtered = Boolean(needle || filters.tag);
   const publicRooms = new Set(roomSlugs);
-  const shown = filter
-    ? champions.filter(
-        (champion) =>
-          champion.name.toLowerCase().includes(filter) || champion.id.toLowerCase().includes(filter),
-      )
-    : champions;
+  const directory = championDirectoryHref(filters);
+  const shown = filtered ? champions.filter(champion => (
+    (!needle || champion.name.toLowerCase().includes(needle) || champion.id.toLowerCase().includes(needle)) &&
+    (!filters.tag || champion.tags.includes(filters.tag))
+  )) : champions;
+
   return (
     <>
-      <div style={{ margin: "12px 0 18px" }}>
-        <input
-          className="inline"
-          type="search"
-          aria-label="Filter champions"
-          name="q"
-          placeholder="Filter champions…"
-          value={query}
-          onChange={(event) => setFilter(event.target.value)}
-          style={{ width: "min(100%, 260px)" }}
-        />
-        {query && (
-          <button type="button" className="text-btn" onClick={() => setFilter("")}>
-            Clear
-          </button>
-        )}
-        <div className="meta" role="status">
-          {filter &&
-            (shown.length
-              ? `${shown.length} matching champion${shown.length === 1 ? "" : "s"}`
-              : "No champions match that name.")}
-        </div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
-        {shown.map((c) => {
-          const roomSlug = `champ-${c.id.toLowerCase()}`;
+      <form action="/champions" method="get" className={styles.toolbar} aria-label="Champion filters">
+        <input className="inline" type="search" aria-label="Filter champions" name="q" placeholder="Champion name"
+          value={filters.q} maxLength={80} onChange={event => setFilter("q", event.target.value)} />
+        <select className="inline" name="class" aria-label="Champion class" value={filters.tag}
+          onChange={event => setFilter("class", event.target.value)}>
+          <option value="">All classes</option>
+          {championClasses.map(tag => <option key={tag} value={tag}>{tag}</option>)}
+        </select>
+        <button className="btn small secondary" type="submit">Apply</button>
+        {filtered && <Link href="/champions" className={styles.clear} prefetch={false}>Clear filters</Link>}
+      </form>
+      {filtered && <p className={styles.result} role="status">{shown.length
+        ? `${shown.length} matching champion${shown.length === 1 ? "" : "s"}`
+        : "No champions match these filters."}</p>}
+      {shown.length > 0 && <ul className={styles.grid} role="list">
+        {shown.map(champion => {
+          const roomSlug = `champ-${champion.id.toLowerCase()}`;
+          const room = `/rooms/${encodeURIComponent(roomSlug)}` + (filtered ? `?${new URLSearchParams({ from: directory })}` : "");
           return (
-            <div key={c.id} className="card" style={{ padding: 13 }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <ChampionPortrait id={c.id} patch={patch}/>
+            <li key={champion.id} className={styles.card}>
+              <div className={styles.identity}>
+                <ChampionPortrait id={champion.id} patch={patch} size={44} />
                 <div>
-                  <strong style={{ fontSize: 15 }}>{c.name}</strong>
-                  <div className="meta" style={{ fontSize: 12 }}>
-                    {c.tags.join(" · ")}
-                  </div>
+                  <strong>{champion.name}</strong>
+                  <small>{champion.tags.join(" · ")}</small>
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 10, marginTop: 9, fontSize: 13, fontWeight: 700 }}>
-                {publicRooms.has(roomSlug) && (
-                  <Link aria-label={c.name + " room"} href={`/rooms/${roomSlug}`} prefetch={false}>
-                    Room
-                  </Link>
-                )}
-                <Link aria-label={c.name + " builds"} href={`/builds?champ=${encodeURIComponent(c.id)}`}>
-                  Builds
-                </Link>
+              <div className={styles.links}>
+                {publicRooms.has(roomSlug) && <Link aria-label={`${champion.name} room`} href={room} prefetch={false}>Room</Link>}
+                <Link aria-label={`${champion.name} builds`} href={`/builds?${new URLSearchParams({ champ: champion.id })}`} prefetch={false}>Builds</Link>
               </div>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ul>}
     </>
   );
 }

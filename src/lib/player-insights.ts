@@ -1,15 +1,16 @@
 import { cache } from "react";
-import { q, queryRows } from "./db";
+import { queryRows } from "./db";
 import { HIDDEN_AUTHORS, BLOCKED_AUTHORS } from "./community-queries";
 import { playerFlair, readRankedEntries } from "./player-summary";
 import { currentWinStreak } from "./current-win-streak";
 import { playerFromRow, type Player } from "./riot";
 import { fnvHash } from "./pure";
 import { publicAvatar } from "./avatar";
+import { publicQueueSql } from "./public-match-queues";
 import { SOCIAL_PLAYER_SELECT } from "./social-player-select";
 
 function linkedRows(userId: number, includeMatches: boolean) {
-  const columns = includeMatches ? `${SOCIAL_PLAYER_SELECT}, p.snapshot #> '{champPool,0,champion}' AS main`
+  const columns = includeMatches ? SOCIAL_PLAYER_SELECT
     : "p.puuid,p.platform,p.game_name,p.tag_line,p.profile_icon,p.rank_tier,p.rank_div,p.rank_lp,p.fetched_at,p.snapshot->'rankedEntries' AS entries";
   return queryRows(`SELECT ${columns}, l.is_primary,
     (l.verified AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.verified AND other.puuid=l.puuid AND other.user_id<>l.user_id)) AS verified
@@ -32,7 +33,7 @@ export async function linkedPlayers(userId: number) {
     const player = playerFromRow(row);
     const verified = row.verified === true;
     return { ...player, primary: row.is_primary === true, verified: row.verified === true,
-      flair: verified ? playerFlair(player, row.main) : null,
+      flair: verified ? playerFlair(player, player.snapshot.champPool[0]?.champion) : null,
       winStreak: verified ? currentWinStreak(row.snapshot, player.fetchedAt) : null };
   });
 }
@@ -48,7 +49,8 @@ export async function publicRiotOwner(puuid: string, viewerId: number | null) {
 
 type Trend = { champion: string; games: number };
 let trends: { until: number; items: Promise<Trend[]> } | undefined;
-export function trendingChampions(): Promise<Trend[]> {
+export function trendingChampions(viewerId: number | null = null): Promise<Trend[]> {
+  if (viewerId !== null) return readTrends(viewerId);
   if (trends && trends.until > Date.now()) return trends.items;
   const items = readTrends().catch((error) => {
     if (trends?.items === items) trends = undefined;
@@ -58,28 +60,50 @@ export function trendingChampions(): Promise<Trend[]> {
   return items;
 }
 
-async function readTrends() {
-  const rows = await q`WITH sample AS (
-    SELECT snapshot->'champPool' AS pool FROM wp_players WHERE snapshot <> '{}'::jsonb
-    ORDER BY fetched_at DESC, puuid LIMIT 200
-  ) SELECT c.champion, sum(c.games)::integer AS games FROM sample
-    CROSS JOIN LATERAL jsonb_to_recordset(sample.pool) AS c(champion text,games integer)
-    GROUP BY c.champion ORDER BY games DESC,c.champion LIMIT 6`;
-  return rows.map((row) => ({ champion: String(row.champion), games: Number(row.games) }));
+// Bound the candidate snapshots before expanding JSON; count each player's
+// appearance once per public match, even on a malformed/duplicated legacy row.
+function publicAppearances(limit: 200 | 300) {
+  return `WITH ${HIDDEN_AUTHORS}, sample AS MATERIALIZED (
+    SELECT puuid, game_name, tag_line, platform, snapshot->'matches' AS matches
+    FROM wp_players p WHERE snapshot <> '{}'::jsonb AND NOT EXISTS (
+      SELECT 1 FROM wp_links l WHERE l.puuid=p.puuid AND l.verified AND l.user_id IN (SELECT id FROM hidden))
+    ORDER BY fetched_at DESC, puuid LIMIT ${limit}
+  ), appearances AS (
+    SELECT DISTINCT ON (s.puuid,m->>'matchId') s.puuid,s.game_name,s.tag_line,s.platform,
+      m->>'champion' AS champion,m->'win'='true'::jsonb AS win,m->>'role' AS role
+    FROM sample s CROSS JOIN LATERAL jsonb_array_elements(
+      CASE WHEN jsonb_typeof(s.matches)='array' THEN s.matches ELSE '[]'::jsonb END
+    ) WITH ORDINALITY AS records(m,pos)
+    WHERE pos<=20 AND ${publicQueueSql("m")} AND m->>'matchId' ~ '^[A-Z0-9]+_[0-9]{1,20}$'
+      AND m->>'champion' ~ '^[A-Za-z][A-Za-z0-9]{0,63}$' AND jsonb_typeof(m->'win')='boolean'
+    ORDER BY s.puuid,m->>'matchId',pos
+  )`;
 }
 
-export async function championRoomPulse(champion: string) {
-  const rows = await q`WITH sample AS (
-    SELECT game_name, tag_line, platform, snapshot->'champPool' AS pool FROM wp_players
-    WHERE snapshot <> '{}'::jsonb ORDER BY fetched_at DESC, puuid LIMIT 300
-  ) SELECT s.game_name,s.tag_line,s.platform,c.games,c.wins,
-    count(*) OVER () AS players,sum(c.games) OVER () AS all_games,sum(c.wins) OVER () AS all_wins
-    FROM sample s CROSS JOIN LATERAL jsonb_to_recordset(s.pool) AS c(champion text,games integer,wins integer)
-    WHERE c.champion=${champion} ORDER BY c.games DESC,s.game_name,s.tag_line,s.platform LIMIT 5`;
+async function readTrends(viewerId: number | null = null) {
+  const rows = await queryRows(`${publicAppearances(200)}
+    SELECT champion,count(*)::int AS games FROM appearances
+    GROUP BY champion ORDER BY games DESC, champion LIMIT 6`,[viewerId]);
+  return rows.map(row => ({champion:String(row.champion), games:Number(row.games)}));
+}
+
+export async function championRoomPulse(champion: string, viewerId: number | null = null) {
+  const rows = await queryRows(`${publicAppearances(300)}, selected AS MATERIALIZED (
+    SELECT * FROM appearances WHERE champion=$2
+  ), played AS (
+    SELECT game_name,tag_line,platform,count(*)::int AS games,count(*) FILTER(WHERE win)::int AS wins FROM selected
+    GROUP BY puuid,game_name,tag_line,platform
+  ), roles AS (
+    SELECT role,count(*)::int AS games FROM selected
+    WHERE role IN ('TOP','JUNGLE','MIDDLE','BOTTOM','UTILITY') GROUP BY role
+  ) SELECT played.*,count(*) OVER () AS players,sum(games) OVER () AS all_games,sum(wins) OVER () AS all_wins
+    ,(SELECT jsonb_agg(roles ORDER BY games DESC,role) FROM roles) AS role_counts
+    FROM played ORDER BY games DESC,game_name,tag_line,platform LIMIT 5`,[viewerId,champion]);
   return {
     players: Number(rows[0]?.players ?? 0),
     games: Number(rows[0]?.all_games ?? 0),
     wins: Number(rows[0]?.all_wins ?? 0),
+    roles: (rows[0]?.role_counts ?? []) as { role: "TOP" | "JUNGLE" | "MIDDLE" | "BOTTOM" | "UTILITY"; games: number }[],
     topPlayers: rows.map((row) => ({
       name: String(row.game_name),
       tag: String(row.tag_line),

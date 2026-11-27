@@ -5,6 +5,7 @@ import { currentPatch } from "@/lib/riot";
 import { JoinButton } from "@/components/social-ui";
 import { RoomDirectory } from "@/components/rooms-ui";
 import { RoomActivity, RoomThumbnail } from "@/components/room-artwork";
+import { signInHref } from "@/lib/signin-return";
 import styles from "./rooms.module.css";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +37,11 @@ export default async function RoomsPage() {
         ))}
       </div>
       <p><Link href="/pilot?from=community">Volunteer to answer player questions</Link></p>
-      <h2 className="section">Room directory</h2>
+      <h2 id="room-directory" tabIndex={-1} className={`section ${styles.directoryAnchor}`}>Room directory</h2>
+      <p className="meta">Join rooms for champions and topics you like. Their posts appear in your Following feed.</p>
+      <p><Link prefetch={false} className="text-btn" href={user ? "/?tab=following" : signInHref("/rooms#room-directory")}>
+        {user ? "Open Following" : "Sign in to join rooms"}
+      </Link></p>
       <RoomDirectory rooms={rooms} patch={patch} signedIn={Boolean(user)}/>
       <p><Link href="/lfg">Find a duo</Link></p>
     </div>

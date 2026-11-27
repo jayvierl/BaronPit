@@ -1,0 +1,6 @@
+.links { display: flex; flex-wrap: wrap; gap: .25rem 1rem; border-bottom: 1px solid var(--border); }
+.links a, .entry a { display: inline-flex; align-items: center; min-height: 40px; color: var(--accent-ink); }
+.links a[aria-current="page"] { font-weight: 700; text-decoration: underline; text-underline-offset: .2em; }
+.entry { padding: .8rem .1rem .45rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.entry h2 { margin: .25rem 0; font-size: 1rem; }
+.entry p { margin: .25rem 0; }

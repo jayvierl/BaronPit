@@ -1,10 +1,12 @@
 import { buildCatalog } from "./build-catalog";
+import { verifyBuildLoadout } from "./build-sharing";
 import { clipLink } from "./clip-link";
 import { gameCardMotion } from "./game-card-motion";
+import type { DiscussionKind } from "./match-context";
 import { hasBaronCallOptions } from "./poll";
 import { scoreContent } from "./moderation";
-import { teamBaronFields } from "./pure";
-import { championCatalog, confirmedPatch, getCachedPlayer } from "./riot";
+import { resolveQuestionMatch, type ResolvedQuestionMatch } from "./question-match";
+import { championCatalog, confirmedPatch } from "./riot";
 
 export type PostKind = "text" | "build" | "poll" | "card" | "clip" | "media";
 export type CreatePostInput = {
@@ -18,7 +20,9 @@ export type CreatePostInput = {
 type Draft = { ok: true; body: string; roomId: number | null; data: Record<string, unknown>; fields: string[] };
 type Problem = { ok: false; error: string };
 const invalid = (error: string): Problem => ({ ok: false, error });
-export async function preparePost(input: CreatePostInput): Promise<Draft | Problem> {
+export type CheckedMatchForPost = ResolvedQuestionMatch & { discussionKind?: DiscussionKind };
+
+export async function preparePost(input: CreatePostInput, viewerId: number | null = null, checkedMatch?: CheckedMatchForPost): Promise<Draft | Problem> {
   if (!input || typeof input.body !== "string") return invalid("Enter a caption or post.");
   const body = input.body.trim();
   if (body.length > 2000) return invalid("Keep your post under 2,001 characters.");
@@ -41,29 +45,33 @@ export async function preparePost(input: CreatePostInput): Promise<Draft | Probl
       return {...base, data: d.call === true ? {options, call: true} : {options}, fields: [body, ...options]};
     }
     case "build": {
+      if (!body) return invalid("Explain when you would use this build and why.");
       if (typeof d.champion !== "string" || d.champion.length > 64 || !Array.isArray(d.items) || !d.items.length || d.items.length > 6 ||
           !d.items.every(id => Number.isSafeInteger(id) && id > 0) || (d.runes != null && (typeof d.runes !== "string" || d.runes.length > 240))) {
         return invalid("Choose a champion and one to six items. Keep rune notes under 241 characters.");
       }
       const [patch, catalog] = await Promise.all([confirmedPatch(), championCatalog()]);
       if (!patch || !catalog.current || catalog.patch !== patch || !catalog.list.length) return invalid("The current patch catalog is unavailable. Your draft can be retried.");
+      if (d.patch != null && d.patch !== patch) return invalid("The patch changed while you were writing. Refresh and check your saved draft against the current shop.");
       const search = d.champion.trim().toLowerCase();
       const champion = catalog.list.find(c => c.id.toLowerCase() === search || c.name.toLowerCase() === search);
       if (!champion) return invalid("Choose a champion from the current catalog.");
       const shop = await buildCatalog(patch);
       if (shop.patch !== patch) return invalid("Item data is unavailable. Try posting this build again shortly.");
-      const available = new Set(shop.items.filter(i=>i.shop).map(i=>i.id));
-      if (!d.items.every(id => available.has(id))) return invalid("An item in this build is unavailable in the Summoner’s Rift shop on this patch.");
+      const loadout = verifyBuildLoadout(shop, d.items, d.keystoneId);
+      if (!loadout) return invalid("Choose items and a keystone available on this patch’s Summoner’s Rift catalog.");
       const runes = typeof d.runes === "string" ? d.runes.trim() : "";
-      return {...base, data: { champion: champion.id, items: d.items, runes, offMeta: d.offMeta === true, patch }, fields: [body, runes]};
+      return {...base, data: { champion: champion.id, items: loadout.items, ...(loadout.keystone && { keystone: loadout.keystone }),
+        runes, offMeta: d.offMeta === true, patch }, fields: [body, runes]};
     }
     case "card": {
-      if (typeof d.puuid !== "string" || d.puuid.length > 120 || typeof d.matchId !== "string" || d.matchId.length > 70) return invalid("Choose a recent match.");
-      const player = await getCachedPlayer(d.puuid);
-      const m = player?.snapshot.matches.find(match => match.matchId === d.matchId);
-      if (!player || !m || typeof m.win !== "boolean") return invalid("That match result is unavailable in the player’s recent form.");
-      return {...base, data: {puuid: player.puuid, matchId: m.matchId, riotId: player.gameName + "#" + player.tagLine, motion: gameCardMotion(m.win),
-        match: {champion:m.champion, win:m.win, kills:m.kills, deaths:m.deaths, assists:m.assists, cs:m.cs, items:m.items, ...teamBaronFields(m)}}, fields:[body]};
+      const resolved = checkedMatch ?? await resolveQuestionMatch(d, viewerId);
+      if (!resolved) return invalid("That public match is unavailable. Open the player’s match history and try again.");
+      const { items, ...matchContext } = resolved.preview;
+      const { champion, win, kills, deaths, assists, cs, matchId, platform, riotId } = matchContext;
+      return { ...base, data: { puuid: resolved.sourcePuuid, matchId, platform, riotId, motion: gameCardMotion(win),
+        matchContext: { ...matchContext, discussionKind: checkedMatch?.discussionKind },
+        match: { champion, win, kills, deaths, assists, cs, items, queueId: matchContext.queueId, ...resolved.baron } }, fields: [body] };
     }
     case "clip": {
       const url = clipLink(d.url);

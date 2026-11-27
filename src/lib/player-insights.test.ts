@@ -60,9 +60,9 @@ describe("bounded player and community data queries", () => {
       { champion: "Ashe", games: 2400 },
       { champion: "Lux", games: 1600 },
     ]);
-    expect(pulse).toMatchObject({ players: 200, games: 2400, wins: 1200 });
+    expect(pulse).toMatchObject({ players: 200, games: 2400, wins: 1200, roles: [{ role: "BOTTOM", games: 2400 }] });
     expect(pulse.topPlayers).toHaveLength(5);
-    expect(await championRoomPulse("Zed")).toEqual({ players: 0, games: 0, wins: 0, topPlayers: [] });
+    expect(await championRoomPulse("Zed")).toEqual({ players: 0, games: 0, wins: 0, roles: [], topPlayers: [] });
     const oldBytes = Buffer.byteLength(JSON.stringify(old));
     const trendBytes = Buffer.byteLength(JSON.stringify(trends));
     expect(trendBytes * 10).toBeLessThan(oldBytes);
@@ -164,7 +164,7 @@ describe("bounded player and community data queries", () => {
     await q`INSERT INTO wp_links(user_id,puuid,verified) VALUES (500,'flair',true)`;
     const [post] = await q`INSERT INTO wp_posts(author_id,kind,body) VALUES (500,'text','My post') RETURNING id`;
     for (const [snapshot,expected] of [
-      [{ champPool:[{ champion:"Ashe" }] }, "Gold IV · Ashe main"],
+      [{ champPool:[{ champion:"Ashe" }] }, "Gold IV"],
       [{ champPool:[] }, "Gold IV"], [{}, "Gold IV"], [{ champPool:[{ champion:{name:"Ashe"} }] }, "Gold IV"],
     ] as const) {
       await q`UPDATE wp_players SET snapshot=${JSON.stringify(snapshot)}::jsonb WHERE puuid='flair'`;

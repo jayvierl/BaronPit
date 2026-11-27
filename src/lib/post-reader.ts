@@ -1,23 +1,31 @@
 import { buildCatalog, cardItems } from "./build-catalog";
+import { buildKeystone } from "./build-sharing";
 import { clipLink } from "./clip-link";
 import { gameCardMotion } from "./game-card-motion";
+import { postDataProjection, questionDecisionPost } from "./match-card-projection";
+import { matchRegion, projectMatchContext, safeMatchRiotId } from "./match-context";
+import { isPublicMatchQueue, publicQueueSql } from "./public-match-queues";
 import { hasBaronCallOptions } from "./poll";
 import { briefingText, PATCH_PUBLISHER, publicPatch, storedNotesUrl } from "./patch-notes";
 import { queryRows } from "./db";
 import { HIDDEN_AUTHORS, canDisplayPost, visibleCommentsFor } from "./community-queries";
 import { placedRank, PLAYER_CACHE_TTL_MS, playerFlair, readRankedEntries } from "./player-summary";
 import { currentWinStreak } from "./current-win-streak";
-import { playerStatsHref } from "./platforms";
+import { isPlatform, playerStatsHref } from "./platforms";
 import { publicAvatar } from "./avatar";
 import { teamBaronFields } from "./pure";
 import { followedReposts, repostableContent } from "./reposts";
+import { quoteProjectionJoin } from "./quote-queries";
 import type { PostView, CommentView } from "./post-types";
+import { feedCursor, type FeedCursor, type HomeFeedTab } from "./feed-pagination";
 
 type Filter = {
   roomId?: number; authorId?: number; postId?: number; following?: boolean; activeReplies?: boolean;
-  builds?: { champion?: string; offMeta?: boolean }; tag?: string; text?: string;
+  builds?: { champion?: string; item?: number; offMeta?: boolean }; tag?: string; text?: string;
   kind?: "poll" | "build"; questions?: boolean;
+  page?: { asOf: string; before: FeedCursor | null };
 };
+type PagingPost = PostView & { cursorAt?: string };
 type ReactionGroup = { reactions: Record<string, number>; myReactions: string[] };
 
 const record = (value: unknown): Record<string, unknown> =>
@@ -41,17 +49,22 @@ function publicPostData(kind: unknown, raw: unknown): Record<string, unknown> {
     case "build":
       return { champion: championId(d.champion), items: itemIds(d.items, 6),
         patch: typeof d.patch === "string" && /^\d+\.\d+(?:\.\d+)?$/.test(d.patch) ? d.patch : null,
-        runes: typeof d.runes === "string" ? d.runes.slice(0,240) : "", offMeta: d.offMeta === true };
+        runes: typeof d.runes === "string" ? d.runes.slice(0,240) : "", keystone: buildKeystone(d.keystone), offMeta: d.offMeta === true };
     case "card": {
       const m = record(d.match);
       if (!championId(m.champion) || typeof m.win !== "boolean" ||
           ![m.kills,m.deaths,m.assists,m.cs].every(n => typeof n === "number" && Number.isSafeInteger(n) && n >= 0)) return {};
+      const matchContext = projectMatchContext(d.matchContext);
+      const queueId = matchContext?.queueId ?? (isPublicMatchQueue(m.queueId) ? m.queueId : undefined);
+      const platform = matchContext?.platform ?? (typeof d.platform === "string" && isPlatform(d.platform) ? d.platform : null);
+      const riotId = platform ? safeMatchRiotId(d.riotId, platform) : null;
       return {
-        ...(typeof d.matchId === "string" && d.matchId.length <= 70 ? { matchId: d.matchId } : {}),
-        ...(typeof d.puuid === "string" && d.puuid.length <= 120 ? { puuid: d.puuid } : {}),
-        riotId: typeof d.riotId === "string" ? d.riotId : null,
+        ...(typeof d.matchId === "string" && matchRegion(d.matchId) && riotId ? { matchId: d.matchId, platform } : {}),
+        ...(matchContext ? { matchContext } : {}),
+        riotId,
         motion: gameCardMotion(m.win),
-        match: { champion: m.champion, win: m.win, kills: m.kills, deaths: m.deaths, assists: m.assists, cs: m.cs, items: itemIds(m.items, 7), ...teamBaronFields(m) }};
+        match: { champion: m.champion, win: m.win, kills: m.kills, deaths: m.deaths, assists: m.assists, cs: m.cs, items: itemIds(m.items, 7),
+          ...(queueId === undefined ? {} : { queueId }), ...teamBaronFields(m) }};
     }
     case "clip": {
       const url = clipLink(d.url);
@@ -78,40 +91,29 @@ async function reactionsFor(kind: "post" | "comment", ids: number[], viewerId: n
   return groups;
 }
 
-// The original schema recorded no source marker. Only trust an old match while its
-// identity and scoreboard can still be reconstructed from the player's Riot snapshot.
-const postDataProjection = `CASE WHEN p.kind = 'card' AND NOT p.card_validated THEN coalesce((
-  SELECT jsonb_build_object('puuid', pl.puuid, 'riotId', pl.game_name || '#' || pl.tag_line,
-    'matchId', m->>'matchId', 'match', jsonb_build_object(
-      'champion', m->'champion', 'win', m->'win', 'kills', m->'kills', 'deaths', m->'deaths',
-      'assists', m->'assists', 'cs', m->'cs', 'items', m->'items',
-      'teamBaronKills', m->'teamBaronKills', 'baron', m->'baron'))
-  FROM wp_players pl CROSS JOIN LATERAL jsonb_array_elements(
-    CASE WHEN jsonb_typeof(pl.snapshot->'matches') = 'array' THEN pl.snapshot->'matches' ELSE '[]'::jsonb END
-  ) AS recent(m)
-  WHERE pl.puuid = p.data->>'puuid' AND m->>'matchId' = p.data->>'matchId' LIMIT 1
-), '{}'::jsonb) ELSE p.data END`;
-
 // A fresh answer can surface an older discussion. The same visible-ancestor rules
 // used for threads also apply to this ranking, including legacy nested replies.
-const recentDiscussionActivity = `, candidates AS (
-    SELECT DISTINCT c.post_id FROM wp_comments c WHERE c.status='visible' AND c.created_at>=now()-interval '7 days'
+// Group by the stored comment's post ID so PostgreSQL can use its distinct-value statistics.
+function recentDiscussionActivity(asOf: string) { return `, candidates AS (
+    SELECT DISTINCT c.post_id FROM wp_comments c WHERE c.status='visible' AND c.created_at BETWEEN ${asOf}-interval '7 days' AND ${asOf}
   ), ${visibleCommentsFor("posts", "candidates")}, activity AS (
-    SELECT DISTINCT ON (t.post_id) t.post_id,c.created_at AS answered_at,c.id AS reply_id FROM thread t
-    JOIN wp_comments c ON c.id=t.id JOIN wp_posts original ON original.id=t.post_id
-    WHERE c.created_at>=now()-interval '7 days' AND c.author_id<>original.author_id
+    SELECT DISTINCT ON (c.post_id) c.post_id,c.created_at AS answered_at,c.id AS reply_id FROM thread t
+    JOIN wp_comments c ON c.id=t.id JOIN wp_posts original ON original.id=c.post_id
+    WHERE c.created_at BETWEEN ${asOf}-interval '7 days' AND ${asOf} AND c.author_id<>original.author_id
       AND c.author_id IS DISTINCT FROM (SELECT id FROM wp_users WHERE email=$11)
-    ORDER BY t.post_id,c.created_at DESC,c.id DESC
-  )`;
+    ORDER BY c.post_id,c.created_at DESC,c.id DESC
+  )`; }
 
-export async function readPosts(viewerId: number | null, filter: Filter, limit: number): Promise<PostView[]> {
+async function queryPosts(viewerId: number | null, filter: Filter, limit: number): Promise<PagingPost[]> {
+  const asOfSql = filter.page ? "$12::timestamptz" : "now()";
+  const activityAt = `greatest(p.created_at, ${filter.following ? "s.first_shared_at" : filter.activeReplies ? "a.answered_at" : "NULL::timestamptz"})`;
   // Bound expensive flair and legacy-card lookups to the selected page.
-  const rows = await queryRows(`WITH RECURSIVE ${HIDDEN_AUTHORS}${filter.activeReplies ? recentDiscussionActivity : ""}${filter.following ? followedReposts : ""}, chosen AS (
+  const rows = await queryRows(`WITH RECURSIVE ${HIDDEN_AUTHORS}${filter.activeReplies ? recentDiscussionActivity(asOfSql) : ""}${filter.following ? followedReposts(Boolean(filter.page)) : ""}, chosen AS (
     SELECT p.*, ${filter.activeReplies ? "a.answered_at" : "NULL::timestamptz"} AS answered_at,
       ${filter.activeReplies ? "a.reply_id" : "NULL::int"} AS reply_id,
       ${filter.following ? "s.user_id" : "NULL::int"} AS sharer,
       ${filter.following ? "s.first_shared_at" : "NULL::timestamptz"} AS shared_at,
-      greatest(p.created_at, ${filter.following ? "s.first_shared_at" : filter.activeReplies ? "a.answered_at" : "NULL::timestamptz"}) AS sort_at
+      ${activityAt} AS sort_at
     FROM wp_posts p ${filter.activeReplies ? "LEFT JOIN activity a ON a.post_id=p.id" : ""}
       ${filter.following ? "LEFT JOIN shared s ON s.post_id=p.id" : ""}
     WHERE ${canDisplayPost}
@@ -119,15 +121,20 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
         AND NOT EXISTS (SELECT 1 FROM wp_safety_urgent e WHERE e.target_kind = 'post' AND e.target_id = p.id AND e.reviewed_at IS NULL)))
       AND ($2::int IS NULL OR p.room_id = $2) AND ($3::int IS NULL OR p.author_id = $3)
       AND ($4::int IS NULL OR p.id = $4)
+      ${filter.page ? `AND p.created_at <= ${asOfSql} AND ($13::timestamptz IS NULL OR (${activityAt},p.id) < ($13::timestamptz,$14::int))` : ""}
       AND (NOT $5::boolean OR p.author_id = $1
         OR EXISTS (SELECT 1 FROM wp_follows WHERE follower_id = $1 AND followee_id = p.author_id)
         OR EXISTS (SELECT 1 FROM wp_room_members WHERE user_id = $1 AND room_id = p.room_id)
         ${filter.following ? "OR s.user_id IS NOT NULL" : ""})
       AND ($6::text IS NULL OR p.kind = $6)
-      ${filter.questions ? "AND EXISTS (SELECT 1 FROM wp_decisions d WHERE d.post_id = p.id)" : ""}
+      ${filter.questions ? `AND ${questionDecisionPost} AND EXISTS (SELECT 1 FROM wp_decisions d WHERE d.post_id = p.id)` : ""}
       AND ($7::text IS NULL OR lower(p.data->>'champion') = lower($7))
       AND (NOT $8::boolean OR p.data->'offMeta' = 'true'::jsonb)
-      AND ($9::text IS NULL OR strpos(lower(p.body), lower($9)) > 0)
+      ${filter.builds?.item ? `AND p.data->'items' @> jsonb_build_array(${filter.page ? "$15" : "$12"}::int)` : ""}
+      AND ($9::text IS NULL OR strpos(lower(p.body), lower($9)) > 0
+        OR (p.kind='build' AND strpos(lower(p.data->>'champion'), lower($9)) > 0)
+        OR (p.kind='card' AND p.card_validated AND ${publicQueueSql("(p.data->'matchContext')")}
+          AND strpos(lower(p.data#>>'{matchContext,champion}'), lower($9)) > 0))
       AND ($2::int IS NOT NULL OR $4::int IS NOT NULL
         OR NOT (p.kind='text' AND p.data @> '{"briefing":true}' AND
           p.author_id IS NOT DISTINCT FROM (SELECT id FROM wp_users WHERE email=$11))
@@ -140,24 +147,36 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
     ), flair AS MATERIALIZED (
       SELECT authors.author_id, player.* FROM (SELECT DISTINCT author_id FROM chosen) authors
       LEFT JOIN LATERAL (
-        SELECT jsonb_build_array(pl.rank_tier, pl.rank_div, pl.snapshot #> '{champPool,0,champion}', pl.snapshot->'rankedEntries', pl.fetched_at) AS label,
+        SELECT jsonb_build_array(pl.rank_tier, pl.rank_div, public_games.main, pl.snapshot->'rankedEntries', pl.fetched_at) AS label,
           pl.platform, pl.game_name || '#' || pl.tag_line AS riot_id,
-          CASE WHEN pl.fetched_at > now() - (${PLAYER_CACHE_TTL_MS} * interval '1 millisecond') AND jsonb_typeof(pl.snapshot->'matches')='array' THEN (
-            SELECT jsonb_agg(jsonb_build_object('matchId', m->'matchId', 'playedAt', m->'playedAt', 'win', m->'win') ORDER BY pos)
-            FROM jsonb_array_elements(pl.snapshot->'matches') WITH ORDINALITY AS recent(m,pos) WHERE pos <= 20
-          ) END AS streak_matches
-        FROM wp_links l JOIN wp_players pl ON pl.puuid = l.puuid WHERE l.user_id = authors.author_id AND l.verified
+          CASE WHEN pl.fetched_at > now() - (${PLAYER_CACHE_TTL_MS} * interval '1 millisecond') THEN public_games.streak_matches END AS streak_matches
+        FROM wp_links l JOIN wp_players pl ON pl.puuid = l.puuid
+        LEFT JOIN LATERAL (
+          WITH sample AS MATERIALIZED (
+            SELECT m,pos FROM jsonb_array_elements(CASE WHEN jsonb_typeof(pl.snapshot->'matches')='array'
+              THEN pl.snapshot->'matches' ELSE '[]'::jsonb END) WITH ORDINALITY AS recent(m,pos)
+            WHERE pos<=20 AND ${publicQueueSql("m")}
+          ) SELECT (SELECT m->>'champion' FROM sample WHERE jsonb_typeof(m->'champion')='string'
+            GROUP BY m->>'champion' ORDER BY count(*) DESC,min(pos) LIMIT 1) AS main,
+            (SELECT jsonb_agg(jsonb_build_object('matchId',m->'matchId','playedAt',m->'playedAt','win',m->'win') ORDER BY pos)
+              FROM sample) AS streak_matches
+        ) public_games ON true
+        WHERE l.user_id = authors.author_id AND l.verified
           AND NOT EXISTS (SELECT 1 FROM wp_links other WHERE other.puuid = l.puuid AND other.verified AND other.user_id <> l.user_id)
         ORDER BY l.is_primary DESC, l.created_at, l.puuid LIMIT 1
       ) player ON TRUE
     )
-    SELECT p.id, p.author_id, p.kind, p.room_id, p.answered_at, p.reply_id, ${postDataProjection} AS data, p.body, p.status, p.created_at,
+    SELECT p.id, p.author_id, p.kind, p.room_id, p.answered_at, p.reply_id, ${postDataProjection} AS data, p.body, p.status, p.replies_closed, p.created_at,
+      ${filter.page ? `to_char(p.sort_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at,` : ""}
       ballot.closes_at, ballot.tally AS daily_tally, ballot.closes_at <= now() AS daily_closed, payoff.post_id AS payoff_for,
       p.sharer,p.shared_at,sh.display_name AS sharer_name,
       (p.status='visible' AND p.author_id IS DISTINCT FROM $1 AND ${repostableContent("$11")}) AS can_repost,
+      (p.status='visible' AND ${repostableContent("$11")}) AS can_quote,
+      quoted.post_id IS NOT NULL AS has_quote,quote_preview.id AS quote_source_id,quote_preview.display_name AS quote_author,
+      quote_preview.excerpt AS quote_excerpt,quote_preview.room_name AS quote_room,
       EXISTS (SELECT 1 FROM wp_reposts r WHERE r.user_id=$1 AND r.post_id=p.id AND r.active) AS my_repost,
       u.email=$11 AS is_publisher, rm.champion_id AS room_champion,
-      EXISTS (SELECT 1 FROM wp_decisions d WHERE d.post_id=p.id) AS is_question,
+      (${questionDecisionPost} AND EXISTS (SELECT 1 FROM wp_decisions d WHERE d.post_id=p.id)) AS is_question,
       u.display_name AS author_name, u.avatar_hue AS author_hue, u.avatar_ref, rm.slug AS room_slug, rm.name AS room_name,
       flair.label, flair.platform, flair.riot_id, flair.streak_matches
     FROM chosen p JOIN wp_users u ON u.id = p.author_id
@@ -166,10 +185,13 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
     LEFT JOIN wp_daily_calls ballot ON ballot.post_id=p.id
     LEFT JOIN wp_daily_calls payoff ON payoff.payoff_post_id=p.id
     LEFT JOIN flair ON flair.author_id = p.author_id
+    ${quoteProjectionJoin}
     ORDER BY p.sort_at DESC, p.id DESC`,
     [viewerId, filter.roomId ?? null, filter.authorId ?? null, filter.postId ?? null,
       Boolean(filter.following), filter.builds ? "build" : filter.kind ?? null, filter.builds?.champion || null,
-      Boolean(filter.builds?.offMeta), filter.tag ? '#' + filter.tag : filter.text || null, Math.min(Math.max(limit, 1), 100), PATCH_PUBLISHER]);
+      Boolean(filter.builds?.offMeta), filter.tag ? '#' + filter.tag : filter.text || null, Math.min(Math.max(limit, 1), 100), PATCH_PUBLISHER,
+      ...(filter.page ? [filter.page.asOf, filter.page.before?.before ?? null, filter.page.before?.id ?? null] : []),
+      ...(filter.builds?.item ? [filter.builds.item] : [])]);
   if (!rows.length) return [];
   const ids = rows.map(r => Number(r.id));
   const polls = rows.filter(r => r.kind === "poll").map(r => Number(r.id));
@@ -208,9 +230,15 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
     const authorWinStreak = streaks.get(authorId);
     return {
       id, authorId, authorName: String(r.author_name), authorHue: Number(r.author_hue),
+      ...(filter.page ? { cursorAt: String(r.cursor_at) } : {}),
       authorAvatar: publicAvatar(r.avatar_ref),
       isQuestion:r.is_question === true,
-      canRepost: r.can_repost === true, myRepost: r.my_repost === true,
+      repliesClosed: r.replies_closed === true,
+      canRepost: r.can_repost === true, myRepost: r.my_repost === true, canQuote: r.can_quote === true,
+      ...(r.has_quote === true ? { quote: { original: r.quote_source_id != null ? {
+        postId: Number(r.quote_source_id), author: String(r.quote_author), body: String(r.quote_excerpt),
+        room: typeof r.quote_room === "string" ? r.quote_room : null,
+      } : null } } : {}),
       ...(r.sharer != null ? {repostedBy: {id: Number(r.sharer), name: String(r.sharer_name), at: String(r.shared_at)}} : {}),
       authorFlair: flair && rankFields ? playerFlair(rankFields, flair[2]) : null,
       ...(authorWinStreak ? { authorWinStreak } : {}),
@@ -228,6 +256,24 @@ export async function readPosts(viewerId: number | null, filter: Filter, limit: 
       myVote: myVotes.get(id) ?? null,
     };
   });
+}
+
+export function readPosts(viewerId: number | null, filter: Filter, limit: number): Promise<PostView[]> {
+  return queryPosts(viewerId, filter, limit);
+}
+
+export async function readHomeFeedPage(viewerId: number | null, tab: HomeFeedTab, before: FeedCursor | null, now: number, limit = 30) {
+  if (tab === "following" && viewerId === null) return { posts: [], next: null };
+  const asOf = before?.asOf ?? new Date(now).toISOString();
+  const rows = await queryPosts(viewerId, { following: tab === "following", activeReplies: tab === "everyone", page: { asOf, before } }, limit + 1);
+  const last = rows[limit - 1];
+  const next = rows.length > limit && last?.cursorAt ? feedCursor(tab, asOf, last.cursorAt, last.id) : null;
+  const posts = rows.slice(0, limit).map(row => {
+    const post = { ...row };
+    delete post.cursorAt;
+    return post;
+  });
+  return { posts, next };
 }
 
 export async function readComments(postId: number, viewerId: number | null): Promise<CommentView[]> {

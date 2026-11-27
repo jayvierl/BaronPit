@@ -11,6 +11,8 @@ if (process.env.DATABASE_URL !== fixtureDsn || !/^[a-f0-9]{64}$/.test(process.en
 }
 
 const db = new PGlite();
+// The first feed request can establish its cutoff before the lazy fixture transaction.
+const feedSeededAt = new Date(Date.now() - 60_000).toISOString();
 const realFetch = globalThis.fetch;
 const rawParsers = Object.fromEntries(
   [
@@ -21,6 +23,7 @@ const rawParsers = Object.fromEntries(
 let seeded = false;
 
 async function seed(tx) {
+  const discussionDemo = process.env.SMOKE_MATCH_DISCUSSION === "1";
   const digest = createHash("sha256").update(process.env.SMOKE_SESSION).digest("hex");
   await tx.exec(`
     INSERT INTO wp_users (id,email,display_name,age_band,terms_version,terms_accepted_at,created_at) VALUES
@@ -29,20 +32,31 @@ async function seed(tx) {
       (503,'blocked@example.invalid','Fixture Blocked','adult','2026-11-26',now(),now()-interval '3 days'),
       (504,'other@example.invalid','Fixture Other','adult','2026-11-26',now(),now()-interval '3 days');
     INSERT INTO wp_rooms (id,slug,name,description) VALUES(541,'general','General','General discussion');
-    INSERT INTO wp_posts (id,author_id,kind,body,room_id) VALUES
-      (521,502,'text','Fixture win condition',541), (522,503,'text','Fixture blocked discussion',541),
-      (523,504,'text','Fixture offrole question',541);
-    INSERT INTO wp_comments (id,post_id,author_id,body) VALUES
-      (531,521,502,'Fixture followup'),(532,521,503,'Fixture blocked reply'),(550,521,501,'Fixture avatar reply');
+    INSERT INTO wp_posts (id,author_id,kind,body,room_id,created_at) VALUES
+      (521,502,'text','Fixture win condition',541,'${feedSeededAt}'),
+      (522,503,'text','Fixture blocked discussion',541,'${feedSeededAt}'),
+      (523,504,'text','Fixture offrole question',541,'${feedSeededAt}');
+    INSERT INTO wp_comments (id,post_id,author_id,body,created_at) VALUES
+      (531,521,502,'Fixture followup','${feedSeededAt}'),
+      (532,521,503,'Fixture blocked reply','${feedSeededAt}'),
+      (550,521,501,'Fixture avatar reply','${feedSeededAt}');
     INSERT INTO wp_follows(follower_id,followee_id) VALUES (501,502);
     INSERT INTO wp_blocks(blocker_id,blocked_id) VALUES (503,501);
   `);
+  if (discussionDemo) {
+    await tx.exec(`INSERT INTO wp_users (id,email,display_name,age_band,terms_version,terms_accepted_at,created_at) VALUES
+      (551,'demo-river@example.invalid','Demo River','adult','2026-11-26',now(),now()-interval '3 days'),
+      (552,'demo-lane@example.invalid','Demo Lane','adult','2026-11-26',now(),now()-interval '3 days')`);
+  }
   await tx.query(
-    "INSERT INTO wp_sessions(user_id,token_hash,expires_at) VALUES(501,$1,now()+interval '1 hour')",
-    [digest],
+    "INSERT INTO wp_sessions(user_id,token_hash,expires_at) VALUES($1,$2,now()+interval '1 hour')",
+    [discussionDemo ? 551 : 501, digest],
   );
   const helperDigest = createHash("sha256").update(process.env.SMOKE_HELPER_SESSION).digest("hex");
-  await tx.query("INSERT INTO wp_sessions(user_id,token_hash,expires_at) VALUES(502,$1,now()+interval '1 hour')",[helperDigest]);
+  await tx.query(
+    "INSERT INTO wp_sessions(user_id,token_hash,expires_at) VALUES($1,$2,now()+interval '1 hour')",
+    [discussionDemo ? 552 : 502, helperDigest],
+  );
   const snapshot = {
     games: 1,
     wins: 1,
@@ -61,7 +75,7 @@ async function seed(tx) {
         assists: 3,
         cs: 160,
         durationSec: 1900,
-        playedAt: Date.now() - 1000,
+        playedAt: Date.parse(feedSeededAt),
         queueId: 420,
         role: "BOTTOM",
         items: [],
@@ -102,6 +116,9 @@ async function seed(tx) {
   );
   await tx.exec("INSERT INTO wp_links(user_id,puuid,is_primary,verified) VALUES(504,'fixture-support',true,true)");
   await seedPlayerDepth(tx);
+  if (process.env.SMOKE_WORKFLOWS === "1") {
+    await tx.exec("INSERT INTO wp_links(user_id,puuid,is_primary,verified) VALUES(551,'fixture-profile-depth',true,true)");
+  }
 }
 
 async function query(tx, statement) {
@@ -141,12 +158,22 @@ globalThis.fetch = async function fixtureFetch(input, init) {
       return Response.json({ message: error.message, code: error.code ?? "XX000" }, { status: 400 });
     }
   }
+  if (url.origin === "https://americas.api.riotgames.com" && url.pathname === "/lol/match/v5/matches/NA1_910000/timeline") {
+    return Response.json({ metadata: { matchId: "NA1_910000" }, info: { frames: [{ events: [
+      { type: "ELITE_MONSTER_KILL", monsterType: "DRAGON", killerTeamId: 100, timestamp: 754000 },
+      { type: "ELITE_MONSTER_KILL", monsterType: "BARON_NASHOR", killerTeamId: 200, timestamp: 1455000 },
+    ] }] } });
+  }
   if (url.hostname === "ddragon.leagueoflegends.com") {
     if (url.pathname === "/api/versions.json") return Response.json(["16.23.1"]);
     if (url.pathname === "/cdn/16.23.1/data/en_US/champion.json")
       return Response.json({
         data: {
-          Ashe: { id: "Ashe", name: "Ashe", title: "the Frost Archer", tags: ["Marksman", "Support"] },
+          Ashe: { id: "Ashe", key: 22, name: "Ashe", title: "the Frost Archer", tags: ["Marksman", "Support"] },
+          ...(process.env.SMOKE_MATCH_DISCUSSION === "1" ? {
+            Nami: { id: "Nami", key: 267, name: "Nami", title: "the Tidecaller", tags: ["Support", "Mage"] },
+            Lulu: { id: "Lulu", key: 117, name: "Lulu", title: "the Fae Sorceress", tags: ["Support", "Mage"] },
+          } : {}),
         },
       });
   }

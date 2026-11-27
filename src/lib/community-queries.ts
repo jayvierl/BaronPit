@@ -15,6 +15,13 @@ export const HIDDEN_AUTHORS = `hidden AS (
 export const visibleContentKind = "p.kind <> 'media' AND (p.kind <> 'clip' OR (p.clip_review_required IS TRUE AND p.status = 'visible'))";
 export const canDisplayPost = `p.withdrawn_at IS NULL AND ${visibleContentKind} AND p.author_id NOT IN (SELECT id FROM hidden)
   AND (p.room_id IS NULL OR EXISTS (SELECT 1 FROM wp_rooms room WHERE room.id = p.room_id AND room.safety_status = 'visible'))
+  AND (p.kind<>'text' OR NOT EXISTS (
+    SELECT 1 FROM wp_quote_posts q WHERE q.post_id=p.id AND q.original_author_id IN (${BLOCKED_AUTHORS})
+  ))
+  AND (p.kind<>'card' OR NOT EXISTS (
+    SELECT 1 FROM wp_links source_owner WHERE source_owner.puuid=p.data->>'puuid' AND source_owner.verified
+      AND source_owner.user_id IN (SELECT id FROM hidden)
+  ))
   AND (NOT (p.kind='text' AND p.data ? 'dailyCallPayoff') OR EXISTS (
     SELECT 1 FROM wp_daily_calls d JOIN wp_posts ballot ON ballot.id=d.post_id
     WHERE d.payoff_post_id=p.id AND ballot.status='visible' AND ballot.withdrawn_at IS NULL
@@ -37,10 +44,12 @@ export function visibleCommentsFor(scope: "posts" | "comment" | "candidateReplie
       WHERE ${visibleComment}
     ), thread AS (SELECT reply_id AS id FROM ancestors WHERE parent_id IS NULL)`;
   }
-  const postIds = posts === "candidates" ? "ARRAY(SELECT post_id FROM candidates)" : "$2::int[]";
+  // Keep large candidate sets relational so PostgreSQL can estimate their size
+  // and join them directly. The bounded post IDs supplied by a caller stay an array.
+  const postScope = posts === "candidates" ? "c.post_id IN (SELECT post_id FROM candidates)" : "c.post_id = ANY($2::int[])";
   return `eligible_comments AS (
     SELECT c.id, c.post_id, c.parent_id FROM wp_comments c JOIN wp_posts p ON p.id = c.post_id
-    WHERE c.post_id = ANY(${postIds}) AND ${visibleComment} AND ${visiblePostForInteraction}
+    WHERE ${postScope} AND ${visibleComment} AND ${visiblePostForInteraction}
   ), thread AS (
     SELECT c.id, c.post_id FROM eligible_comments c WHERE c.parent_id IS NULL
     UNION ALL

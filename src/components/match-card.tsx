@@ -4,12 +4,15 @@ import { ItemIcons } from "./item-icons";
 import { GameCardArt } from "./game-card-art";
 import type { CardItem } from "@/lib/build-catalog";
 import { gameCardMotion } from "@/lib/game-card-motion";
+import { cardQuestionMatch } from "@/lib/decisions-input";
+import { isPublicMatchQueue } from "@/lib/public-match-queues";
 import type { MatchSummary } from "@/lib/pure";
 import { TeamBaronTag } from "./team-baron-tag";
 
 export function MatchCard({ data, patch, itemPatch=patch, itemDetails }: { data: Record<string, unknown>; patch: string; itemPatch?:string; itemDetails?:CardItem[] }) {
-  const m = data.match as Pick<MatchSummary, "champion" | "win" | "kills" | "deaths" | "assists" | "cs" | "items" | "teamBaronKills" | "baron"> | undefined;
+  const m = data.match as Pick<MatchSummary, "champion" | "win" | "kills" | "deaths" | "assists" | "cs" | "items" | "queueId" | "teamBaronKills" | "baron"> | undefined;
   if (!m || typeof m.win !== "boolean") return <p className="meta">Match details are unavailable for this shared game.</p>;
+  const question = isPublicMatchQueue(m.queueId) ? cardQuestionMatch(data) : null;
   return (
     <div className={`match-card ${m.win ? "win" : "loss"}`}>
       <GameCardArt motion={gameCardMotion(m.win)} />
@@ -35,7 +38,7 @@ export function MatchCard({ data, patch, itemPatch=patch, itemDetails }: { data:
         </div>
         <ItemIcons ids={Array.isArray(m.items) ? m.items : []} patch={itemPatch} details={itemDetails}/>
       </div>
-      {typeof data.puuid === "string" && typeof data.matchId === "string" && <MatchQuestionLinks puuid={data.puuid} matchId={data.matchId} items={itemDetails}/>}
+      {question && <MatchQuestionLinks match={question} items={itemDetails}/>}
     </div>
   );
 }

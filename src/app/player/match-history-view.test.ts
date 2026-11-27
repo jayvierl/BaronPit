@@ -8,7 +8,7 @@ import { matchFilterPath, olderMatchHref, olderMatchPage } from "./older-match-p
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({}) }));
 
-const base = { patch: "16.23.1", platform: "na1", lookupHref: "/player?platform=na1&riotId=Fixture%23NA1&from=%2Fsearch%3Fq%3DFixture", queueFilter: "420", championFilter: "Ashe" };
+const base = { patch: "16.23.1", platform: "na1", riotId: "Fixture#NA1", persisted: true, lookupHref: "/player?platform=na1&riotId=Fixture%23NA1&from=%2Fsearch%3Fq%3DFixture", queueFilter: "420", championFilter: "Ashe" };
 
 function game(i: number): MatchSummary {
   return { matchId: `NA1_${i}`, champion: "Ashe", win: true, kills: 7, deaths: 2, assists: 6, cs: 180,
@@ -35,11 +35,11 @@ it("renders actual match metrics, Data Dragon builds and both public teams", asy
       opponents: [{ champion: "Vi", name: "Rival", tag: "NA1" }, { champion: "Jinx", name: "Withheld" }] },
   };
   const html = await render(createElement(LatestGames, {
-    ...base, matches: [match], persisted: true, signedIn: true, puuid: "opaque-fixture", communityMatchIds: new Set([match.matchId]),
+    ...base, matches: [match], communityMatchIds: new Set([match.matchId]),
   }));
   for (const value of ["Ranked Solo/Duo", "Level 16", "30m 0s", "7/2/6", "6.50 KDA", "180 CS (6.0 CS/m)", "65% P/Kill",
     "Flash", "SummonerFlash.png", "Teleport", "Keystone: Press the Attack", "Primary: Precision", "Secondary: Resolve",
-    "Allied team", "Opposing team", "Ally#WAVE", "Rival#NA1", "Jinx", "Boots", "Share as card"]) expect(html).toContain(value);
+    "Allied team", "Opposing team", "Ally#WAVE", "Rival#NA1", "Jinx", "Boots", "Discuss this match"]) expect(html).toContain(value);
   expect(html).not.toContain("Withheld");
   const link = html.match(/href="([^"<>]+)"[^>]*>Ally#WAVE<\/a>/)?.[1];
   const url = new URL(link!.replaceAll("&amp;", "&"), "https://example.invalid");
@@ -50,12 +50,12 @@ it("preserves legacy rows without guessing unknown metrics or displaying private
   const match = { ...game(1), queueId: 0, durationSec: 0, spellIds: [4,99999] as [number, number],
     teammates: [{ champion: "Vi", name: "Private", tag: "OWN" }] };
   const html = await render(createElement(LatestGames, {
-    ...base, matches: [match], persisted: true, signedIn: true, puuid: "opaque-fixture", communityMatchIds: new Set<string>(),
+    ...base, matches: [match], communityMatchIds: new Set<string>(),
   }));
   for (const value of ["Custom", "Unlisted spell 99999", "Runes unavailable", "Full team details unavailable", "Champion level unavailable", "Duration and CS/m unavailable"]) {
     expect(html).toContain(value);
   }
-  for (const value of ["Private#OWN", "NaN", "Infinity", "Share as card", "Ask about this game"]) expect(html).not.toContain(value);
+  for (const value of ["Private#OWN", "NaN", "Infinity", "Share as card", "Ask about this game", "Discuss this match"]) expect(html).not.toContain(value);
 });
 
 it("paginates a hundred matches on the server and expands exactly the selected older row", async () => {
@@ -71,4 +71,12 @@ it("paginates a hundred matches on the server and expands exactly the selected o
   expect(html.match(/data-motion=/g)).toBeNull();
   expect(html).toContain("Older games 81–90 of 97");
   expect(html).toContain("&amp;older=10#older-games");
+  const discuss = html.match(/href="([^"<>]+)"[^>]*>Discuss this match<\/a>/)?.[1];
+  const url = new URL(discuss!.replaceAll("&amp;", "&"), "https://example.invalid");
+  expect(url.searchParams.get("fromMatch")).toBe(returnHref);
+  expect(url.searchParams.has("puuid")).toBe(false);
+  const departed = await render(createElement(OlderGames, { ...base, persisted: false, matches, rawMatch: "NA1_101" }));
+  expect(departed).toContain("This match is unavailable in the current recent-match window or filters.");
+  expect(departed).not.toContain('id="match-NA1_101"');
+  expect(departed).not.toContain("Discuss this match");
 });

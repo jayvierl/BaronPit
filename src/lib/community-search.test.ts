@@ -89,3 +89,22 @@ it("accepts display-form Riot IDs and keeps community hashtag searches on search
   for (const value of ["Jay Lewis#NA1", "Jay Lewis #NA1", "Écho River#WAVE"]) expect(isExactRiotId(value)).toBe(true);
   for (const value of ["#NA1", "discuss #support", "who plays #Ashe today?", "Jay#NA1#NA1"]) expect(isExactRiotId(value)).toBe(false);
 });
+
+it("finds a structured champion before filtering the build scope and never searches unproven match context", async () => {
+  await postgres.exec(`INSERT INTO wp_posts(id,author_id,kind,body,status,data,card_validated) VALUES
+    (60,2,'build','Try a different first recall','visible','{"champion":"Nami","items":[3031]}',false),
+    (61,3,'build','Restricted example','visible','{"champion":"Nami"}',false),
+    (62,2,'card','About a game','visible','{"matchContext":{"champion":"Nami","queueId":0}}',true),
+    (63,2,'text','Another Nami discussion','visible','{}',false)`);
+  expect((await searchAll("Nami",{id:1} as User,"builds")).posts.map(p=>p.id)).toEqual([60]);
+  expect((await searchAll("Nami",{id:1} as User,"posts")).posts.map(p=>p.id)).toEqual([63,60]);
+});
+
+it("returns the latest named Riot identity once per shard and hides blocked verified players before discovery", async () => {
+  await postgres.exec(`INSERT INTO wp_players(puuid,platform,game_name,tag_line,fetched_at) VALUES
+    ('obsolete','na1','Écho River','NA1',now()-interval '100 days');
+    INSERT INTO wp_links(user_id,puuid,verified) VALUES(3,'echo2',true)`);
+  const results=await searchAll("Écho River",{id:1} as User,"players");
+  expect(results.players.map(p=>p.riotId)).toEqual(["Écho River#NA1"]);
+  expect(results.players[0]).not.toHaveProperty("puuid");
+});

@@ -29,7 +29,7 @@ describe("patch-stamped build comparisons", () => {
       status: "visible",
       authorName: "River",
       body: "For shorter trades",
-      data: { items: [3190], runes: "Resolve", champion: "Ashe", patch: "16.20.1" },
+      data: { items: [3190], runes: "Resolve", champion: "Ashe", patch: "16.20.1", keystone: { id: 8465, name: "Guardian" } },
     };
     expect(pathFromPost(base, new Set([3190]))).toMatchObject({
       post: 11,
@@ -39,6 +39,8 @@ describe("patch-stamped build comparisons", () => {
     });
     expect(pathFromPost({ ...base, status: "held" }, new Set([3190]))).toBeNull();
     expect(pathFromPost(base, new Set())).toBeNull();
+    expect(pathFromPost(base, new Set([3190]), new Set([8465]))?.runes).toEqual([8465]);
+    expect(pathFromPost(base, new Set([3190]), new Set([9999]))?.runes).toEqual([]);
   });
   it("normalizes tagged Riot descriptions as plain text and rejects mismatched versions", () => {
     const input = {

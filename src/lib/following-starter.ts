@@ -1,3 +1,4 @@
+import { questionDecisionPost } from "./match-card-projection";
 import { queryRows } from "./db";
 import { HIDDEN_AUTHORS, visiblePostForInteraction } from "./community-queries";
 import { PATCH_PUBLISHER } from "./patch-notes";
@@ -9,11 +10,11 @@ export async function followingStarter(userId: number) {
     FROM wp_decisions d JOIN wp_posts p ON p.id=d.post_id JOIN wp_users u ON u.id=p.author_id
     LEFT JOIN wp_decision_preferences pref ON pref.user_id=$1
     LEFT JOIN wp_duo_fit fit ON fit.user_id=$1
-    WHERE ${visiblePostForInteraction} AND p.author_id<>$1
+    WHERE ${visiblePostForInteraction} AND ${questionDecisionPost} AND NOT p.replies_closed AND p.author_id<>$1
       AND NOT EXISTS (SELECT 1 FROM wp_follows f WHERE f.follower_id=$1 AND f.followee_id=p.author_id)
       AND p.created_at >= now()-interval '14 days' AND u.email<>$2
       AND NOT EXISTS (SELECT 1 FROM wp_comments c WHERE c.post_id=p.id AND c.parent_id IS NULL
-        AND c.author_id<>p.author_id AND c.status='visible' AND c.author_id NOT IN (SELECT id FROM hidden))
+        AND c.author_id<>p.author_id AND c.status='visible' AND c.withdrawn_at IS NULL AND c.author_id NOT IN (SELECT id FROM hidden))
     ORDER BY (d.role=coalesce(pref.role,CASE WHEN fit.role='ADC' THEN 'Bot' ELSE fit.role END)) DESC NULLS LAST,
       (pref.champion=d.champion) DESC NULLS LAST,p.created_at DESC,p.id DESC
     LIMIT 1`, [userId, PATCH_PUBLISHER]);

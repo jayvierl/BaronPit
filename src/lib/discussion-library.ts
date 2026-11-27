@@ -1,5 +1,7 @@
 import { HIDDEN_AUTHORS, visibleCommentsFor, visiblePostForInteraction } from "./community-queries";
 import { queryRows } from "./db";
+import { postDataProjection } from "./match-card-projection";
+import { projectMatchContext } from "./match-context";
 
 export type LibraryKind = "post" | "comment";
 export type LibraryAction = "save" | "watch" | "mute" | "read";
@@ -151,11 +153,13 @@ export async function publicDiscussion(id: number, viewerId: number | null = nul
   // Unfurlers are anonymous. Signed-in viewers also retain their block and mute filters.
   const [row] = await queryRows(`WITH ${HIDDEN_AUTHORS}
     SELECT p.kind, r.name AS room, left(p.body,160) AS body, d.champion, d.role,
-      CASE WHEN p.kind='card' AND p.card_validated THEN jsonb_build_array(
-        p.data#>'{match,champion}', p.data#>'{match,win}', p.data#>'{match,kills}',
-        p.data#>'{match,deaths}', p.data#>'{match,assists}') END AS scoreboard
+      projected.data->'matchContext' AS match_context,
+      CASE WHEN p.kind='card' THEN jsonb_build_array(
+        projected.data#>'{match,champion}', projected.data#>'{match,win}', projected.data#>'{match,kills}',
+        projected.data#>'{match,deaths}', projected.data#>'{match,assists}') END AS scoreboard
     FROM wp_posts p LEFT JOIN wp_rooms r ON r.id=p.room_id
     LEFT JOIN wp_decisions d ON d.post_id=p.id
+    LEFT JOIN LATERAL (SELECT ${postDataProjection} AS data) projected ON p.kind='card'
     WHERE p.id=$2 AND ${visiblePostForInteraction}`, [viewerId, id]);
   if (!row) return null;
   const score = row.scoreboard;
@@ -169,5 +173,6 @@ export async function publicDiscussion(id: number, viewerId: number | null = nul
     room: typeof row.room === "string" ? row.room : null, kind: String(row.kind), body: String(row.body),
     champion: typeof row.champion === "string" ? row.champion : null,
     role: typeof row.role === "string" ? row.role : null, match,
+    discussionKind: projectMatchContext(row.match_context)?.discussionKind,
   };
 }

@@ -118,3 +118,4 @@
   font: inherit;
   resize: vertical;
 }
+.followUp { scroll-margin-top: calc(80px + env(safe-area-inset-top)); }

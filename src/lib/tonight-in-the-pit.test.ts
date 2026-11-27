@@ -10,7 +10,7 @@ const now = Date.parse("2026-11-26T19:00:00Z");
 const day = 86_400_000;
 const fetched = new Date(now - 1_000).toISOString();
 const game = (id: number, champion: string, win: boolean, daysAgo = 0) => ({
-  matchId: `NA1_${id}`, champion, win, playedAt: now - 60_000 - daysAgo * day,
+  matchId: `NA1_${id}`, champion, win, queueId:420, playedAt: now - 60_000 - daysAgo * day,
 });
 async function snapshot(puuid: string, matches: ReturnType<typeof game>[]) {
   await q`UPDATE wp_players SET snapshot=${JSON.stringify({ matches })}::jsonb WHERE puuid=${puuid}`;
@@ -41,7 +41,7 @@ it("counts anonymous unlinked and claimed lookup records while excluding any hid
   expect(await tonightInThePit(1, now)).toEqual({isToday:false, startsAt:now-7*day, matches:5, wins:3, losses:3,
     champion:{id:"Ashe",appearances:3,winRate:67}});
   expect(testQueries.length - before).toBe(1);
-  const markup = renderToStaticMarkup(await TonightInThePit({viewerId: 1, now}));
+  const markup = renderToStaticMarkup(TonightInThePit({summary: await tonightInThePit(1, now), now}));
   expect(markup).toContain("10 distinct matches");
   expect(markup).not.toContain("win rate");
   expect(await tonightInThePit(null, now)).toMatchObject({matches:6, wins:4, losses:3});
@@ -51,5 +51,14 @@ it("switches to the UTC day at ten distinct matches, ignoring earlier games", as
   await snapshot("a", [...Array.from({length:10}, (_,i) => game(21+i,"Ashe",i%2===0)),game(41,"Ashe",true,1)]);
   expect(await tonightInThePit(1, now)).toEqual({isToday:true, startsAt:Date.parse("2026-11-26T00:00:00Z"), matches:10,
     wins:5, losses:6, champion:{id:"Ashe",appearances:10,winRate:50}});
-  expect(renderToStaticMarkup(await TonightInThePit({viewerId: 1, now}))).toContain("50% win rate");
+  expect(renderToStaticMarkup(TonightInThePit({summary: await tonightInThePit(1, now), now}))).toContain("50% win rate");
+});
+
+it("omits an entire match when two visible perspectives disagree on its timestamp", async () => {
+  const prior = await tonightInThePit(1, now);
+  await q`INSERT INTO wp_players(puuid,platform,game_name,tag_line,fetched_at)
+    SELECT 'clock-'||i,'na1','Clock '||i,'NA1',${fetched}::timestamptz FROM generate_series(1,2) i`;
+  await snapshot("clock-1", [game(999,"Ashe",true)]);
+  await snapshot("clock-2", [game(999,"Nami",false,1)]);
+  expect(await tonightInThePit(1, now)).toEqual(prior);
 });

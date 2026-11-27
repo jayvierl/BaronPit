@@ -1,3 +1,4 @@
+import { questionDecisionPost } from "./match-card-projection";
 import { q, getSql, queryRows } from "./db";
 import type { User } from "./auth";
 import { HIDDEN_AUTHORS, visibleContentKind, visiblePostForInteraction } from "./community-queries";
@@ -87,7 +88,7 @@ export async function recordPilotVisit(id: number, kind: PilotPage, postId?: unk
       ? `AND EXISTS (
     SELECT 1 FROM wp_decisions d JOIN wp_posts p ON p.id=d.post_id
     JOIN wp_comments c ON c.post_id=d.post_id AND c.id=d.accepted_comment_id
-    WHERE p.id=$5 AND ${visiblePostForInteraction} AND c.status='visible' AND c.parent_id IS NULL
+    WHERE p.id=$5 AND ${questionDecisionPost} AND ${visiblePostForInteraction} AND c.status='visible' AND c.parent_id IS NULL
       AND c.author_id<>p.author_id AND c.author_id<>$1 AND c.author_id NOT IN (SELECT id FROM hidden)
   )`
       : "";
@@ -210,7 +211,7 @@ export async function pilotDashboard() {
       LEFT JOIN wp_users a ON a.id=c.author_id
       LEFT JOIN wp_pilot_members h ON h.user_id=c.author_id AND h.joined_at<=c.created_at
       WHERE p.status='visible' AND (p.room_id IS NULL OR r.safety_status='visible') AND ${visibleContentKind}
-        AND p.created_at>=m.joined_at AND p.created_at<m.joined_at+interval '28 days'
+        AND ${questionDecisionPost} AND p.created_at>=m.joined_at AND p.created_at<m.joined_at+interval '28 days'
     ), activity AS (
       SELECT m.*,
         EXISTS(SELECT 1 FROM wp_pilot_days d WHERE d.user_id=m.user_id AND d.day_no BETWEEN 21 AND 27 AND d.answer) AS read_answer,

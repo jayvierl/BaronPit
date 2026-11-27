@@ -1,6 +1,7 @@
 import type { CardItem } from "./build-catalog";
 import type { AvatarRef } from "./avatar";
 import type { LeagueTier } from "./rank";
+import type { QuotedPost } from "./quote-types";
 export interface PostView {
   id: number; authorId: number; authorName: string; authorHue: number;
   authorAvatar?: AvatarRef;
@@ -10,6 +11,7 @@ export interface PostView {
   authorStatsHref?: string;
   kind: string; body: string; roomId: number | null; roomSlug: string | null; roomName: string | null;
   isQuestion?: boolean;
+  repliesClosed?: boolean;
   itemDetails?: CardItem[];
   itemPatch?: string;
   lastReplyAt?: string;
@@ -17,6 +19,8 @@ export interface PostView {
   dailyCall?: { closesAt: string; closed: boolean; finalized: boolean };
   dailyCallPayoffFor?: number;
   canRepost?: boolean;
+  canQuote?: boolean;
+  quote?: QuotedPost;
   myRepost?: boolean;
   repostedBy?: {id: number; name: string; at: string};
   data: Record<string, unknown>; status: string; createdAt: string;

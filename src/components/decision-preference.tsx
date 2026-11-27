@@ -27,9 +27,9 @@ export function DecisionPreference({
   }
   return (
     <section className="card">
-      <h2>Questions you can help with</h2>
+      <h2>Your answering preferences</h2>
       <p className="meta">
-        See questions in your role that are still waiting for a first reply from another player.
+        Choose your role and, optionally, a champion. You’ll see open questions from other players waiting for a first reply.
       </p>
       <form
         key={(saved?.role ?? "") + (saved?.champion ?? "")}
@@ -63,7 +63,7 @@ export function DecisionPreference({
         </div>
         <div className={styles.controls}>
           <button className="btn small" disabled={action.busy}>
-            {saved ? "Update my queue" : "Save my queue"}
+            {saved ? "Update preferences" : "Save preferences"}
           </button>
           {saved && (
             <button

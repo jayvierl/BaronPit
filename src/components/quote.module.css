@@ -1,0 +1,15 @@
+.preview { display:grid; gap:.2rem; padding:.55rem .68rem; margin:.4rem 0; border:1px solid var(--border); border-radius:.65rem; }
+.preview:hover { background:var(--hover); text-decoration:none; }
+.preview:hover strong { text-decoration:underline; }
+.heading, .unavailable { color:var(--ink-soft); font-size:.79rem; }
+.heading strong { color:var(--ink); }
+.excerpt { color:var(--ink-mid); font-size:.88rem; line-height:1.45; overflow-wrap:anywhere; }
+.unavailable { padding-block:.45rem; }
+.unavailable:hover { background:transparent; }
+.control { position:static; }
+.composer { position:absolute; inset-inline-start:0; top:calc(100% + .25rem); z-index:11; box-sizing:border-box;
+  width:min(100%,25rem); display:grid; gap:.4rem; padding:.7rem; max-height:65svh; overflow:auto;
+  background:var(--bg); border:1px solid var(--border); border-radius:.65rem; overflow-wrap:anywhere; }
+.composer label { display:grid; gap:.2rem; font-size:.83rem; font-weight:600; }
+.composer textarea { min-width:0; width:100%; box-sizing:border-box; resize:vertical; }
+.composer :global(.btn) { justify-self:start; min-height:44px; }

@@ -13,16 +13,19 @@
 .lookup { margin-block: 1rem; }
 .lookup summary { min-height: 44px; padding-block: .7rem; cursor: pointer; color: var(--ink); font-weight: 600; }
 .form select { max-width: 8.3rem; min-width: 0; min-height: 44px; border: 1px solid var(--border-strong); border-radius: .65rem; background: var(--bg); color: var(--ink); font: inherit; }
-.scopes { display: flex; gap: .2rem; border-bottom: 1px solid var(--border); margin-bottom: .8rem; }
-.scopes a { display: grid; place-items: center; padding: .25rem .65rem; min-height: 44px; color: var(--ink-mid); font-size: .9rem; font-weight: 600; border-bottom: 2px solid transparent; }
+.scopes { display: flex; overflow-x: auto; gap: .2rem; border-bottom: 1px solid var(--border); margin-bottom: .8rem; }
+.scopes a { display: grid; flex: none; white-space: nowrap; place-items: center; padding: .25rem .65rem; min-height: 44px; color: var(--ink-mid); font-size: .9rem; font-weight: 600; border-bottom: 2px solid transparent; }
 .scopes a:hover, .scopes a:focus-visible { color: var(--ink); }
 .scopes a[aria-current="page"] { color: var(--ink); border-color: currentColor; }
 .hint { color: var(--ink-mid); font-size: .92rem; }
 .notebook { color: var(--accent-ink); font-weight: 600; }
 @media (max-width: 420px) {
-  .scopes { justify-content: space-between; }
+  .scopes { gap: .35rem; }
   .scopes a { padding-inline: .2rem; min-width: 44px; }
   .form:has(select) { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
   .form:has(select) input { grid-column: 1 / -1; }
   .form select { max-width: none; }
 }
+
+.caption { font: 500 .78rem/1.4 var(--font-body),sans-serif; margin-inline-start: .5rem; color: var(--ink-soft); }
+.kind { font-size: .8rem; color: var(--ink-mid); }

@@ -61,6 +61,7 @@ export function CommentSection({
   signedIn,
   viewerId,
   viewerIdentity,
+  repliesClosed = false,
   allowOneFix,
   decisionQuestion,
   onVisibleReply,
@@ -73,6 +74,7 @@ export function CommentSection({
   signedIn: boolean;
   viewerId?: number | null;
   viewerIdentity?: AvatarIdentity | null;
+  repliesClosed?: boolean;
   allowOneFix?: boolean;
   decisionQuestion?: boolean;
   onVisibleReply?: () => void;
@@ -251,7 +253,7 @@ export function CommentSection({
             </div>
             {c.status === "held" && <span className="meta">Awaiting review</span>}
             <div className={threadStyles.replyActions}>
-              <button
+              {!repliesClosed && <button
                 type="button"
                 className="text-btn"
                 aria-label={`Reply to ${c.authorName}`}
@@ -264,7 +266,7 @@ export function CommentSection({
                 }}
               >
                 Reply
-              </button>
+              </button>}
               <SaveReply replyId={c.id} postId={postId} signedIn={signedIn}/>
               {signedIn && viewerId === c.authorId ? <WithdrawSubmission kind="comment" id={c.id} onWithdraw={()=>setRevision(r=>r+1)}/> : <SafetyReport kind="comment" targetId={c.id}/>}
             </div>
@@ -304,7 +306,7 @@ export function CommentSection({
         </p>
       )}
       {attempted === submissionKey && <ActionFeedback error={action.error} />}
-      {reconsider && (
+      {!repliesClosed && reconsider && (
         <div>
           <button
             type="button"
@@ -331,10 +333,10 @@ export function CommentSection({
           {notice} {signedIn && <Link href="/me#submissions">My submissions</Link>}
         </p>
       )}
-      {signedIn && action.authStep && <button type="button" className="text-btn" onClick={resumeAfterAuth}>
+      {!repliesClosed && signedIn && action.authStep && <button type="button" className="text-btn" onClick={resumeAfterAuth}>
         {action.authStep === "enrol" ? "Confirm eligibility and return to reply" : "Sign in and return to reply"}
       </button>}
-        <form className={threadStyles.replyForm}
+      {repliesClosed ? <p role="status" className="meta">The author closed new replies.</p> : <form className={threadStyles.replyForm}
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
@@ -381,7 +383,7 @@ export function CommentSection({
             </button>
           </div>
           {!signedIn && <noscript><p className="meta">Copy your reply before signing in. Draft saving requires JavaScript. <a href={signInHref(destination)}>Sign in</a></p></noscript>}
-        </form>
+        </form>}
     </section>
   );
 }

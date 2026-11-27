@@ -20,7 +20,7 @@ export async function checkPlayerDepth(journey) {
   const first = await journey(profile, { html: true });
   markers(first, [
     depthName, "Level 205", "Update", "Last updated", "Gold II · 36 LP", "Silver III · 12 LP",
-    "Last 100 games · all queues", "Last 100 games · 55W–45L · 55% win rate",
+    "Last 100 games · supported public queues", "Last 100 games · 55W–45L · 55% win rate",
     "Role share", "Preferred classes", "Ranked W/L by champion · last 7 days",
     "Latest 20 games", "Previous 80 games", "75.0%", "50.0%", "+25.0 pp",
     "Kill participation", "65.0%", "Activity patterns", "Time of day", "Hour-by-hour results (UTC)",

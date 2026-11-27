@@ -160,6 +160,11 @@ export async function visibleChampionRoomSlugs(championIds?: readonly string[]):
   return rows.map(row => String(row.slug));
 }
 
+export async function joinedRoomIds(userId: number): Promise<number[]> {
+  return (await q`SELECT r.id FROM wp_room_members m JOIN wp_rooms r ON r.id=m.room_id
+    WHERE m.user_id=${userId} AND r.safety_status='visible'`).map(row => Number(row.id));
+}
+
 export const getRoom = cache(async function getRoom(slug: string, userId?: number) {
   const rows = await readRooms(userId, 1, slug);
   return rows[0] ?? null;

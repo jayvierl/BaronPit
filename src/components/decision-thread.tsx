@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { SafetyReport } from "@/components/safety-report";
 import { decisions, trialOptions } from "@/lib/decisions";
-import { knownDecisionTopic, trialOutcomes } from "@/lib/decisions-input";
+import { DECISION_FOLLOW_UP, knownDecisionTopic, trialOutcomes } from "@/lib/decisions-input";
 import { listComments } from "@/lib/social";
-import type { User } from "@/lib/auth";
+import { isBanned, type User } from "@/lib/auth";
 import { DecisionAuthorControls } from "./decision-author-controls";
 import { PilotVisit } from "@/components/pilot-visit";
 import styles from "@/app/questions/questions.module.css";
@@ -11,8 +11,9 @@ import styles from "@/app/questions/questions.module.css";
 export async function DecisionThread({ postId, user }: { postId: number; user: User | null }) {
   const [d] = await decisions(user?.id ?? null, { postId });
   if (!d) return null;
-  const owner = !!user && d.authorId === user.id;
-  const [comments, games] = owner
+  const canFollowUp = !!user && d.authorId === user.id && user.termsCurrent && !isBanned(user) &&
+    process.env.SAFETY_PAUSE_PUBLICATION !== "true";
+  const [comments, games] = canFollowUp
     ? await Promise.all([listComments(postId, user), d.answer ? trialOptions(user.id, postId) : []])
     : [[], []];
   const query = new URLSearchParams({
@@ -21,7 +22,7 @@ export async function DecisionThread({ postId, user }: { postId: number; user: U
     ...(d.opponent && { opponent: d.opponent }),
   });
   return (
-    <section className="card" aria-label="Decision and follow-up">
+    <section className={`card ${styles.followUp}`} id={DECISION_FOLLOW_UP} tabIndex={-1} aria-label="Decision and follow-up">
       <h2>
         {d.champion}
         {d.opponent && " vs " + d.opponent}
@@ -68,7 +69,7 @@ export async function DecisionThread({ postId, user }: { postId: number; user: U
           )}
         </p>
       )}
-      {owner && (
+      {canFollowUp && (
         <DecisionAuthorControls
           postId={postId}
           acceptedId={d.answer?.id}
