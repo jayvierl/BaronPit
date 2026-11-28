@@ -25,6 +25,7 @@ import { WithdrawSubmission } from "./withdraw-submission";
 import { CommentSection } from "./comment-section";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SafetyReport } from "./safety-report";
+import { dailyCallBreakdownState, dailyCallVoteNote } from "@/lib/daily-call-breakdown";
 import { RankBadge } from "./rank-badge";
 import { WinStreak } from "./win-streak";
 import { ThreadIcon } from "./thread-icon";
@@ -135,6 +136,8 @@ export function PostCard({
   const shownResults = post.dailyCall?.closed ? post.pollResults : pollResults;
   const pollTotal = shownResults?.reduce((a, b) => a + b, 0) ?? 0;
   const showPercentages = pollTotal > 0 && (myVote !== null || callClosed);
+  const callBreakdown = post.dailyCall?.breakdown ?? null;
+  const breakdownState = dailyCallBreakdownState({ closed: callClosed, totalVotes: pollTotal, breakdown: callBreakdown });
 
   if (withdrawn) return <p role="status">You withdrew this post. <a href="/me#submissions">View my submissions</a></p>;
   return (
@@ -254,12 +257,24 @@ export function PostCard({
                     return <li key={i}>{option} — {n} {n === 1 ? "vote" : "votes"} ({Math.round(n * 100 / pollTotal)}%)</li>;
                   })}
                 </ul>
-              </details> : <span>No votes yet</span>}
+              </details> : <span>{dailyCallVoteNote(callClosed, pollTotal)}</span>}
               {callCutoff && <span>{callClosed
                 ? post.dailyCall?.finalized ? "Final tally" : "Voting closed. Tally pending."
                 : <>Vote until <time dateTime={callCutoff}>{cutoffTime.format(new Date(callCutoff))}</time></>}</span>}
             </div>}
           </div>
+        )}
+
+        {post.dailyCall && breakdownState === "published" && callBreakdown && (
+          <div className={styles.breakdown}>
+            <p className={styles.breakdownTitle}>The breakdown</p>
+            <p><strong>When two options make sense.</strong> {callBreakdown.when}</p>
+            <p><strong>What can go wrong.</strong> {callBreakdown.risk}</p>
+            <p><strong>What changes the call.</strong> {callBreakdown.changes}</p>
+          </div>
+        )}
+        {post.dailyCall && breakdownState === "unpublished" && (
+          <p className={styles.breakdownNote}>The breakdown hasn’t been published yet.</p>
         )}
 
         {post.kind === "card" && (matchContext

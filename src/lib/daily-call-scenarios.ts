@@ -1,7 +1,16 @@
-type DailyCallScenario = {
+export type DailyCallScenario = {
   title: string;
   body: string;
   options: readonly [string, string, string, string];
+  /** Editor-approved breakdown shown in the original thread after the call
+   * closes. `published` is the editors' approval flag: an unpublished or
+   * missing breakdown renders an honest "not published yet" note instead. */
+  breakdown?: {
+    when: string;
+    risk: string;
+    changes: string;
+    published: boolean;
+  };
 };
 
 export const dailyCallScenarios = [
@@ -129,6 +138,12 @@ export const dailyCallScenarios = [
     title: "Defending two waves",
     body: "Imagine the enemy has Baron buff and sends waves mid and top. Your Mid can clear from range, and your Top has a flank angle from base. How do you cover both lanes?",
     options: ["Split the wave-clear and hold both towers", "Group five at the more exposed tower", "Show three mid and set up a top flank", "Give the first turret and defend deeper"],
+    breakdown: {
+      when: "Split if both groups can clear safely and see the enemy rotate. Defend deeper if vision is gone and the two waves land together. The flank is better when your team can stall mid and collapse at the same time.",
+      risk: "The risk is getting picked before your team can regroup.",
+      changes: "Vision between lanes, timing of the waves, and who can clear without walking up.",
+      published: true,
+    },
   },
   {
     title: "Elder after the skirmish",

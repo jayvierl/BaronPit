@@ -5,6 +5,7 @@ import { currentWinStreak } from "@/lib/current-win-streak";
 import { Avatar } from "@/components/ui";
 import Link from "next/link";
 import Form from "next/form";
+import { redirect } from "next/navigation";
 import { MATCH_DETAIL_LIMIT, matchQueueName, matchRoleLabel, matchSectionId, recentMatchHistory } from "@/lib/match-history";
 import { RATING_DESCRIPTION, RATING_VERSION } from "@/lib/match-performance";
 import { matchFilterPath } from "./older-match-page";
@@ -23,6 +24,9 @@ import { RefreshPlayer } from "@/components/refresh-player";
 import { canOpenPlayerMention, mentionKey } from "@/lib/player-mentions";
 import { getCurrentUser } from "@/lib/auth";
 import { lookupPlayer, isPlatform, PLATFORMS, currentPatch, championList, profileIconUrl } from "@/lib/riot";
+import { latestRankedMatch, reviewStandout } from "@/lib/match-review";
+import { isPublicMatchQueue } from "@/lib/public-match-queues";
+import { shareOrigin } from "@/lib/share-metadata";
 import { q } from "@/lib/db";
 import { publicRiotOwner } from "@/lib/player-insights";
 import { visibleChampionRoomSlugs } from "@/lib/rooms";
@@ -38,15 +42,59 @@ import { gameCount, earnedBadges } from "@/lib/pure";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
+const PLAYER_METADATA: Metadata = {
   title: "Player Stats — League of Legends Ranked Stats & Match History Lookup",
   description: "Look up any League of Legends player's ranked stats on Baron Pit: recent match history, " +
     "champion performance, match ratings and performance trends across the last 20 games.",
   alternates: { canonical: "/player" },
 };
 
+/** A shared match link earns a social preview only when the match is public
+ * under the app's queue rules; the card image carries the reviewed player's
+ * champion, result and one stored standout — never another player's name.
+ * Anything else (no match anchor, private queue, unknown player) keeps the
+ * plain Player Stats metadata with no match image. */
+export async function generateMetadata({ searchParams }: {
+  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; match?: string }>;
+}): Promise<Metadata> {
+  const sp = await searchParams;
+  const matchId = typeof sp.match === "string" ? sp.match : "";
+  if (!matchId || !matchSectionId(matchId)) return PLAYER_METADATA;
+  const platform = sp.platform && isPlatform(sp.platform) ? sp.platform : "na1";
+  const gameName = typeof sp.name === "string" ? sp.name : "";
+  const input = typeof sp.riotId === "string" ? sp.riotId : typeof sp.tag === "string" ? `${gameName}#${sp.tag}` : gameName;
+  const { gameName: name, tagLine: tag } = splitRiotId(input, platform);
+  if (!name || !tag) return PLAYER_METADATA;
+  const result = await lookupPlayer(platform, name, tag).catch(() => null);
+  if (!result?.ok) return PLAYER_METADATA;
+  const matches = result.player.matchHistory?.matches ?? result.player.snapshot.matches;
+  const match = matches.find(entry => entry.matchId === matchId);
+  if (!match || !isPublicMatchQueue(match.queueId)) return PLAYER_METADATA;
+  const origin = shareOrigin();
+  if (!origin) return PLAYER_METADATA;
+  const standout = reviewStandout(match);
+  const title = `${match.champion} · ${match.win ? "Victory" : "Defeat"} — Match Review`;
+  const description = `${match.kills}/${match.deaths}/${match.assists} K/D/A` +
+    (standout ? ` · ${standout.value} ${standout.label}` : "") +
+    ". Review the game on Baron Pit and ask the Pit what they would have done.";
+  const image = new URL("/player/match-card", origin);
+  image.searchParams.set("platform", platform);
+  image.searchParams.set("riotId", `${name}#${tag}`);
+  image.searchParams.set("match", matchId);
+  return {
+    ...PLAYER_METADATA,
+    title,
+    description,
+    openGraph: {
+      type: "article", siteName: "Baron Pit", title, description,
+      images: [{ url: image.href, width: 1200, height: 630, alt: `${match.champion} match review` }],
+    },
+    twitter: { card: "summary_large_image", title, description, images: [image.href] },
+  };
+}
+
 export default async function PlayerPage({ searchParams }: {
-  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; match?: string; older?: string; queue?: string; champion?: string; role?: string; csort?: string; cdir?: string; from?: string; fromPlayer?: string; fromDiscussion?: string; timeline?: string; via?: string; playerKey?: string }>;
+  searchParams: Promise<{ platform?: string; riotId?: string; name?: string; tag?: string; force?: string; match?: string; older?: string; queue?: string; champion?: string; role?: string; csort?: string; cdir?: string; from?: string; fromPlayer?: string; fromDiscussion?: string; timeline?: string; via?: string; playerKey?: string; review?: string }>;
 }) {
   const sp = await searchParams;
   const platform = sp.platform && isPlatform(sp.platform) ? sp.platform : "na1";
@@ -118,6 +166,22 @@ export default async function PlayerPage({ searchParams }: {
   const partial = result.source === "partial";
   const snap = player.snapshot;
   const matches = player.matchHistory?.matches ?? snap.matches;
+  // "Review your last game" entry: a successful lookup lands on the latest
+  // completed ranked match (expanded, under the Ranked filter so it is in
+  // the detailed window), not on a generic profile. With no completed ranked
+  // game stored, the profile renders with an explicit notice instead.
+  const reviewRequested = sp.review === "1";
+  if (reviewRequested) {
+    const target = latestRankedMatch(matches);
+    const targetId = target ? matchSectionId(target.matchId) : undefined;
+    if (target && targetId) {
+      const href = new URL(playerStatsHref(player.platform, `${player.gameName}#${player.tagLine}`), "https://review.invalid");
+      href.searchParams.set("queue", "ranked");
+      href.searchParams.set("match", target.matchId);
+      href.hash = targetId;
+      redirect(href.pathname + href.search + href.hash);
+    }
+  }
   const analytics = buildPlayerAnalytics(matches, undefined, { excludeEarlySurrenders: true });
   const incompleteHistory = partial || player.matchHistory?.complete === false;
   const [linked,owner,roomSlugs,masteryCatalog] = await Promise.all([
@@ -185,6 +249,14 @@ export default async function PlayerPage({ searchParams }: {
   return (
     <div className={`player-page ${profileStyles.profile}`}>
       {user?.pilotActive && <PilotVisit kind="stats"/>}
+      {reviewRequested && (
+        <div className="notice" role="status">
+          No completed ranked match in the stored games for {player.gameName}#{player.tagLine} yet — showing the full profile instead.
+          {partial || result.source === "stale"
+            ? " This record couldn’t be fully refreshed from Riot; use Update below to try again."
+            : " Use Update below to check Riot for newer games."}
+        </div>
+      )}
       {discussionLink || searchLink || <Link className={styles.searchLink} href={searchHref("players", "", platform)}>Search for another player</Link>}
       <header className={profileStyles.header}>
         <div className={profileStyles.identity}>

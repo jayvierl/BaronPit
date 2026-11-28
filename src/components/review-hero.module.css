@@ -1,0 +1,97 @@
+/* Homepage review hero — a compact violet-tinted panel above the feed with
+   the contour motif (concentric arcs) in the corner, a gold letterspaced
+   eyebrow and the lavender primary action from the concept. Tokens only. */
+.hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--win-edge);
+  border-radius: 1.1rem;
+  background: var(--win-tint);
+  padding: 1.15rem var(--post-row-inline, 1.25rem) 1.25rem;
+  margin: 1rem var(--post-row-inline, 1.25rem) .25rem;
+}
+
+.contours {
+  position: absolute;
+  inset: 0 0 auto auto;
+  width: min(58%, 26rem);
+  height: 100%;
+  pointer-events: none;
+}
+
+.contours circle {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  opacity: .16;
+}
+
+.eyebrow {
+  position: relative;
+  margin: 0 0 .5rem;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--warn-ink);
+}
+
+.title {
+  position: relative;
+  margin: 0;
+  font-family: var(--font-display), var(--font-body), system-ui, sans-serif;
+  font-size: clamp(1.65rem, 5.5vw, 2.3rem);
+  line-height: 1.12;
+  font-weight: 720;
+  letter-spacing: -.03em;
+}
+
+.sub {
+  position: relative;
+  margin: .55rem 0 0;
+  max-width: 34rem;
+  color: var(--ink-mid);
+  font-size: 1.02rem;
+}
+
+.form {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: .6rem;
+  margin-top: 1.05rem;
+}
+
+.form select {
+  min-height: 44px;
+  padding-inline: .6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: .7rem;
+  background: var(--field);
+}
+
+.primary, .secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding-inline: 1.05rem;
+  border-radius: .7rem;
+  font-weight: 650;
+  font-size: .95rem;
+  cursor: pointer;
+}
+
+.primary { background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent); }
+
+.primary:hover { opacity: .9; }
+
+.primary:disabled { opacity: .65; cursor: wait; }
+
+.secondary { background: transparent; color: var(--ink); border: 1px solid var(--border-strong); }
+
+.secondary:hover { background: var(--hover); }
+
+.note { position: relative; display: block; margin-top: .5rem; color: var(--ink-soft); }
+
+.hero > :last-child { margin-block-end: 0; }

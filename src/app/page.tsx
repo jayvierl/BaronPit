@@ -30,6 +30,9 @@ import { readHomeFeedPage } from "@/lib/post-reader";
 import { currentPatch, championList } from "@/lib/riot";
 import { PLATFORMS } from "@/lib/platforms";
 import { MatchCard } from "@/components/match-card";
+import { MatchReviewCard } from "@/components/match-review-card";
+import { ReviewHero } from "@/components/review-hero";
+import { EXAMPLE_REVIEW_EYEBROW, EXAMPLE_REVIEW_MATCH, EXAMPLE_REVIEW_QUESTION } from "@/lib/match-review";
 import { ChampionPortrait } from "@/components/champion-portrait";
 import { PostCard } from "@/components/post-card";
 import { socialRankLabel } from "@/lib/player-summary";
@@ -66,6 +69,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     <div className={`home-layout ${styles.home}`}>
       {user?.pilotActive && <PilotVisit kind="social"/>}
       <div className={styles.column}>
+        <ReviewHero platforms={PLATFORMS.map(({id,label}) => ({id,label}))}>
+          <MatchReviewCard match={EXAMPLE_REVIEW_MATCH} eyebrow={EXAMPLE_REVIEW_EYEBROW}
+            question={EXAMPLE_REVIEW_QUESTION} id="example-review"
+            discussHref={signInHref("/questions")} discussLabel="Open live discussion draft ↗"
+            sharePath="/#example-review" viewHref="#example-review" viewLabel="View the example match"/>
+        </ReviewHero>
         <header className={styles.heading}>
           <nav className={styles.feeds} aria-label="Feed selection">
             {([

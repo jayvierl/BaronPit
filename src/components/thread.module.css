@@ -150,3 +150,9 @@
   .tools { column-gap:.03rem; }
   .replyActions :is(button,summary) { min-height:44px; }
 }
+
+.breakdown { border: 1px solid var(--win-edge); background: var(--win-tint); border-radius: .8rem; padding: .7rem .85rem .8rem; margin-block: .5rem .2rem; }
+.breakdown p { margin: 0 0 .45rem; }
+.breakdown p:last-child { margin-bottom: 0; }
+.breakdownTitle { font-weight: 680; letter-spacing: .02em; }
+.breakdownNote { color: var(--ink-soft); font-size: .9rem; margin-block: .5rem .2rem; }
