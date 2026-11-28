@@ -32,7 +32,7 @@ import { PLATFORMS } from "@/lib/platforms";
 import { MatchCard } from "@/components/match-card";
 import { MatchReviewCard } from "@/components/match-review-card";
 import { ReviewHero } from "@/components/review-hero";
-import { EXAMPLE_REVIEW_EYEBROW, EXAMPLE_REVIEW_MATCH, EXAMPLE_REVIEW_QUESTION } from "@/lib/match-review";
+import { EXAMPLE_REVIEW_EYEBROW, EXAMPLE_REVIEW_HREF, EXAMPLE_REVIEW_MATCH, EXAMPLE_REVIEW_QUESTION } from "@/lib/match-review";
 import { ChampionPortrait } from "@/components/champion-portrait";
 import { PostCard } from "@/components/post-card";
 import { socialRankLabel } from "@/lib/player-summary";
@@ -41,9 +41,12 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { alternates: { canonical: "/" } };
 
-export default async function HomePage({ searchParams }: { searchParams: Promise<{ tab?: string; before?: string; summary?: string }> }) {
+export default async function HomePage({ searchParams }: { searchParams: Promise<{ tab?: string; before?: string; summary?: string; example?: string }> }) {
   const [params,user] = await Promise.all([searchParams,getCurrentUser()]);
   const activeTab: HomeFeedTab = params.tab === "following" ? "following" : "everyone";
+  // The example review's deep link (EXAMPLE_REVIEW_HREF): render the hero
+  // with the example already expanded so a pasted link opens it directly.
+  const exampleRequested = params.example === "1";
   const now = new Date();
   const before = readFeedCursor(params.before, activeTab, now.getTime());
   const requestedSummary = params.summary === "tonight";
@@ -69,11 +72,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     <div className={`home-layout ${styles.home}`}>
       {user?.pilotActive && <PilotVisit kind="social"/>}
       <div className={styles.column}>
-        <ReviewHero platforms={PLATFORMS.map(({id,label}) => ({id,label}))}>
+        <ReviewHero platforms={PLATFORMS.map(({id,label}) => ({id,label}))} initialExampleOpen={exampleRequested}>
           <MatchReviewCard match={EXAMPLE_REVIEW_MATCH} eyebrow={EXAMPLE_REVIEW_EYEBROW}
             question={EXAMPLE_REVIEW_QUESTION} id="example-review"
-            discussHref={signInHref("/questions")} discussLabel="Open live discussion draft ↗"
-            sharePath="/#example-review" viewHref="#example-review" viewLabel="View the example match"/>
+            discussHref={signInHref("/questions")} discussLabel="See live discussions ↗"
+            sharePath={EXAMPLE_REVIEW_HREF} shareLabel="Copy example link"
+            viewHref={EXAMPLE_REVIEW_HREF} viewLabel="Open this example"/>
         </ReviewHero>
         <header className={styles.heading}>
           <nav className={styles.feeds} aria-label="Feed selection">

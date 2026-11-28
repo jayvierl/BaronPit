@@ -62,7 +62,23 @@
   margin-top: 1.05rem;
 }
 
+/* The Riot ID field gets the most room. The name input's own flex shorthand
+   gives it a 0% basis, so on one line the region select (sized to its
+   longest label) and the two buttons took their full content widths and
+   the input kept only the leftover few dozen pixels — and because it could
+   shrink toward zero, the row never overflowed, so wrapping never moved
+   anything below it. The wrapper carries a real basis and minimum instead:
+   the input flexes to fill what the others leave, and when the row runs
+   out of room the select and buttons wrap below the input. */
+.fieldWrap {
+  display: flex;
+  flex: 1 1 16rem;
+  min-width: min(16rem, 100%);
+}
+
 .form select {
+  flex: 0 1 auto;
+  max-width: 100%;
   min-height: 44px;
   padding-inline: .6rem;
   border: 1px solid var(--border-strong);
@@ -71,6 +87,7 @@
 }
 
 .primary, .secondary {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;

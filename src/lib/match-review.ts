@@ -90,6 +90,12 @@ export const EXAMPLE_REVIEW_MATCH: MatchSummary = {
 
 export const EXAMPLE_REVIEW_EYEBROW = "EXAMPLE REVIEW · RANKED SOLO/DUO";
 
+/** The example's own deep link: the homepage with the example review already
+ * expanded, anchored to the card. The homepage reads `example=1` from its
+ * search params and renders the card open, so the link works when pasted
+ * fresh — never the homepage with the example hidden. */
+export const EXAMPLE_REVIEW_HREF = "/?example=1#example-review";
+
 /** The concept's exact question for the example card. The example stores no
  * vision score, so the generic selector would not name vision; the concept
  * wording is carried explicitly instead of inventing a stored stat. */

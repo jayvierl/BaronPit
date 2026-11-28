@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MatchReviewCard } from "./match-review-card";
-import { EXAMPLE_REVIEW_EYEBROW, EXAMPLE_REVIEW_MATCH, EXAMPLE_REVIEW_QUESTION } from "../lib/match-review";
+import { EXAMPLE_REVIEW_EYEBROW, EXAMPLE_REVIEW_HREF, EXAMPLE_REVIEW_MATCH, EXAMPLE_REVIEW_QUESTION } from "../lib/match-review";
 import type { MatchSummary } from "../lib/pure";
 
 const base: MatchSummary = {
@@ -55,7 +55,9 @@ describe("MatchReviewCard", () => {
   it("renders the labeled homepage example with the concept's exact line", () => {
     const html = render({
       match: EXAMPLE_REVIEW_MATCH, eyebrow: EXAMPLE_REVIEW_EYEBROW, question: EXAMPLE_REVIEW_QUESTION,
-      discussLabel: "Open live discussion draft", viewLabel: "View the example match",
+      discussHref: "/signin?next=%2Fquestions", discussLabel: "See live discussions ↗",
+      sharePath: EXAMPLE_REVIEW_HREF, shareLabel: "Copy example link",
+      viewHref: EXAMPLE_REVIEW_HREF, viewLabel: "Open this example",
     });
     expect(html).toContain("EXAMPLE REVIEW · RANKED SOLO/DUO");
     expect(html).toContain("Annie · Mid");
@@ -65,5 +67,16 @@ describe("MatchReviewCard", () => {
     expect(html).toContain("35%");
     expect(html).toContain("of team champion damage");
     expect(html).toContain("Positioning, vision, or how the team fights started?");
+    // Every example action names what it actually does: the discussion
+    // action leads to the live discussions (via sign-in), the copy action
+    // copies the example's own deep link, and the view link opens that same
+    // deep link — nothing claims a match page or a draft exists.
+    expect(html).toContain("See live discussions");
+    expect(html).toContain("Copy example link");
+    expect(html).toContain(`href="${EXAMPLE_REVIEW_HREF}"`);
+    expect(html).toContain("Open this example");
+    expect(html).not.toContain("View the example match");
+    expect(html).not.toContain("discussion draft");
+    expect(EXAMPLE_REVIEW_HREF).toBe("/?example=1#example-review");
   });
 });

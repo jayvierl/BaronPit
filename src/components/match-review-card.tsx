@@ -23,6 +23,7 @@ export function MatchReviewCard({
   discussHref,
   discussLabel = "Discuss this match",
   sharePath,
+  shareLabel,
   viewHref,
   viewLabel,
   id,
@@ -33,6 +34,7 @@ export function MatchReviewCard({
   discussHref?: string;
   discussLabel?: string;
   sharePath?: string;
+  shareLabel?: string;
   viewHref?: string;
   viewLabel?: string;
   id?: string;
@@ -63,7 +65,7 @@ export function MatchReviewCard({
       {(discussHref || sharePath || viewHref) && (
         <div className={styles.actions}>
           {discussHref && <Link className={styles.primary} href={discussHref} prefetch={false}>{discussLabel}</Link>}
-          {sharePath && <CopyMatchLink path={sharePath} className={styles.secondary} />}
+          {sharePath && <CopyMatchLink path={sharePath} className={styles.secondary} label={shareLabel} />}
           {viewHref && <Link className={styles.view} href={viewHref} prefetch={false}>{viewLabel ?? "View the match"} ↗</Link>}
         </div>
       )}
