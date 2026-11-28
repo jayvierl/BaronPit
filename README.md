@@ -7,6 +7,7 @@ This is the source for [baronpit.com](https://baronpit.com), Vercel project `war
 - [Muse’s original audit](AUDIT.md) records the initial problems. Some findings were already repaired when this source was recovered.
 - [Baron Pit round-two audit](BARON-ROUND-2-AUDIT.md) covers the production-source reconciliation and the six Baron feature checks. [Muse’s round-one handoff](CODEX-DEEP-AUDIT.md) is preserved for comparison.
 - [Engineering handoff](ENGINEERING-HANDOFF.md) records the newer findings, changes, measurements and release checks.
+- [Engineering runbook](docs/RUNBOOK.md) covers incident first response, rollback, database restore, kill switches and Riot key rotation.
 - [Muse’s original build brief](docs/league-social-app-build-brief-for-codex.md), [moderation research](docs/league-social-app-moderation-spec.md), [community feature research](docs/ward-party-40-features-deep-dive.md), and [second audit handoff](BARON-PIT-AUDIT-FOR-CODEX.md) give the product context behind the first release.
 - [Community safety operations](COMMUNITY-SAFETY.md) covers staffing, evidence, appeals, emergency controls and urgent paging.
 - [Duo and media operations](DUO-AND-MEDIA.md) covers verified first contact, existing public objects and upload prerequisites.

@@ -6,6 +6,7 @@ const inter = localFont({src:"./fonts/inter.woff2",variable:"--font-body",weight
 const space = localFont({src:"./fonts/spacegrotesk.woff2",variable:"--font-display",weight:"500 700",display:"swap"});
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ExploreMenu } from "@/components/explore-menu";
 import { PrimaryNavigation } from "@/components/primary-navigation";
 import navStyles from "@/components/navigation.module.css";
@@ -129,6 +130,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </div>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
