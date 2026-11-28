@@ -84,6 +84,31 @@
   padding-inline: var(--post-row-inline, clamp(.75rem, 2.35vw, 1.2rem));
 }
 .post.detailPost { padding-inline: 0; }
+/* Daily Call polls stand out from ordinary feed posts at a glance: the
+   violet win-tint wash, a gold rule down the start edge, a faint echo of
+   the hero's contour rings in the top corner, and the gold eyebrow above
+   the byline. Treatment only — the grid, padding and rhythm of the card
+   are the shared .post ones, and no other card type carries these. */
+.post.dailyCallPost {
+  background-color: var(--win-tint);
+  background-image: radial-gradient(circle at center,
+    transparent 0 30px, color-mix(in srgb, var(--accent) 16%, transparent) 30px 31.5px,
+    transparent 31.5px 54px, color-mix(in srgb, var(--accent) 16%, transparent) 54px 55.5px,
+    transparent 55.5px 78px, color-mix(in srgb, var(--accent) 16%, transparent) 78px 79.5px,
+    transparent 79.5px);
+  background-size: 10rem 10rem;
+  background-position: top -3.2rem right -3.2rem;
+  background-repeat: no-repeat;
+  box-shadow: inset 3px 0 0 var(--warn-ink);
+}
+.callEyebrow {
+  margin: 0 0 .3rem;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--warn-ink);
+}
 .post :global(.thread-main) { min-width:0; }
 .post :global(.thread-rail .line) { width: 1px; }
 .post .byline { min-height: 1.4rem; }

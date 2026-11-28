@@ -70,3 +70,30 @@ describe("Daily Call breakdown rendering", () => {
     expect(html).not.toMatch(/>\d+%<\/span>/);
   });
 });
+
+describe("Daily Call distinct treatment", () => {
+  it("marks the card in every poll state, breakdown included", () => {
+    for (const html of [
+      call({ closesAt, closed: false, finalized: false, breakdown }, [3, 1, 0, 0]),
+      call({ closesAt, closed: true, finalized: true, breakdown }, [3, 1, 0, 0]),
+      call({ closesAt, closed: true, finalized: true, breakdown: null }, [2, 0, 0, 0]),
+      call({ closesAt, closed: true, finalized: true, breakdown: null }, [0, 0, 0, 0]),
+    ]) {
+      expect(html).toContain("dailyCallPost");
+      expect(html).toContain("callEyebrow");
+    }
+  });
+
+  it("leaves ordinary polls in the plain feed treatment", () => {
+    const post = {
+      id: 8, authorId: 2, authorName: "River", authorHue: 200, authorFlair: null,
+      kind: "poll", body: "Best call here?",
+      roomId: null, roomSlug: null, roomName: null, status: "visible",
+      createdAt: "2026-11-26T13:00:00Z", reactions: {}, myReactions: [],
+      commentCount: 0, myVote: null, data: { options }, pollResults: [1, 0, 0, 0],
+    } as PostView;
+    const html = renderToStaticMarkup(createElement(PostCard, { post, patch: "16.23.1", signedIn: false }));
+    expect(html).not.toContain("dailyCallPost");
+    expect(html).not.toContain("callEyebrow");
+  });
+});

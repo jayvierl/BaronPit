@@ -4,7 +4,7 @@ import { renderToPipeableStream } from "react-dom/server";
 import { expect, it, vi } from "vitest";
 import type { MatchSummary } from "../../lib/pure";
 import { LatestGames, OlderGames } from "./match-history-view";
-import { matchFilterPath, olderMatchHref, olderMatchPage } from "./older-match-page";
+import { anchoredMatchHref, matchFilterPath, olderMatchHref, olderMatchPage } from "./older-match-page";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({}) }));
 
@@ -78,6 +78,24 @@ it("preserves legacy rows without guessing unknown metrics or displaying private
     expect(html).toContain(value);
   }
   for (const value of ["Private#OWN", "NaN", "Infinity", "Share as card", "Ask about this game", "Discuss this match"]) expect(html).not.toContain(value);
+});
+
+it("pins the copied match link to the canonical anchored match URL", async () => {
+  // Arriving on a bare profile, the current URL carries no match parameter;
+  // the share link must add it (plus the anchor) or a fresh tab opens the
+  // profile with the match collapsed.
+  expect(anchoredMatchHref("/player?platform=na1&riotId=Fixture%23NA1", "NA1_1"))
+    .toBe("/player?platform=na1&riotId=Fixture%23NA1&match=NA1_1#match-NA1_1");
+  // The review redirect's shape survives untouched: queue kept, match set.
+  expect(anchoredMatchHref("/player?platform=na1&riotId=Fixture%23NA1&queue=ranked", "NA1_1"))
+    .toBe("/player?platform=na1&riotId=Fixture%23NA1&queue=ranked&match=NA1_1#match-NA1_1");
+  // A stale match parameter inherited from another row is replaced, and the
+  // anchor follows the copied match, not the previously opened one.
+  expect(anchoredMatchHref("/player?platform=na1&riotId=Fixture%23NA1&match=NA1_99#match-NA1_99", "NA1_1"))
+    .toBe("/player?platform=na1&riotId=Fixture%23NA1&match=NA1_1#match-NA1_1");
+  // Every public row offers the copy action, expanded or not.
+  const html = await render(createElement(LatestGames, { ...base, matches: [game(1)] }));
+  expect(html).toContain("Copy match link");
 });
 
 it("paginates a hundred matches on the server and expands exactly the selected older row", async () => {

@@ -26,6 +26,21 @@ export function olderMatchHref(base: string, page: number, matchId?: string) {
   return url.pathname + url.search + url.hash;
 }
 
+/** The canonical shareable link for one match on a player page: the page URL
+ * with the `match` parameter set to this match and the `#match-<id>` anchor —
+ * the same parameter the "Review your last game" redirect sets, and the one
+ * the player page reads to mark the expanded row. A link copied from a row
+ * must carry it explicitly: the visitor's current URL only has it when they
+ * happened to arrive through a link that set it, so deriving the share link
+ * from the bare page URL silently drops the expansion. */
+export function anchoredMatchHref(base: string, matchId: string) {
+  const url = new URL(base, "https://profile.invalid");
+  url.searchParams.set("match", matchId);
+  const section = matchSectionId(matchId);
+  if (section) url.hash = section;
+  return url.pathname + url.search + url.hash;
+}
+
 export function matchFilterPath(base: string, queue: string, champion: string, role = "") {
   const url = new URL(base, "https://profile.invalid");
   if (queue) url.searchParams.set("queue", queue);

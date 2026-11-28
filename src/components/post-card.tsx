@@ -141,13 +141,14 @@ export function PostCard({
 
   if (withdrawn) return <p role="status">You withdrew this post. <a href="/me#submissions">View my submissions</a></p>;
   return (
-    <article className={`thread-post ${styles.post}${threadPage ? ` ${styles.detailPost}` : ""}`} aria-label={`Post by ${post.authorName}`}>
+    <article className={`thread-post ${styles.post}${threadPage ? ` ${styles.detailPost}` : ""}${post.dailyCall ? ` ${styles.dailyCallPost}` : ""}`} aria-label={`Post by ${post.authorName}`}>
       <div className="thread-rail">
         <AvatarProfileLink userId={post.authorId} className={styles.avatarLink}
           name={post.authorName} hue={post.authorHue} avatar={post.authorAvatar} size={44} mascot={post.dailyCallPayoffFor != null} />
         {showComments && <span className="line" aria-hidden="true" />}
       </div>
       <div className="thread-main">
+        {post.dailyCall && <p className={styles.callEyebrow}>Daily Call</p>}
         {post.repostedBy && <div className={styles.attribution}>
           <Link href={`/u/${post.repostedBy.id}`}>{post.repostedBy.name}</Link> reposted{" "}
           <Link href={threadHref} prefetch={false}>this {post.kind === "build" ? "build" : "discussion"}</Link>

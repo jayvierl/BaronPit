@@ -18,7 +18,7 @@ import { isPublicMatchQueue } from "@/lib/public-match-queues";
 import { gameCount, type MatchParticipantSummary, type MatchSummary } from "@/lib/pure";
 import { MatchFragmentFocus } from "./match-fragment-focus";
 import { MatchReviewCard } from "@/components/match-review-card";
-import { matchFilterPath, olderMatchHref, olderMatchPage } from "./older-match-page";
+import { anchoredMatchHref, matchFilterPath, olderMatchHref, olderMatchPage } from "./older-match-page";
 import styles from "./history.module.css";
 
 const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
@@ -218,6 +218,11 @@ function MatchRow({ match, patch, platform, lookupHref, expanded, discussion, ti
   from.searchParams.delete("fromPlayer");
   if (matchId) from.hash = matchId;
   const matchPath = from.pathname + from.search + from.hash;
+  // The copied share link must reopen this exact match expanded, so it pins
+  // the `match` parameter itself instead of inheriting whatever the current
+  // page URL happens to carry (matchPath above stays the return context for
+  // Discuss and participant links).
+  const sharePath = anchoredMatchHref(matchPath, match.matchId);
   const timelineUrl = new URL(lookupHref, "https://profile.invalid");
   timelineUrl.searchParams.set("timeline", "objectives");
   timelineUrl.searchParams.set("match", match.matchId);
@@ -241,7 +246,7 @@ function MatchRow({ match, patch, platform, lookupHref, expanded, discussion, ti
           link below the details stays the single entry point. */}
       <MatchReviewCard match={match}
         discussHref={expanded && reference ? questionHref(reference, undefined, { discuss: true, fromMatch: matchPath }) : undefined}
-        sharePath={isPublicMatchQueue(match.queueId) ? matchPath : undefined}/>
+        sharePath={isPublicMatchQueue(match.queueId) ? sharePath : undefined}/>
       <Teams match={match} platform={participantPlatform} fromMatch={fromMatch}/>
       {match.performanceRating !== undefined && <p className={styles.scoreReason}><strong>Why this score?</strong> {ratingExplanation(match)}</p>}
       <p className={styles.matchNumbers}>

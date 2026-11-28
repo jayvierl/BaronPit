@@ -13,20 +13,45 @@ import styles from "./review-hero.module.css";
  * `review=1`, so the player page routes the visitor to their latest
  * completed ranked match instead of a generic profile landing. The form
  * still works without JavaScript (a plain GET to /player), and nothing here
- * asks a guest to sign up: the review itself is public. */
+ * asks a guest to sign up: the review itself is public.
+ *
+ * The example review is deep-linkable: the homepage passes
+ * `initialExampleOpen` when its search params carry `example=1` (see
+ * EXAMPLE_REVIEW_HREF), so a shared link renders the card already expanded
+ * and the browser lands on its #example-review anchor. Toggling the example
+ * here mirrors the state back into the URL with history.replaceState —
+ * Next's shallow URL update — so copying the address bar at any moment
+ * yields a link that reopens exactly what the visitor sees, with no reload
+ * and no feed refetch. */
 export function ReviewHero({
   platforms,
+  initialExampleOpen = false,
   children,
 }: {
   platforms: { id: string; label: string }[];
+  initialExampleOpen?: boolean;
   children?: ReactNode;
 }) {
   const [riotId, setRiotId] = useState("");
   const [platform, setPlatform] = useState("na1");
   const [error, setError] = useState("");
-  const [exampleOpen, setExampleOpen] = useState(false);
+  const [exampleOpen, setExampleOpen] = useState(initialExampleOpen);
   const [lookingUp, startLookup] = useTransition();
   const router = useRouter();
+
+  function toggleExample() {
+    const next = !exampleOpen;
+    setExampleOpen(next);
+    const url = new URL(window.location.href);
+    if (next) {
+      url.searchParams.set("example", "1");
+      url.hash = "example-review";
+    } else {
+      url.searchParams.delete("example");
+      if (url.hash === "#example-review") url.hash = "";
+    }
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }
 
   function openReview(id: string, server: string) {
     setError("");
@@ -58,18 +83,20 @@ export function ReviewHero({
         }}
       >
         <input type="hidden" name="review" value="1" />
-        <PlayerNameInput
-          name="riotId" label="Riot ID" scope="players" region={platform} value={riotId}
-          onChange={value => {
-            setRiotId(value);
-            setError("");
-          }}
-          onSelect={suggestion => {
-            if (suggestion.kind === "player") openReview(suggestion.riotId, suggestion.platform);
-          }}
-          placeholder={platform === "na1" ? "Player name or Name#TAG" : "Name#TAG"}
-          required maxLength={50}
-        />
+        <div className={styles.fieldWrap}>
+          <PlayerNameInput
+            name="riotId" label="Riot ID" scope="players" region={platform} value={riotId}
+            onChange={value => {
+              setRiotId(value);
+              setError("");
+            }}
+            onSelect={suggestion => {
+              if (suggestion.kind === "player") openReview(suggestion.riotId, suggestion.platform);
+            }}
+            placeholder={platform === "na1" ? "Player name or Name#TAG" : "Name#TAG"}
+            required maxLength={50}
+          />
+        </div>
         <select name="platform" value={platform} onChange={event => setPlatform(event.target.value)} aria-label="Server">
           {platforms.map(p => (
             <option key={p.id} value={p.id}>{p.label}</option>
@@ -79,7 +106,7 @@ export function ReviewHero({
           {lookingUp ? "Looking up…" : "Look up a player ↗"}
         </button>
         <button type="button" className={styles.secondary} aria-expanded={exampleOpen}
-          onClick={() => setExampleOpen(open => !open)}>
+          onClick={toggleExample}>
           See an example
         </button>
       </form>
