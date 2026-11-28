@@ -170,6 +170,7 @@ footer.site .inner { display: grid; gap: 8px; }
 }
 button.chip { cursor: pointer; }
 button.chip:hover { background: var(--hover); }
+.chip.riot-verified { border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 
 /* --------------------------------- Posts --------------------------------- */
 

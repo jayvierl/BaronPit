@@ -28,7 +28,7 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 type Sql = NeonQueryFunction<false, false>;
 // Keep the deployed pre-generation bundle from replaying old DDL during a rolling release.
 const LEGACY_SCHEMA_REVISION = "baron-profile-avatar-20261126-1";
-const SCHEMA_GENERATION = 6;
+const SCHEMA_GENERATION = 7;
 let client: Sql | undefined;
 let ready: Promise<void> | undefined;
 
@@ -180,7 +180,7 @@ export function schemaStatements(sql: Sql, checkAfterLock = false) {
       PRIMARY KEY (puuid, queue, observed_day),
       CHECK (observed_day = (captured_at AT TIME ZONE 'UTC')::date)
     )`,
-  // Account <-> Riot player links. verified stays false until RSO ships.
+  // Account <-> Riot player links. verified flips on proven ownership (icon challenge or RSO).
     sql`CREATE TABLE IF NOT EXISTS wp_links (
     user_id INT NOT NULL REFERENCES wp_users(id) ON DELETE CASCADE,
     puuid TEXT NOT NULL REFERENCES wp_players(puuid) ON DELETE CASCADE,

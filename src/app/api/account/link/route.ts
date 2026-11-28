@@ -7,9 +7,10 @@ import { ensureRooms } from "@/lib/social";
 
 /**
  * Claim-style Riot ID linking: the account asserts ownership of a Riot ID.
- * This is NOT verified ownership — verified linking arrives with Riot Sign On
- * once Riot approves the production application (App 911877). The data model
- * keeps the two states separate (wp_links.verified).
+ * The claim starts unverified (wp_links.verified = false); ownership is
+ * proven afterwards — today via the profile-icon challenge
+ * (/api/account/link-verification), and via Riot Sign On once Riot approves
+ * the production application (App 911877). Both paths set the same flag.
  */
 export async function POST(req: Request) {
   const access = await requireUser(req);

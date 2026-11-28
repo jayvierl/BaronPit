@@ -1,6 +1,6 @@
 import { consumeWindow } from "./rate-window";
 import { publicAvatar, type AvatarRef } from "./avatar";
-import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { cache } from "react";
 import { TERMS_VERSION, isAgeBand, type AgeBand } from "./account-policy";
 import { safeReturnTo } from "./signin-return";
@@ -11,6 +11,17 @@ import { sendMagicLinkEmail } from "./auth-email";
 export const SESSION_COOKIE = "wp_session";
 const LINK_TTL_MS = 15 * 60 * 1000;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** Wrong-code submissions allowed before the sign-in row (link + code) is cancelled. */
+export const SIGN_IN_CODE_MAX_ATTEMPTS = 5;
+
+/** Zero-padded 6-digit rendering of a sign-in code value (0–999999). */
+export function formatSignInCode(value: number): string {
+  return String(Math.max(0, Math.min(999999, Math.trunc(value)))).padStart(6, "0");
+}
+
+function signInCodeHash(email: string, code: string): string {
+  return hash(`signin-code:${email}:${code}`);
+}
 
 export interface User {
   id: number;
@@ -77,15 +88,18 @@ export async function requestMagicLink(emailRaw: string, origin: string, clientI
   if (!process.env.RESEND_API_KEY) return { ok: false, error: "not_configured" };
   const digest = (s: string) => createHmac("sha256", process.env.AUTH_RATE_KEY || process.env.RESEND_API_KEY!).update(s).digest("hex");
   const token = randomBytes(32).toString("hex");
+  // The code is independent random material — never derived from the token —
+  // and only its hash is stored, on the same row, so either path consumes both.
+  const code = formatSignInCode(randomInt(0, 1_000_000));
   try {
     if (!await consumeWindow("email-ip:" + digest(clientIp), 20, 15)) return { ok: false, error: "rate_limited" };
     if (!await consumeWindow("email:" + digest(email), 3, 15)) return { ok: true };
     // The response for a sign-in request stays the same for unknown addresses.
-    const issued = await q`INSERT INTO wp_magic_links (email,token_hash,expires_at,may_create,return_to)
-      SELECT ${email},${hash(token)},${new Date(Date.now() + LINK_TTL_MS).toISOString()},${signup},${safeReturnTo(destination)}
+    const issued = await q`INSERT INTO wp_magic_links (email,token_hash,code_hash,expires_at,may_create,return_to)
+      SELECT ${email},${hash(token)},${signInCodeHash(email, code)},${new Date(Date.now() + LINK_TTL_MS).toISOString()},${signup},${safeReturnTo(destination)}
       WHERE ${signup} OR EXISTS (SELECT 1 FROM wp_users WHERE email=${email}) RETURNING id`;
     if (!issued.length) return { ok: true };
-    const sent = await sendMagicLinkEmail(email, origin + "/signin/confirm#" + token, signup);
+    const sent = await sendMagicLinkEmail(email, origin + "/signin/confirm#" + token, signup, code);
     if (!sent.ok) {
       await q`DELETE FROM wp_magic_links WHERE token_hash=${hash(token)}`;
       return { ok: false, error: sent.error === "not_configured" ? "not_configured" : "unavailable" };
@@ -94,23 +108,26 @@ export async function requestMagicLink(emailRaw: string, origin: string, clientI
   } catch { return { ok: false, error: "unavailable" }; }
 }
 
-export async function inspectMagicLink(token: unknown) {
-  if (!validToken(token)) return null;
+async function inspectLinkHash(tokenHash: string) {
   if (!dbAvailable()) throw new Error("Sign-in storage is unavailable");
   const [row] = await q`SELECT l.return_to,u.age_band,u.terms_version,u.terms_accepted_at FROM wp_magic_links l LEFT JOIN wp_users u ON u.email=l.email
-    WHERE l.token_hash=${hash(token)} AND l.used_at IS NULL AND l.expires_at>now() AND (l.may_create OR u.id IS NOT NULL)`;
+    WHERE l.token_hash=${tokenHash} AND l.used_at IS NULL AND l.expires_at>now() AND (l.may_create OR u.id IS NOT NULL)`;
   return row ? { needsConsent: !hasCurrentConsent(row),
     ageBand: isAgeBand(row.age_band) ? row.age_band : null, returnTo: safeReturnTo(row.return_to) } : null;
 }
 
-export async function redeemMagicLink(token: unknown, band: AgeBand | null): Promise<{ user: User; sessionToken: string; returnTo: string } | null> {
+export async function inspectMagicLink(token: unknown) {
   if (!validToken(token)) return null;
+  return inspectLinkHash(hash(token));
+}
+
+async function redeemLinkHash(tokenHash: string, band: AgeBand | null): Promise<{ user: User; sessionToken: string; returnTo: string } | null> {
   if (!dbAvailable()) throw new Error("Sign-in storage is unavailable");
   const sessionToken = randomBytes(32).toString("hex");
   const name = "Player " + randomBytes(4).toString("hex");
   const rows = await q`WITH consumed AS (
     UPDATE wp_magic_links l SET used_at=now()
-    WHERE token_hash=${hash(token)} AND used_at IS NULL AND expires_at>now()
+    WHERE token_hash=${tokenHash} AND used_at IS NULL AND expires_at>now()
       AND (l.may_create OR EXISTS(SELECT 1 FROM wp_users u WHERE u.email=l.email))
       AND (${band}::text IS NOT NULL OR EXISTS(SELECT 1 FROM wp_users u WHERE u.email=l.email
         AND u.age_band IN ('teen','adult') AND u.terms_version=${TERMS_VERSION} AND u.terms_accepted_at IS NOT NULL))
@@ -129,6 +146,83 @@ export async function redeemMagicLink(token: unknown, band: AgeBand | null): Pro
     FROM account RETURNING user_id
   ) SELECT account.*, consumed.return_to FROM account JOIN session ON session.user_id=account.id JOIN consumed ON consumed.email=account.email`;
   return rows.length ? { user: rowToUser(rows[0]), sessionToken, returnTo: safeReturnTo(rows[0].return_to) } : null;
+}
+
+export async function redeemMagicLink(token: unknown, band: AgeBand | null): Promise<{ user: User; sessionToken: string; returnTo: string } | null> {
+  if (!validToken(token)) return null;
+  return redeemLinkHash(hash(token), band);
+}
+
+export type SignInCodeFailure = "invalid" | "locked" | "expired";
+export type SignInCodeCheck =
+  | { ok: true; tokenHash: string }
+  | { ok: false; reason: SignInCodeFailure; attemptsLeft?: number };
+
+const normalizeEmail = (value: unknown): string => typeof value === "string" ? value.trim().toLowerCase() : "";
+
+/** Pre-auth rate limit for code verification, on the shared window store. */
+export async function signInCodeRateOk(emailRaw: unknown, clientIp: string): Promise<boolean> {
+  const email = normalizeEmail(emailRaw);
+  const digest = (s: string) => createHmac("sha256", process.env.AUTH_RATE_KEY || process.env.RESEND_API_KEY || "baron-signin-code").update(s).digest("hex");
+  if (!await consumeWindow("code-ip:" + digest(clientIp), 100, 15)) return false;
+  if (email && !await consumeWindow("code-email:" + digest(email), 40, 15)) return false;
+  return true;
+}
+
+/**
+ * Validate a 6-digit sign-in code against the newest outstanding row for the
+ * email. A match does not consume the row (redemption does); a miss is counted
+ * atomically, and the miss that reaches the cap cancels the row outright, so
+ * the link in the same email dies with the code.
+ */
+export async function checkSignInCode(emailRaw: unknown, codeRaw: unknown): Promise<SignInCodeCheck> {
+  const email = normalizeEmail(emailRaw);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || typeof codeRaw !== "string" || !/^\d{6}$/.test(codeRaw)) {
+    return { ok: false, reason: "invalid" };
+  }
+  if (!dbAvailable()) throw new Error("Sign-in storage is unavailable");
+  const [row] = await q`SELECT id, token_hash, code_hash, code_attempts FROM wp_magic_links
+    WHERE email=${email} AND used_at IS NULL AND expires_at>now() AND code_hash IS NOT NULL
+    ORDER BY id DESC LIMIT 1`;
+  if (!row) return { ok: false, reason: "expired" };
+  const expected = Buffer.from(String(row.code_hash), "hex");
+  const actual = Buffer.from(signInCodeHash(email, codeRaw), "hex");
+  if (expected.length === actual.length && timingSafeEqual(expected, actual)) {
+    return { ok: true, tokenHash: String(row.token_hash) };
+  }
+  const [bumped] = await q`UPDATE wp_magic_links SET code_attempts=code_attempts+1
+    WHERE id=${row.id} AND used_at IS NULL AND expires_at>now() RETURNING code_attempts`;
+  if (!bumped) return { ok: false, reason: "expired" };
+  const attempts = Number(bumped.code_attempts);
+  if (attempts >= SIGN_IN_CODE_MAX_ATTEMPTS) {
+    await q`UPDATE wp_magic_links SET used_at=now() WHERE id=${row.id} AND used_at IS NULL`;
+    return { ok: false, reason: "locked", attemptsLeft: 0 };
+  }
+  return { ok: false, reason: "invalid", attemptsLeft: SIGN_IN_CODE_MAX_ATTEMPTS - attempts };
+}
+
+export type SignInCodeInspect =
+  | { ok: true; needsConsent: boolean; ageBand: AgeBand | null; returnTo: string }
+  | { ok: false; reason: SignInCodeFailure; attemptsLeft?: number };
+
+export async function inspectSignInCode(emailRaw: unknown, codeRaw: unknown): Promise<SignInCodeInspect> {
+  const check = await checkSignInCode(emailRaw, codeRaw);
+  if (!check.ok) return check;
+  const info = await inspectLinkHash(check.tokenHash);
+  return info ? { ok: true, ...info } : { ok: false, reason: "expired" };
+}
+
+export type SignInCodeRedeem =
+  | { ok: true; user: User; sessionToken: string; returnTo: string }
+  | { ok: false; reason: SignInCodeFailure | "consent"; attemptsLeft?: number };
+
+export async function redeemSignInCode(emailRaw: unknown, codeRaw: unknown, band: AgeBand | null): Promise<SignInCodeRedeem> {
+  const check = await checkSignInCode(emailRaw, codeRaw);
+  if (!check.ok) return check;
+  const result = await redeemLinkHash(check.tokenHash, band);
+  if (result) return { ok: true, ...result };
+  const info = await inspectLinkHash(check.tokenHash);
+  return info ? { ok: false, reason: "consent" } : { ok: false, reason: "expired" };
 }
 
 export const getCurrentUser = cache(async function getCurrentUser(): Promise<User | null> {
@@ -167,5 +261,5 @@ export function rateLimit(userId: number, action: string, max: number, windowMin
 }
 
 export async function clearExpiredAuthData() {
-  await Promise.all([q`DELETE FROM wp_action_windows WHERE expires_at<now()`,q`DELETE FROM wp_magic_links WHERE expires_at<now()`,q`DELETE FROM wp_sessions WHERE expires_at<now()`,q`DELETE FROM wp_rate_events WHERE created_at<now()-interval '1 day'`]);
+  await Promise.all([q`DELETE FROM wp_action_windows WHERE expires_at<now()`,q`DELETE FROM wp_magic_links WHERE expires_at<now()`,q`DELETE FROM wp_sessions WHERE expires_at<now()`,q`DELETE FROM wp_rate_events WHERE created_at<now()-interval '1 day'`,q`DELETE FROM wp_link_verifications WHERE expires_at<now()`]);
 }

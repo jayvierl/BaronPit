@@ -8,6 +8,7 @@ import { ProfileReplies } from "./profile-replies";
 import { ProfileMatchDiscussions } from "./profile-match-discussions";
 import { ShareLink } from "@/components/share-link";
 import { RankBadge } from "@/components/rank-badge";
+import { RiotLinkBadge } from "@/components/riot-link-badge";
 import { WinStreak } from "@/components/win-streak";
 import { placedRank, socialRankLabel } from "@/lib/player-summary";
 import { notFound } from "next/navigation";
@@ -114,8 +115,8 @@ export default async function ProfilePage({ params, searchParams }: {
               <h1 className="profile-name">{profile.name}</h1>
               <WinStreak wins={player?.winStreak}/>
             </div>
-            {player && <p className={styles.riotId}>{player.gameName}#{player.tagLine}
-              <span> · {player.verified ? "Verified Riot link" : "Unverified Riot link"}</span></p>}
+            {player && <p className={styles.riotId}>{player.gameName}#{player.tagLine}{" "}
+              <RiotLinkBadge verified={player.verified} /></p>}
             {player?.verified && <Link href={statsHref} className={styles.identityRank} scroll={false}>
               <RankBadge tier={placedRank(player).tier}>{socialRankLabel(player)}</RankBadge>
             </Link>}
@@ -172,7 +173,7 @@ export default async function ProfilePage({ params, searchParams }: {
           const updated = playerDisplayTime(p.fetchedAt);
           return <section className={styles.account} key={p.puuid} aria-label={`${p.gameName}#${p.tagLine}`}>
             <h2>{p.gameName}#{p.tagLine}</h2>
-            <p className="meta">{p.platform.toUpperCase()} · {p.verified ? "Verified Riot link" : "Unverified Riot link"}</p>
+            <p className="meta">{p.platform.toUpperCase()} · <RiotLinkBadge verified={p.verified} /></p>
             {updated && <p className="meta">Last updated <time dateTime={updated.dateTime}>{updated.label}</time></p>}
             <PlayerStats player={p} variant="profile"/>
             <RecentResults matches={p.snapshot.matches} historyPath={href}/>

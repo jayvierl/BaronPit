@@ -3,6 +3,10 @@ import { recentSubmissions } from "@/lib/submissions";
 import { WithdrawSubmission } from "@/components/withdraw-submission";
 import { riotSignOnConfig } from "@/lib/riot-ownership";
 import { VerifyRiotButton } from "@/components/verify-riot";
+import { RiotLinkBadge } from "@/components/riot-link-badge";
+import { VerifyIconButton, type PendingIcon } from "@/components/verify-icon";
+import { pendingLinkVerification } from "@/lib/link-verification";
+import { currentPatch, profileIconUrl } from "@/lib/riot";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, isAdmin } from "@/lib/auth";
@@ -33,6 +37,12 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
   const [counts,reports,notices,linked,receipts] = await Promise.all([
     followCounts(user.id),myReports(user.id),myNotices(user.id),linkedPlayerIdentities(user.id),recentSubmissions(user.id,sp.beforeSubmission),
   ]);
+  const patch = await currentPatch();
+  const pendingByPuuid: Record<string, PendingIcon> = {};
+  await Promise.all(linked.filter((p) => !p.verified).map(async (p) => {
+    const pending = await pendingLinkVerification(user.id, p.puuid).catch(() => null);
+    if (pending) pendingByPuuid[p.puuid] = { iconId: pending.iconId, iconUrl: profileIconUrl(patch, pending.iconId), expiresAt: pending.expiresAt };
+  }));
 
   return (
     <div style={{ maxWidth: 760, margin: "0 auto" }}>
@@ -67,15 +77,19 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
         <h2 style={{ margin: "0 0 6px", fontSize: 18 }}>Linked Riot IDs</h2>
         {linked.length === 0 && <p className="meta">None linked yet. Linking keeps a player’s recent form handy and joins their top champion rooms. Public rank flair requires verified Riot ownership.</p>}
         {linked.map((p) => (
-          <div key={p.puuid} className="match-row">
-            <div style={{ flex: 1 }}>
-              <strong>{p.gameName}#{p.tagLine}</strong>
-              <div className="meta">{socialRankLabel(p, true)} · {p.platform.toUpperCase()} · {p.verified ? "Verified link" : "Unverified link"}{p.primary && " · Primary"}</div>
+          <div key={p.puuid}>
+            <div className="match-row">
+              <div style={{ flex: 1 }}>
+                <strong>{p.gameName}#{p.tagLine}</strong>{" "}
+                <RiotLinkBadge verified={p.verified} />
+                <div className="meta">{socialRankLabel(p, true)} · {p.platform.toUpperCase()}{p.primary && " · Primary"}</div>
+              </div>
+              <Link className="text-btn" href={`/player?platform=${p.platform}&riotId=${encodeURIComponent(`${p.gameName}#${p.tagLine}`)}`}>Stats →</Link>
+              {!p.verified && riotSignOnConfig() && <VerifyRiotButton puuid={p.puuid}/>}
+              {p.verified && !p.primary && <PrimaryPlayerButton puuid={p.puuid} />}
+              <UnlinkButton puuid={p.puuid} label={`${p.gameName}#${p.tagLine}`} />
             </div>
-            <Link className="text-btn" href={`/player?platform=${p.platform}&riotId=${encodeURIComponent(`${p.gameName}#${p.tagLine}`)}`}>Stats →</Link>
-            {!p.verified && riotSignOnConfig() && <VerifyRiotButton puuid={p.puuid}/>}
-            {p.verified && !p.primary && <PrimaryPlayerButton puuid={p.puuid} />}
-            <UnlinkButton puuid={p.puuid} label={`${p.gameName}#${p.tagLine}`} />
+            {!p.verified && <VerifyIconButton puuid={p.puuid} pending={pendingByPuuid[p.puuid] ?? null} />}
           </div>
         ))}
         <div style={{ marginTop: 12 }}>
