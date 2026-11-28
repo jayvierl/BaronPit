@@ -9,3 +9,4 @@ export const APP_DESCRIPTION =
 export const SUPPORT_EMAIL = "support@baronpit.com";
 export const SAFETY_EMAIL = "safety@baronpit.com";
 export const PRIVACY_EMAIL = "privacy@baronpit.com";
+export const SECURITY_EMAIL = "security@baronpit.com";
