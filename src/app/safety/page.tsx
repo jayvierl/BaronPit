@@ -1,10 +1,13 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { SAFETY_CENTER, SUPPORT_EMAIL } from "@/lib/brand";
+import { SAFETY_CENTER, SAFETY_EMAIL } from "@/lib/brand";
+const SAFETY_DESCRIPTION = "How Baron Pit handles reports, appeals, blocking and urgent safety problems — and how to reach the safety team.";
 export const metadata: Metadata = {
   title: SAFETY_CENTER,
-  description: "How Baron Pit handles reports, appeals, blocking and urgent safety problems — and how to reach the safety team.",
+  description: SAFETY_DESCRIPTION,
   alternates: { canonical: "/safety" },
+  openGraph: { title: SAFETY_CENTER, description: SAFETY_DESCRIPTION },
+  twitter: { title: SAFETY_CENTER, description: SAFETY_DESCRIPTION },
 };
 export default function SafetyCenter() {
   return <article className="card reading-page">
@@ -14,9 +17,9 @@ export default function SafetyCenter() {
       <Link href="/me/safety">Open my safety inbox</Link></section>
     <section><h2 className="section">If someone is in danger</h2>
       <p>If someone faces immediate danger, contact local emergency services. Use the child safety category for grooming, sextortion, trafficking or sexual content involving anyone under 18. A designated responder reviews urgent reports.</p>
-      <p>If you cannot sign in, send the link and approximate time to <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>. Keep explicit images, downloads, private identifiers and passwords out of email. You can also contact the U.S. <a href="https://www.missingkids.org/gethelpnow/cybertipline">CyberTipline</a>.</p></section>
+      <p>If you cannot sign in, send the link and approximate time to <a href={`mailto:${SAFETY_EMAIL}`}>{SAFETY_EMAIL}</a>. Keep explicit images, downloads, private identifiers and passwords out of email. You can also contact the U.S. <a href="https://www.missingkids.org/gethelpnow/cybertipline">CyberTipline</a>.</p></section>
     <section><h2 className="section">Stay in control of a conversation</h2><p>Blocking stops contact between the two accounts. Muting hides someone’s contributions from your view. You can use either without filing a report. Use the in-app duo request to decide whether to connect. Voice is optional.</p></section>
-    <section><h2 className="section">Contact the safety team</h2><p>For a locked account, a moderator complaint, a privacy request or an official inquiry, email <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>. Include the post link or case number if you have it.</p></section>
+    <section><h2 className="section">Contact the safety team</h2><p>For a locked account, a moderator complaint, a privacy request or an official inquiry, email <a href={`mailto:${SAFETY_EMAIL}`}>{SAFETY_EMAIL}</a>. Include the post link or case number if you have it.</p></section>
     <Link href="/guidelines">Community guidelines</Link> · <Link href="/terms">Terms</Link> · <Link href="/privacy">Privacy</Link>
   </article>;
 }

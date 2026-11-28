@@ -14,8 +14,8 @@ export async function GET() {
       championPatch: champions.patch,
       itemPatch: shop.patch,
       champions: champions.list.map(({ id, name, title, tags }) => ({ id, name, title, tags })),
-      items: shop.items.map(({ id, name, gold, effect, shop: inShop }) => ({
-        id, name, gold, shop: inShop, effect: effect.slice(0, 500),
+      items: shop.items.map(({ id, name, gold, effect, shop: inShop, variant }) => ({
+        id, name, gold, shop: inShop, variant, effect: effect.slice(0, 500),
       })),
     },
     { headers: { "Cache-Control": "public, s-maxage=300" } },

@@ -1,5 +1,6 @@
 import { isPlatform, type PlatformId } from "./platforms";
 import { safeMatchRiotId } from "./match-context";
+import { shopListed } from "./build-catalog";
 import bundledChampions from "./champion-catalog.json";
 
 /**
@@ -40,6 +41,7 @@ export interface TagItem {
   gold: number;
   effect: string;
   shop: boolean;
+  variant?: boolean;
 }
 
 export interface TagCatalog {
@@ -148,7 +150,7 @@ export function matchTagEntries(catalog: TagCatalog, query: string, limit = 6): 
   const squashed = normalizeTagName(query);
   return {
     champions: rank(catalog.champions, (c) => [c.id], squashed, limit),
-    items: rank(catalog.items.filter((i) => i.shop), () => [], squashed, limit),
+    items: rank(catalog.items.filter((i) => shopListed(i)), () => [], squashed, limit),
   };
 }
 

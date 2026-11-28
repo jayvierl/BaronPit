@@ -1,4 +1,15 @@
-import { APP_NAME, SUPPORT_EMAIL } from "@/lib/brand";
+import type { Metadata } from "next";
+import { APP_NAME, SAFETY_EMAIL } from "@/lib/brand";
+
+const TERMS_TITLE = "Terms of Use";
+const TERMS_DESCRIPTION = "The terms for using Baron Pit: accounts, your content, acceptable use and how to reach us with questions, appeals and safety reports.";
+export const metadata: Metadata = {
+  title: TERMS_TITLE,
+  description: TERMS_DESCRIPTION,
+  alternates: { canonical: "/terms" },
+  openGraph: { title: TERMS_TITLE, description: TERMS_DESCRIPTION },
+  twitter: { title: TERMS_TITLE, description: TERMS_DESCRIPTION },
+};
 
 export default function TermsPage() {
   return (
@@ -16,7 +27,7 @@ export default function TermsPage() {
       <h2 className="section">5. Liability</h2>
       <p>The service is provided “as is” without warranties. To the extent allowed by law, {APP_NAME} is not liable for indirect or consequential damages arising from use of the service.</p>
       <h2 className="section">6. Contact</h2>
-      <p>Questions, appeals, and safety reports: <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.</p>
+      <p>Questions, appeals, and safety reports: <a href={`mailto:${SAFETY_EMAIL}`}>{SAFETY_EMAIL}</a>.</p>
     </div>
   );
 }

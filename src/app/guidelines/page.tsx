@@ -1,5 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
-import { APP_NAME, SAFETY_CENTER, SUPPORT_EMAIL } from "@/lib/brand";
+import { APP_NAME, SAFETY_CENTER, SAFETY_EMAIL } from "@/lib/brand";
+
+const GUIDELINES_TITLE = "Community Guidelines";
+const GUIDELINES_DESCRIPTION = "The rules that keep Baron Pit worth visiting: play to win, play fair, play with respect — and how enforcement and appeals work.";
+export const metadata: Metadata = {
+  title: GUIDELINES_TITLE,
+  description: GUIDELINES_DESCRIPTION,
+  alternates: { canonical: "/guidelines" },
+  openGraph: { title: GUIDELINES_TITLE, description: GUIDELINES_DESCRIPTION },
+  twitter: { title: GUIDELINES_TITLE, description: GUIDELINES_DESCRIPTION },
+};
 
 export default function GuidelinesPage() {
   return (
@@ -25,7 +36,7 @@ export default function GuidelinesPage() {
         <li>Sanctions follow a ladder — notice → content removal → temporary restriction → suspension → permanent ban — but severe violations can skip straight to the end of it. “They started it” is not a defense; we judge each person&apos;s content on its own.</li>
         <li>Every action on your content comes with a <strong>reform card</strong>: you see what was actioned and which rule it broke, in your profile. Reporters also see outcomes — reporting here is never a shout into the void.</li>
         <li>New accounts start with extra filtering and limits on links. After your first 24 hours, you can repost up to 12 discussions or builds an hour to your followers.</li>
-        <li>Think we got it wrong? Open <Link href="/me/safety">your safety inbox</Link> to appeal, or contact <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> with your account email and the notice date.</li>
+        <li>Think we got it wrong? Open <Link href="/me/safety">your safety inbox</Link> to appeal, or contact <a href={`mailto:${SAFETY_EMAIL}`}>{SAFETY_EMAIL}</a> with your account email and the notice date.</li>
       </ul>
 
       <h2 className="section">The spirit of the house</h2>

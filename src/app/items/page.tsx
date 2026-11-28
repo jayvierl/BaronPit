@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { GameAssetIcon } from "@/components/game-asset-icon";
-import { currentBuildCatalog } from "@/lib/build-catalog";
+import { currentBuildCatalog, shopListed } from "@/lib/build-catalog";
 import { itemIconUrl, normalizeTagName } from "@/lib/game-tags";
 import { itemDirectoryFilters, itemDirectoryHref } from "@/lib/item-navigation";
 import { publicPatch } from "@/lib/patch-notes";
@@ -13,12 +13,16 @@ const pageSize = 24;
 export async function generateMetadata(): Promise<Metadata> {
   const { catalog } = await currentBuildCatalog();
   const patch = publicPatch(catalog.patch);
-  const shopCount = catalog.items.filter(item => item.shop).length;
+  const shopCount = catalog.items.filter(shopListed).length;
+  const title = "League of Legends Items — Item Directory, Costs & Effects";
+  const description = `Browse ${shopCount} Summoner's Rift items${patch ? ` on patch ${patch}` : ""}: ` +
+    "gold costs, effects and community builds for every item in the shop.";
   return {
-    title: "League of Legends Items — Item Directory, Costs & Effects",
-    description: `Browse ${shopCount} Summoner's Rift items${patch ? ` on patch ${patch}` : ""}: ` +
-      "gold costs, effects and community builds for every item in the shop.",
+    title,
+    description,
     alternates: { canonical: "/items" },
+    openGraph: { title, description },
+    twitter: { title, description },
   };
 }
 
@@ -27,7 +31,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
   const filters = itemDirectoryFilters(params);
   const query = normalizeTagName(filters.query);
   const items = catalog.items.filter(item => {
-    if (!filters.allItems && !item.shop) return false;
+    if (!filters.allItems && !shopListed(item)) return false;
     return !filters.query || String(item.id) === filters.query || (query.length > 0 && normalizeTagName(item.name).includes(query));
   }).sort((a, b) => a.name.localeCompare(b.name, "en") || a.id - b.id);
   const pages = Math.ceil(items.length / pageSize);

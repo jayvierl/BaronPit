@@ -194,7 +194,7 @@ describe("private discussion library", () => {
     `);
     const visible = await discussionMetadata("30");
     expect(visible.openGraph).toMatchObject({
-      title: expect.stringContaining("Ashe Support question"),
+      title: expect.stringContaining("Should I recall after dragon?"),
       description: "Should I recall after dragon? — Ashe · Victory · 2/3/12 KDA",
     });
     expect(JSON.stringify(visible)).not.toMatch(/private-id|private-name/);

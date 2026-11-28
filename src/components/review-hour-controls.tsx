@@ -44,6 +44,19 @@ export function LocalReviewTime({ start, end }: { start: string; end: string }) 
   );
 }
 
+/** The recurring weekly slot (Saturday 21:00 UTC) expressed in the
+ * viewer's timezone: the session's own start instant carries the local
+ * weekday and time of the weekly recurrence. */
+export function LocalReviewSchedule({ start }: { start: string }) {
+  const zone = useSyncExternalStore(subscribe, browserZone, () => "UTC");
+  const at = new Date(start);
+  const weekday = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: zone }).format(at);
+  const time = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric", minute: "2-digit", timeZone: zone, timeZoneName: "short",
+  }).format(at);
+  return <>Every {weekday} at {time} for one hour.</>;
+}
+
 export function HostAction({ start, role, own }: { start: string; role: ReviewRole; own: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);

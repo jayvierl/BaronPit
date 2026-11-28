@@ -132,11 +132,12 @@
 .runes { color: var(--ink-mid); font-size: .82rem; overflow-wrap: anywhere; }
 .discussionLinks { display:flex; flex-wrap:wrap; gap:.28rem .8rem; margin:.35rem 0; font-size:.82rem; }
 .discussionLinks a { color:var(--ink-mid); }
-.ballot { display: grid; gap: 4px; margin-block: .45rem .15rem; }
+.callTitle { margin: .05rem 0 .3rem; font-size: 1.02rem; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.ballot { display: grid; gap: 8px; margin-block: .45rem .15rem; }
 .ballot :global(.poll-option) {
   position: relative; display: flex; justify-content: space-between; align-items: center; gap: .55rem;
   min-height: 44px; width: 100%; min-width: 0; padding: .4rem .75rem;
-  border: 1px solid var(--border); border-radius: .7rem; background: transparent; color: var(--ink);
+  border: 1px solid var(--border); border-radius: .7rem; background: var(--field); color: var(--ink);
   text-align: start; font: 510 .9rem/1.3 var(--font-body),system-ui,sans-serif; overflow: hidden;
 }
 .ballot button:hover { background: var(--hover); }
@@ -148,6 +149,7 @@
 .tally summary { cursor: pointer; padding-block: .25rem; color: var(--ink-mid); }
 .tally details[open] { flex-basis: 100%; }
 .tally ul { margin: .05rem 0 .25rem; padding-inline-start: 1rem; }
+.tally li { margin-block: .18rem; }
 .clip { display:flex; gap:.7rem; align-items:center; min-height:48px; width:fit-content; max-width:100%;
   margin:.5rem 0; padding:.3rem .65rem; border:1px solid var(--border); border-radius:.65rem; color:var(--ink); font-weight:580; }
 .clip .play { display:grid; width:30px; height:30px; flex-shrink:0; place-items:center; border-radius:50%;

@@ -19,6 +19,12 @@ export interface Room {
 /* ---------------------------------- rooms --------------------------------- */
 
 const featuredSlugs = ["new-players", "off-meta-lab", "patch-meta", "general", "lfg-lobby"];
+/** Champion room names come from the champion's display name, never the
+ * Data Dragon id: "Aurelion Sol Mains", not "AurelionSol Mains". */
+export function championRoomName(championDisplayName: string): string {
+  return `${championDisplayName} Mains`;
+}
+
 export function featuredRooms<T extends Pick<Room, "slug">>(rooms: T[]): T[] {
   return featuredSlugs.flatMap(slug => rooms.filter(room => room.slug === slug));
 }
@@ -74,15 +80,16 @@ export function ensureRooms(): Promise<void> {
 
 async function seedRooms() {
   const { list, current } = await championCatalog();
-  const ids = list.map((c) => c.id);
   const rooms = [
     ...BROAD_ROOMS.map((room) => ({ ...room, kind: "general", champion_id: null })),
-    ...ids.map((id) => ({
-      slug: `champ-${id.toLowerCase()}`,
-      name: `${id} Mains`,
+    // Slugs keep the Data Dragon id; names and descriptions use the display
+    // name ("Aurelion Sol Mains", never the squashed internal "AurelionSol").
+    ...list.map((champion) => ({
+      slug: `champ-${champion.id.toLowerCase()}`,
+      name: championRoomName(champion.name),
       kind: "champion",
-      champion_id: id,
-      description: `For ${id} players: builds, matchups, clips, and questions.`,
+      champion_id: champion.id,
+      description: `For ${champion.name} players: builds, matchups, clips, and questions.`,
     })),
   ];
   await q`WITH seed AS MATERIALIZED (

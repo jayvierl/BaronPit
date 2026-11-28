@@ -1,5 +1,7 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { roomMetadata } from "@/lib/community-preview";
 import { BuildsLink } from "@/components/builds-link";
 import { ChampionPortrait } from "@/components/champion-portrait";
 import { Composer } from "@/components/composer";
@@ -26,6 +28,15 @@ import { ChampionRoomOverview, ChampionRoomTabs, championRoomHref, championRoomS
 import styles from "./room.module.css";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  try {
+    const [{ slug }, viewer] = await Promise.all([params, getCurrentUser()]);
+    return await roomMetadata(slug, viewer?.id);
+  } catch {
+    return { title: "Room unavailable", robots: { index: false, follow: false } };
+  }
+}
 
 export default async function RoomPage({ params, searchParams }: {
   params: Promise<{ slug: string }>;

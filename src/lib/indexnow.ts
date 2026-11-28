@@ -1,4 +1,4 @@
-import { buildCatalog } from "./build-catalog";
+import { buildCatalog, shopListed } from "./build-catalog";
 import { championCatalog } from "./riot";
 
 /**
@@ -64,7 +64,7 @@ export async function catalogPingUrls(): Promise<string[]> {
       urls.push(`${SITE_ORIGIN}/rooms/champ-${champion.id.toLowerCase()}`);
     }
     for (const item of builds.items) {
-      if (item.shop) urls.push(`${SITE_ORIGIN}/items/${item.id}`);
+      if (shopListed(item)) urls.push(`${SITE_ORIGIN}/items/${item.id}`);
     }
     return urls;
   } catch {

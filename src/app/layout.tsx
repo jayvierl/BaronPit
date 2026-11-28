@@ -102,6 +102,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
                   <circle cx="12" cy="7.8" r="3.6"/><path d="M4.5 20c.7-3.7 3.2-5.5 7.5-5.5s6.8 1.8 7.5 5.5"/>
                 </svg>
+                <span className="sr-only">Profile</span>
               </Link>
             </div>
           </div>

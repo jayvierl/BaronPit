@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { publicPatch } from "@/lib/patch-notes";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
@@ -7,6 +8,16 @@ import { currentBuildCatalog } from "@/lib/build-catalog";
 import { buildItemId } from "@/lib/build-sharing";
 import { examplePaths, pathFromPost } from "@/lib/build-comparison";
 import { BuildCompare } from "@/components/build-compare";
+
+const COMPARE_TITLE = "Compare Build Paths — League of Legends Builds";
+const COMPARE_DESCRIPTION = "Compare League of Legends build paths side by side: item order, total gold cost and what each path does better.";
+export const metadata: Metadata = {
+  title: COMPARE_TITLE,
+  description: COMPARE_DESCRIPTION,
+  alternates: { canonical: "/builds/compare" },
+  openGraph: { title: COMPARE_TITLE, description: COMPARE_DESCRIPTION },
+  twitter: { title: COMPARE_TITLE, description: COMPARE_DESCRIPTION },
+};
 
 export const dynamic = "force-dynamic";
 export default async function ComparePage({

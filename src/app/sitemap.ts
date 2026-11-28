@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { buildCatalog } from "@/lib/build-catalog";
+import { buildCatalog, shopListed } from "@/lib/build-catalog";
 import { SITE_ORIGIN } from "@/lib/indexnow";
 import { championCatalog } from "@/lib/riot";
 
@@ -38,7 +38,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     });
   }
   for (const item of builds.items) {
-    if (!item.shop) continue;
+    if (!shopListed(item)) continue;
     urls.push({ url: `${SITE_ORIGIN}/items/${item.id}`, changeFrequency: "monthly", priority: 0.5 });
   }
   return urls;

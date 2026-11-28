@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { profileMetadata } from "@/lib/community-preview";
 import { ChampionPortrait } from "@/components/champion-portrait";
 import { POST_TO_THE_PIT } from "@/lib/brand";
 import Link from "next/link";
@@ -37,6 +39,15 @@ import { SafetyReport } from "@/components/safety-report";
 import styles from "./profile.module.css";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  try {
+    const [{ id }, viewer] = await Promise.all([params, getCurrentUser()]);
+    return await profileMetadata(id, viewer?.id ?? null);
+  } catch {
+    return { title: "Profile unavailable", robots: { index: false, follow: false } };
+  }
+}
 
 function ProfileUnavailable({ retryHref }: { retryHref: string }) {
   return <section className={styles.empty}>

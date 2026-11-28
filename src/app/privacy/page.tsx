@@ -1,4 +1,15 @@
-import { SUPPORT_EMAIL } from "@/lib/brand";
+import type { Metadata } from "next";
+import { PRIVACY_EMAIL } from "@/lib/brand";
+
+const PRIVACY_TITLE = "Privacy Policy";
+const PRIVACY_DESCRIPTION = "What Baron Pit stores about your account, social content, Riot data and moderation records — and how to delete your account or ask a privacy question.";
+export const metadata: Metadata = {
+  title: PRIVACY_TITLE,
+  description: PRIVACY_DESCRIPTION,
+  alternates: { canonical: "/privacy" },
+  openGraph: { title: PRIVACY_TITLE, description: PRIVACY_DESCRIPTION },
+  twitter: { title: PRIVACY_TITLE, description: PRIVACY_DESCRIPTION },
+};
 
 export default function PrivacyPage() {
   return (
@@ -39,7 +50,7 @@ export default function PrivacyPage() {
       <p>While you are signed in, this tab can remember an unfinished post for 30 minutes so you can visit another thread and return. Drafts belong to the account and room where you wrote them. Posting or discarding clears the draft. Signing out invalidates these drafts across tabs.</p>
       <h2 className="section">Your choices</h2>
       <p>In My submissions, you can withdraw a post or reply at any time. Other players lose access to that conversation branch immediately. We clear ordinary withdrawn text and attachments from the post record. We retain the original when needed for a safety case and keep a private receipt showing its status.</p>
-      <p>You can unlink a Riot ID at any time from your profile, which removes its association with your account. To delete your account and social content, email <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> from your account email. Some case records may need to be preserved to address ongoing abuse, review an appeal or meet a legal obligation. Contact us about a suspected under-13 account so we can review it and remove data as required.</p>
+      <p>You can unlink a Riot ID at any time from your profile, which removes its association with your account. To delete your account and social content, email <a href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a> from your account email. Some case records may need to be preserved to address ongoing abuse, review an appeal or meet a legal obligation. Contact us about a suspected under-13 account so we can review it and remove data as required.</p>
       <h2 className="section">Third parties</h2>
       <p>We use the Riot Games API for player data, Resend to deliver sign-in emails, and Vercel/Neon for hosting and database services. When managed text screening is enabled, OpenAI processes submitted text fields for moderation. The screening request excludes account IDs, age bands and account email addresses. Game data displayed here belongs to Riot Games and the players who generated it.</p>
     </div>

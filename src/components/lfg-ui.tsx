@@ -203,7 +203,7 @@ export function LfgBoard({ listings, requests, fit, onlyFit, asOf, requestsOnly 
                           hour: "2-digit",
                           minute: "2-digit",
                           timeZoneName: "short",
-                          timeZone: "UTC",
+                          timeZone: viewZone,
                         })}
                       </span>
                     )}

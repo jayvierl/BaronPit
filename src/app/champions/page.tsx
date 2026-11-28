@@ -12,11 +12,15 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   const catalog = await championCatalog();
   const patch = publicPatch(catalog.patch);
+  const title = "League of Legends Champions — Directory, Abilities & Rooms";
+  const description = `Browse all ${catalog.list.length} League of Legends champions${patch ? ` on patch ${patch}` : ""}: ` +
+    "ability details, classes, community builds and a discussion room for every champion.";
   return {
-    title: "League of Legends Champions — Directory, Abilities & Rooms",
-    description: `Browse all ${catalog.list.length} League of Legends champions${patch ? ` on patch ${patch}` : ""}: ` +
-      "ability details, classes, community builds and a discussion room for every champion.",
+    title,
+    description,
     alternates: { canonical: "/champions" },
+    openGraph: { title, description },
+    twitter: { title, description },
   };
 }
 
