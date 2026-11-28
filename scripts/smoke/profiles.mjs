@@ -98,7 +98,7 @@ export async function checkPlayerProfiles(journey) {
     assert.equal(linkFrom(unlinked, session ? /^Link a Riot ID$/ : /^Look up a Riot ID$/), session ? "/me" : "/player");
     const feed = await journey("/", options);
     const verified = await journey(linkFrom(feed, /^Fixture Other$/), options);
-    assert.match(verified, /Verified Riot link/);
+    assert.match(verified, /riot-verified"[^>]*>Verified</);
     const overview = sectionFrom(verified, "League overview");
     checkMarkers(overview, ["Ranked Solo/Duo", "Platinum III · 64 LP", "80% win rate", "Ranked Flex", "Silver IV · 11 LP", "10% win rate", "Last 3 games", "Top role Support · 2 games", "Top champion Nami · 2 games"], "League overview");
     assert.equal(visibleText(overview).match(/Last 3 games/g)?.length, 1);
@@ -128,14 +128,14 @@ export async function checkPlayerProfiles(journey) {
     assert.match(lookup, /Fixture Support/);
 
     const claim = await journey(linkFrom(feed, /^Fixture Teammate$/), options);
-    assert.match(claim, /Unverified Riot link/);
+    assert.match(claim, />Unverified</);
     assert.match(claim, /Fixture win condition/);
     assert.doesNotMatch(claim, /aria-label="League (?:stats|overview)"/);
     const replies = await journey(linkFrom(claim, /^Replies$/), options);
     assert.match(replies, /Fixture followup/);
     assert.equal(linkFrom(replies, /View conversation/), "/post/521#reply-531");
     const claimStats = await journey(linkFrom(claim, /^Player stats$/), options);
-    assert.match(claimStats, /Unverified Riot link/);
+    assert.match(claimStats, />Unverified</);
     assert.match(claimStats, /aria-label="League stats"/);
     assert.match(claimStats, /Gold IV · 23 LP/);
     assert.match(claimStats, /62%/);

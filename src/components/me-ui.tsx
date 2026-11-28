@@ -62,7 +62,7 @@ export function LinkForm() {
         </p>
       )}
       <p className="meta">
-        This link is a self-declared claim. Ownership verification requires Riot Sign On.{" "}
+        This link starts as a self-declared claim. Prove it&apos;s yours with the profile-icon check under your linked IDs.{" "}
         {platform === "na1" && "Names without a tag use #NA1."}
       </p>
     </form>

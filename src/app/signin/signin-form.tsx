@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { TERMS_VERSION, isAgeBand, type AgeBand } from "@/lib/account-policy";
 import { AgeField, TermsField } from "./declaration";
+import { CodeSignInForm } from "./code-signin-form";
 import styles from "./signin.module.css";
 
 export function SignInForm({ returnTo, enrol, initialSignup, expired, accountId, knownAgeBand = null }: {
@@ -27,6 +28,7 @@ export function SignInForm({ returnTo, enrol, initialSignup, expired, accountId,
   const [email,setEmail] = useState("");
   const [busy,setBusy] = useState(false);
   const [sent,setSent] = useState(false);
+  const [showCode,setShowCode] = useState(false);
   const [error,setError] = useState(expired ? "That link expired. Request a fresh one." : "");
   async function submit(event:React.FormEvent) {
     event.preventDefault();
@@ -57,6 +59,14 @@ export function SignInForm({ returnTo, enrol, initialSignup, expired, accountId,
         {(!(signup || enrol) || isAgeBand(ageBand)) && <button type="submit" className="btn gold" disabled={!hydrated || busy || (enrol && !accepted)}>
           {busy ? "Working…" : enrol ? "Save and continue" : signup ? "Send my welcome link" : "Email me a sign-in link"}</button>}
       </form>}
+    {!enrol && (sent || showCode) && <div style={{ marginTop: 20 }}>
+      <p className="meta">{sent
+        ? "Stay in this browser instead: enter the 6-digit code from that email."
+        : "Enter the 6-digit code from a sign-in email you requested."}</p>
+      <CodeSignInForm key={email} initialEmail={email} />
+    </div>}
+    {!enrol && !sent && !showCode && <p><button className="text-btn" type="button" disabled={!hydrated || busy} onClick={() => setShowCode(true)}>
+      Have a code? Sign in with it instead</button></p>}
     <noscript><p>Enable JavaScript to {enrol ? "confirm community eligibility" : "request an email link"}.</p></noscript>
     {!enrol && <p><button className="text-btn" type="button" disabled={!hydrated || busy} onClick={()=>{setSignup(!signup);setError("");setSent(false);}}>
       {signup ? "Already have an account? Sign in" : "New here? Create an account"}</button></p>}

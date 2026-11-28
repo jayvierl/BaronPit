@@ -61,7 +61,8 @@ describe("profile tab queries", () => {
   });
   it("skips the post query when displaying linked players", async () => {
     const html = renderToStaticMarkup(await visit("players"));
-    expect(html).toContain("Unverified Riot link");
+    expect(html).toContain("Unverified");
+    expect(html).toContain('class="chip"');
     expect(html).toContain('aria-label="League stats"');
     expect(html).toContain("Ranked Solo/Duo");
     expect(html).toContain("No recent public games available.");

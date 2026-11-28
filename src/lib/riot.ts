@@ -145,6 +145,22 @@ async function riotJson(url: string, deadline = Date.now() + 6_000): Promise<{ s
   }
 }
 
+/**
+ * One fresh summoner-icon read for ownership checks. Never serves the profile
+ * cache: an icon change must be observed as Riot reports it right now.
+ */
+export async function fetchCurrentProfileIcon(platform: string, puuid: string): Promise<{ status: number; icon: number | null }> {
+  if (!isPlatform(platform) || !/^[A-Za-z0-9_-]{1,128}$/.test(puuid)) return { status: 400, icon: null };
+  const k = key();
+  if (!k) return { status: 503, icon: null };
+  const [cooldown] = await q`SELECT 1 FROM wp_action_windows WHERE bucket=${throttleBucket(k)} AND expires_at>now()`.catch(() => []);
+  if (cooldown || retryAt()) return { status: 429, icon: null };
+  const res = await riotJson(`https://${platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${encodeURIComponent(puuid)}`);
+  if (res.status !== 200) return { status: res.status, icon: null };
+  const icon = Number((res.body as { profileIconId?: unknown })?.profileIconId);
+  return Number.isSafeInteger(icon) && icon >= 0 ? { status: 200, icon } : { status: 502, icon: null };
+}
+
 /** One explicit timeline request uses the existing Riot key, HTTP budget and shared 429 deadline. */
 export async function readRiotTimeline(matchId: string) {
   const platform = matchRegion(matchId);
