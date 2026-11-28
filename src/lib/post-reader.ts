@@ -7,6 +7,7 @@ import { postDataProjection, questionDecisionPost } from "./match-card-projectio
 import { matchRegion, projectMatchContext, safeMatchRiotId } from "./match-context";
 import { isPublicMatchQueue, publicQueueSql } from "./public-match-queues";
 import { hasBaronCallOptions } from "./poll";
+import { publishedBreakdownForTitle } from "./daily-call-breakdown";
 import { briefingText, PATCH_PUBLISHER, publicPatch, storedNotesUrl } from "./patch-notes";
 import { queryRows } from "./db";
 import { HIDDEN_AUTHORS, canDisplayPost, visibleCommentsFor } from "./community-queries";
@@ -169,7 +170,7 @@ async function queryPosts(viewerId: number | null, filter: Filter, limit: number
     )
     SELECT p.id, p.author_id, p.kind, p.room_id, p.answered_at, p.reply_id, ${postDataProjection} AS data, p.body, p.status, p.replies_closed, p.created_at,
       ${filter.page ? `to_char(p.sort_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at,` : ""}
-      ballot.closes_at, ballot.tally AS daily_tally, ballot.closes_at <= now() AS daily_closed, payoff.post_id AS payoff_for,
+      ballot.closes_at, ballot.tally AS daily_tally, ballot.closes_at <= now() AS daily_closed, ballot.title AS daily_title, payoff.post_id AS payoff_for,
       p.sharer,p.shared_at,sh.display_name AS sharer_name,
       (p.status='visible' AND p.author_id IS DISTINCT FROM $1 AND ${repostableContent("$11")}) AS can_repost,
       (p.status='visible' AND ${repostableContent("$11")}) AS can_quote,
@@ -247,7 +248,11 @@ async function queryPosts(viewerId: number | null, filter: Filter, limit: number
       ...(flair && r.platform && r.riot_id ? {authorStatsHref:playerStatsHref(String(r.platform), String(r.riot_id))} : {}),
       ...(r.answered_at && r.reply_id ? { lastReplyAt: String(r.answered_at), lastReplyId: Number(r.reply_id) } : {}),
       ...(r.closes_at ? { dailyCall: { closesAt: new Date(String(r.closes_at)).toISOString(),
-        closed: r.daily_closed === true || dailyTally !== null, finalized: dailyTally !== null } } : {}),
+        closed: r.daily_closed === true || dailyTally !== null, finalized: dailyTally !== null,
+        // The editor breakdown is attached only once the call has closed, so
+        // an open poll can never leak it early.
+        ...((r.daily_closed === true || dailyTally !== null)
+          ? { breakdown: publishedBreakdownForTitle(typeof r.daily_title === "string" ? r.daily_title : null) } : {}) } } : {}),
       ...(r.payoff_for != null ? { dailyCallPayoffFor: Number(r.payoff_for) } : {}),
       ...(catalog && (r.kind === "card" || r.kind === "build") ? {itemPatch:catalog.patch,itemDetails:cardItems(catalog,r.kind === "card" ? record(data.match).items : data.items)} : {}),
       kind: String(r.kind), body: version ? briefingText(version, r.room_champion as string | null) : String(r.body), data, status: String(r.status), createdAt: String(r.created_at),

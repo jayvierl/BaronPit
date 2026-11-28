@@ -17,6 +17,7 @@ import { isPlatform, playerStatsHref } from "@/lib/platforms";
 import { isPublicMatchQueue } from "@/lib/public-match-queues";
 import { gameCount, type MatchParticipantSummary, type MatchSummary } from "@/lib/pure";
 import { MatchFragmentFocus } from "./match-fragment-focus";
+import { MatchReviewCard } from "@/components/match-review-card";
 import { matchFilterPath, olderMatchHref, olderMatchPage } from "./older-match-page";
 import styles from "./history.module.css";
 
@@ -234,6 +235,13 @@ function MatchRow({ match, patch, platform, lookupHref, expanded, discussion, ti
     <MatchGlance match={match} patch={patch}/>
     <details className={styles.gameDetails} open={expanded || undefined}>
       <summary>Match details<span className="sr-only"> for {match.champion} · <MatchTime playedAt={match.playedAt}/></span></summary>
+      {/* The review card sits above the scoreboard. On the anchored
+          (expanded) row it also carries the Discuss action, so the row never
+          shows two identical links; on other rows the standalone Discuss
+          link below the details stays the single entry point. */}
+      <MatchReviewCard match={match}
+        discussHref={expanded && reference ? questionHref(reference, undefined, { discuss: true, fromMatch: matchPath }) : undefined}
+        sharePath={isPublicMatchQueue(match.queueId) ? matchPath : undefined}/>
       <Teams match={match} platform={participantPlatform} fromMatch={fromMatch}/>
       {match.performanceRating !== undefined && <p className={styles.scoreReason}><strong>Why this score?</strong> {ratingExplanation(match)}</p>}
       <p className={styles.matchNumbers}>
@@ -266,7 +274,7 @@ function MatchRow({ match, patch, platform, lookupHref, expanded, discussion, ti
       {reference && (timeline ? <ObjectiveTimeline reference={reference} returnHref={returnUrl.pathname + returnUrl.search + returnUrl.hash}/> :
         <Link className={styles.timelineLink} prefetch={false} href={timelineUrl.pathname + timelineUrl.search + timelineUrl.hash}>View objective timeline</Link>)}
     </details>
-    {reference && <Link className={styles.discuss} prefetch={false}
+    {reference && !expanded && <Link className={styles.discuss} prefetch={false}
       href={questionHref(reference, undefined, { discuss: true, fromMatch: matchPath })}>Discuss this match</Link>}
   </div>;
 }

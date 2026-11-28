@@ -1,0 +1,124 @@
+/* Match review card — the concept's dark violet-tinted panel: thin violet
+   border, generous radius, gold eyebrow, one lavender primary action. All
+   colours come from the shared tokens so light mode stays on-system. */
+.card {
+  border: 1px solid var(--win-edge);
+  border-radius: 1.1rem;
+  background: var(--win-tint);
+  padding: 1.05rem 1.1rem 1.15rem;
+  margin-block-end: 1rem;
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0 0 .45rem;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  color: var(--warn-ink);
+}
+
+.champion {
+  margin: 0;
+  font-family: var(--font-display), var(--font-body), system-ui, sans-serif;
+  font-size: 1.45rem;
+  font-weight: 680;
+  letter-spacing: -.02em;
+  overflow-wrap: anywhere;
+}
+
+.resultLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .45rem .6rem;
+  margin: .5rem 0 0;
+  color: var(--ink-mid);
+  font-variant-numeric: tabular-nums;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: .18rem .6rem;
+  border-radius: 999px;
+  font-size: .82rem;
+  font-weight: 650;
+  color: var(--loss-ink);
+  background: var(--loss-tint);
+  border: 1px solid var(--loss-edge);
+}
+
+.pill[data-win] {
+  color: var(--accent-ink);
+  background: var(--win-tint);
+  border-color: var(--win-edge);
+}
+
+.standout {
+  margin: .9rem 0 0;
+  display: grid;
+  gap: .1rem;
+}
+
+.standout strong {
+  font-family: var(--font-display), var(--font-body), system-ui, sans-serif;
+  font-size: 2.4rem;
+  line-height: 1.05;
+  font-weight: 720;
+  letter-spacing: -.03em;
+}
+
+.standout span { color: var(--ink-mid); }
+
+.question {
+  margin-top: 1rem;
+  border-inline-start: 3px solid var(--accent);
+  padding-inline-start: .85rem;
+}
+
+.questionLead { margin: 0; font-weight: 680; }
+
+.questionOptions { margin: .15rem 0 0; color: var(--ink-mid); }
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .6rem .8rem;
+  margin-top: 1.05rem;
+}
+
+.actions [role="status"] { font-size: .85rem; color: var(--ink-mid); }
+
+.actions input {
+  flex: 1 1 12rem;
+  min-height: 40px;
+  padding-inline: .6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: .6rem;
+  background: var(--field);
+}
+
+.primary, .secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding-inline: 1rem;
+  border-radius: .7rem;
+  font-weight: 650;
+  font-size: .95rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.primary { background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent); }
+
+.primary:hover { text-decoration: none; opacity: .9; }
+
+.secondary { background: transparent; color: var(--ink); border: 1px solid var(--border-strong); }
+
+.secondary:hover { background: var(--hover); }
+
+.view { color: var(--accent-ink); font-weight: 580; }

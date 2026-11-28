@@ -1,4 +1,5 @@
 import type { CardItem } from "./build-catalog";
+import type { DailyCallBreakdown } from "./daily-call-breakdown";
 import type { AvatarRef } from "./avatar";
 import type { LeagueTier } from "./rank";
 import type { QuotedPost } from "./quote-types";
@@ -16,7 +17,7 @@ export interface PostView {
   itemPatch?: string;
   lastReplyAt?: string;
   lastReplyId?: number;
-  dailyCall?: { closesAt: string; closed: boolean; finalized: boolean };
+  dailyCall?: { closesAt: string; closed: boolean; finalized: boolean; breakdown?: DailyCallBreakdown | null };
   dailyCallPayoffFor?: number;
   canRepost?: boolean;
   canQuote?: boolean;
