@@ -27,6 +27,30 @@ function call(dailyCall: PostView["dailyCall"], pollResults: number[] | null) {
 
 const closesAt = "2026-11-27T13:00:00.000Z";
 
+describe("Daily Call title separation", () => {
+  it("renders the stored title line as its own heading, apart from the scenario body", () => {
+    const html = call({ closesAt, closed: false, finalized: false }, null);
+    expect(html).not.toContain("Defending two waves\nImagine");
+    expect(html).toMatch(/<p class="[^"]*callTitle[^"]*"><a[^>]*>Defending two waves<\/a><\/p>/);
+    expect(html).toContain('<p class="post-body"><a');
+    expect(html).toContain("Imagine the enemy has Baron buff.");
+  });
+
+  it("separates the results post title from its results sentence", () => {
+    const post = {
+      id: 8, authorId: 1, authorName: "Baron Pit", authorHue: 265, authorFlair: null,
+      kind: "text", body: "Daily Call results · Defending two waves\nSplit the wave-clear led with 67% (2 of 3 votes).",
+      roomId: null, roomSlug: null, roomName: null, status: "visible",
+      createdAt: "2026-11-27T13:00:00Z", reactions: {}, myReactions: [],
+      commentCount: 0, myVote: null, pollResults: null, data: { dailyCallPayoff: "2026-11-26" },
+    } as PostView;
+    const html = renderToStaticMarkup(createElement(PostCard, { post, patch: "16.23.1", signedIn: false }));
+    expect(html).not.toContain("Defending two waves\nSplit");
+    expect(html).toMatch(/<p class="[^"]*callTitle[^"]*"><a[^>]*>Daily Call results · Defending two waves<\/a><\/p>/);
+    expect(html).toContain("Split the wave-clear led with 67% (2 of 3 votes).");
+  });
+});
+
 describe("Daily Call breakdown rendering", () => {
   it("open poll: voting buttons, real count path, and no breakdown leak", () => {
     const html = call({ closesAt, closed: false, finalized: false, breakdown }, [3, 1, 0, 0]);

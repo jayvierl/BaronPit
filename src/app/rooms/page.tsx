@@ -11,11 +11,15 @@ import styles from "./rooms.module.css";
 
 export const dynamic = "force-dynamic";
 
+const ROOMS_TITLE = "Community Rooms — League of Legends Discussion & Champion Mains";
+const ROOMS_DESCRIPTION = "Browse Baron Pit's League of Legends community rooms: a room for every champion's mains, " +
+  "patch and meta discussion, off-meta builds, LFG and a welcome room for new players.";
 export const metadata: Metadata = {
-  title: "Community Rooms — League of Legends Discussion & Champion Mains",
-  description: "Browse Baron Pit's League of Legends community rooms: a room for every champion's mains, " +
-    "patch and meta discussion, off-meta builds, LFG and a welcome room for new players.",
+  title: ROOMS_TITLE,
+  description: ROOMS_DESCRIPTION,
   alternates: { canonical: "/rooms" },
+  openGraph: { title: ROOMS_TITLE, description: ROOMS_DESCRIPTION },
+  twitter: { title: ROOMS_TITLE, description: ROOMS_DESCRIPTION },
 };
 
 export default async function RoomsPage({searchParams}: {searchParams: Promise<{q?: string; limit?: string}>}) {

@@ -26,13 +26,13 @@ import { CommentSection } from "./comment-section";
 import { ActionFeedback, usePostAction } from "./post-action";
 import { SafetyReport } from "./safety-report";
 import { dailyCallBreakdownState, dailyCallVoteNote } from "@/lib/daily-call-breakdown";
+import { LocalTime } from "./local-time";
 import { RankBadge } from "./rank-badge";
 import { WinStreak } from "./win-streak";
 import { ThreadIcon } from "./thread-icon";
 import styles from "./thread.module.css";
 
 const reactionNames: Record<string, string> = { "🔥": "Fire", "❤️": "Like", "👏": "Applause", "🎯": "On target", "💜": "Purple heart", GG: "Good game" };
-const cutoffTime = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
 
 function closeDisclosure(event: KeyboardEvent<HTMLDetailsElement>) {
   if (event.key !== "Escape" || !event.currentTarget.open) return;
@@ -138,6 +138,13 @@ export function PostCard({
   const showPercentages = pollTotal > 0 && (myVote !== null || callClosed);
   const callBreakdown = post.dailyCall?.breakdown ?? null;
   const breakdownState = dailyCallBreakdownState({ closed: callClosed, totalVotes: pollTotal, breakdown: callBreakdown });
+  // Daily Call posts store their title as the body's first line
+  // ("<title>\n<scenario>"); render it as a heading so it does not run
+  // into the body text. Other posts keep their body exactly as written.
+  const callPost = !!post.dailyCall || typeof d.dailyCallPayoff === "string";
+  const bodyBreak = callPost ? post.body.indexOf("\n") : -1;
+  const callHeading = bodyBreak > 0 ? post.body.slice(0, bodyBreak) : null;
+  const callRest = callHeading !== null ? post.body.slice(bodyBreak + 1) : null;
 
   if (withdrawn) return <p role="status">You withdrew this post. <a href="/me#submissions">View my submissions</a></p>;
   return (
@@ -219,7 +226,11 @@ export function PostCard({
             {post.status === "held" && <strong>Awaiting moderator review</strong>}
           </div>
         )}
-        {post.body && <RichBody body={post.body} threadHref={threadPage ? undefined : threadHref} threadLinkClassName={styles.bodyLink}/>}
+        {callHeading !== null ? <>
+          <p className={styles.callTitle}>{threadPage ? callHeading
+            : <Link className={styles.bodyLink} href={threadHref} prefetch={false}>{callHeading}</Link>}</p>
+          {callRest && <RichBody body={callRest} threadHref={threadPage ? undefined : threadHref} threadLinkClassName={styles.bodyLink}/>}
+        </> : post.body && <RichBody body={post.body} threadHref={threadPage ? undefined : threadHref} threadLinkClassName={styles.bodyLink}/>}
         {post.quote && <QuotePreview original={post.quote.original}/>}
         {post.dailyCallPayoffFor && <p className={styles.discussionLinks}>
           <Link href={`/post/${post.dailyCallPayoffFor}`} prefetch={false}>Read the original Daily Call</Link>
@@ -261,7 +272,7 @@ export function PostCard({
               </details> : <span>{dailyCallVoteNote(callClosed, pollTotal)}</span>}
               {callCutoff && <span>{callClosed
                 ? post.dailyCall?.finalized ? "Final tally" : "Voting closed. Tally pending."
-                : <>Vote until <time dateTime={callCutoff}>{cutoffTime.format(new Date(callCutoff))}</time></>}</span>}
+                : <>Vote until <LocalTime iso={callCutoff} format={{ hour: "numeric", minute: "2-digit" }} /></>}</span>}
             </div>}
           </div>
         )}

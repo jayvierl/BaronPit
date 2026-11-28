@@ -37,11 +37,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const champ = catalog.list.find(entry => entry.id.toLowerCase() === id.toLowerCase());
   if (!champ) return {};
   const patch = publicPatch(catalog.patch);
+  const title = `${champ.name}, ${champ.title} — Abilities, Builds & Community`;
+  const description = `${champ.name} (${champ.title}) is a ${champ.tags.join(" / ")} champion in League of Legends. ` +
+    `Full ability details${patch ? ` for patch ${patch}` : ""}, community builds and the ${champ.name} mains room on Baron Pit.`;
   return {
-    title: `${champ.name}, ${champ.title} — Abilities, Builds & Community`,
-    description: `${champ.name} (${champ.title}) is a ${champ.tags.join(" / ")} champion in League of Legends. ` +
-      `Full ability details${patch ? ` for patch ${patch}` : ""}, community builds and the ${champ.name} mains room on Baron Pit.`,
+    title,
+    description,
     alternates: { canonical: `/champions/${champ.id}` },
+    openGraph: { title, description },
+    twitter: { title, description },
   };
 }
 

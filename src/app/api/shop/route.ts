@@ -1,8 +1,8 @@
-import { currentBuildCatalog } from "@/lib/build-catalog";
+import { currentBuildCatalog, shopListed } from "@/lib/build-catalog";
 
 export async function GET() {
   const { catalog, current } = await currentBuildCatalog();
-  const choices = catalog.items.filter(item => item.shop).map(({ id, name }) => ({ id, name }));
+  const choices = catalog.items.filter(shopListed).map(({ id, name }) => ({ id, name }));
   const items: Record<string, number> = {};
   for (const { name, id } of choices) items[name] ??= id;
   return Response.json(

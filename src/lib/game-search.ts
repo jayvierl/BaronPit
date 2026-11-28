@@ -1,4 +1,4 @@
-import { buildCatalog } from "./build-catalog";
+import { buildCatalog, shopListed } from "./build-catalog";
 import { championCatalog } from "./riot";
 import { visibleChampionRoomSlugs } from "./rooms";
 
@@ -24,7 +24,7 @@ export async function searchGameData(term: string, limit: 3 | 20) {
   const [champions, shop] = await Promise.all([championCatalog(), buildCatalog()]);
   const roster = catalogMatches(champions.list, term, limit);
   const roomSlugs = new Set(await visibleChampionRoomSlugs(roster.map(c => c.id)).catch(() => []));
-  const items = catalogMatches(shop.items.filter(item => item.shop), term, limit);
+  const items = catalogMatches(shop.items.filter(shopListed), term, limit);
   return {
     championPatch: champions.patch, itemPatch: shop.patch,
     champions: roster.map(c => ({ ...c, hasRoom: roomSlugs.has("champ-" + c.id.toLowerCase()) })),

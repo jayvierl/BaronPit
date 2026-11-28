@@ -5,7 +5,7 @@ import { reviewHosts } from "@/lib/community-review";
 import { isPilotHost } from "@/lib/pilot";
 import { signInHref } from "@/lib/signin-return";
 import { reviewHour, reviewHostStatus, reviewRoleLabel, reviewRoles } from "@/lib/review-hour-time";
-import { LocalReviewTime, HostAction } from "@/components/review-hour-controls";
+import { LocalReviewTime, LocalReviewSchedule, HostAction } from "@/components/review-hour-controls";
 import styles from "@/components/community-review.module.css";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +30,7 @@ export default async function ReviewHourPage() {
             <LocalReviewTime start={session.start} end={session.end} />
           </strong>
         </p>
-        <p className="meta">Every Saturday at 21:00 UTC for one hour. Open to support and bot carry players.</p>
+        <p className="meta"><LocalReviewSchedule start={session.start} /> Open to support and bot carry players.</p>
         <p className="meta">{reviewHostStatus(hosts)}</p>
         <div className={styles.links}>
           <a className="btn small" href={`/review-hour/calendar?day=${session.start.slice(0, 10)}`}>

@@ -231,7 +231,7 @@ describe("moderated decision questions", () => {
         expect(await acceptDecision(3,postId,reply.postId)).toBe(false);
         expect(await recordTrial(3,postId,reply.postId,"helped",null)).toBe(false);
       }
-      expect((await discussionMetadata(String(postId))).title).toContain("perspective");
+      expect((await discussionMetadata(String(postId))).title).toContain("Would Ashe save the cooldown for the next dragon?");
       await q`INSERT INTO wp_blocks(blocker_id,blocked_id) VALUES (5,2)`;
       expect(await readQuestionMatch(proof,2)).toBeNull();
       expect(await getPost(postId,{...owner,id:2})).toBeNull();

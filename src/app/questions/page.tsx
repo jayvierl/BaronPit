@@ -14,11 +14,15 @@ import styles from "./questions.module.css";
 
 export const dynamic = "force-dynamic";
 
+const QUESTIONS_TITLE = "Match Questions — League of Legends Decisions, Answered by Players";
+const QUESTIONS_DESCRIPTION = "Real in-game decisions from League of Legends matches, posted as questions and answered by other players. " +
+  "Browse unanswered questions by champion, role and patch, or see what the community decided.";
 export const metadata: Metadata = {
-  title: "Match Questions — League of Legends Decisions, Answered by Players",
-  description: "Real in-game decisions from League of Legends matches, posted as questions and answered by other players. " +
-    "Browse unanswered questions by champion, role and patch, or see what the community decided.",
+  title: QUESTIONS_TITLE,
+  description: QUESTIONS_DESCRIPTION,
   alternates: { canonical: "/questions" },
+  openGraph: { title: QUESTIONS_TITLE, description: QUESTIONS_DESCRIPTION },
+  twitter: { title: QUESTIONS_TITLE, description: QUESTIONS_DESCRIPTION },
 };
 type Query = Record<string, string | string[] | undefined>;
 function value(input: Query, key: string) {

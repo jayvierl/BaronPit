@@ -21,13 +21,23 @@ export function shareExcerpt(text: string) {
     .replace(/\p{Cc}|\p{Cf}/gu, " ").replace(/\s+/g, " ").trim();
 }
 
+/** Truncate at a word boundary, never mid-word, adding an ellipsis when cut. */
+export function truncateAtWordBoundary(text: string, max: number): string {
+  const chars = Array.from(text);
+  if (chars.length <= max) return text;
+  const head = chars.slice(0, max).join("");
+  const boundary = head.lastIndexOf(" ");
+  const cut = (boundary > 0 ? head.slice(0, boundary) : head).trimEnd();
+  return `${cut}…`;
+}
+
 /** Social handles are omitted from external unfurls, including Riot IDs containing spaces. */
 export function shareBodyExcerpt(body: string) {
   const text = parseBodySegments(body).map(segment => {
     if (segment.type === "text") return segment.text;
     return segment.tag.kind === "player" ? " " : segment.tag.name;
   }).join("");
-  return Array.from(shareExcerpt(text)).slice(0, 160).join("");
+  return truncateAtWordBoundary(shareExcerpt(text), 160);
 }
 
 export function shareMetadata(path: string, title: string, description: string, type: "article" | "website" | "profile"): Metadata {

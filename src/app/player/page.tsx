@@ -42,11 +42,15 @@ import { gameCount, earnedBadges } from "@/lib/pure";
 
 export const dynamic = "force-dynamic";
 
+const PLAYER_TITLE = "Player Stats — League of Legends Ranked Stats & Match History Lookup";
+const PLAYER_DESCRIPTION = "Look up any League of Legends player's ranked stats on Baron Pit: recent match history, " +
+  "champion performance, match ratings and performance trends across the last 20 games.";
 const PLAYER_METADATA: Metadata = {
-  title: "Player Stats — League of Legends Ranked Stats & Match History Lookup",
-  description: "Look up any League of Legends player's ranked stats on Baron Pit: recent match history, " +
-    "champion performance, match ratings and performance trends across the last 20 games.",
+  title: PLAYER_TITLE,
+  description: PLAYER_DESCRIPTION,
   alternates: { canonical: "/player" },
+  openGraph: { title: PLAYER_TITLE, description: PLAYER_DESCRIPTION },
+  twitter: { title: PLAYER_TITLE, description: PLAYER_DESCRIPTION },
 };
 
 /** A shared match link earns a social preview only when the match is public

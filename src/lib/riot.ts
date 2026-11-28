@@ -521,14 +521,21 @@ export interface ChampionInfo {
   title: string;
   tags: string[];
 }
+/** Display-name order: Data Dragon keys champions by internal id
+ * ("MonkeyKing"), which would sort Wukong under M. Every list shown to
+ * readers must order by the display name instead. */
+export function sortChampionsByName(list: ChampionInfo[]): ChampionInfo[] {
+  return [...list].sort((a, b) => a.name.localeCompare(b.name, "en") || a.id.localeCompare(b.id));
+}
 type Catalog = { patch: string; list: ChampionInfo[] };
+const bundledChampionCatalog: Catalog = { patch: bundledCatalog.patch, list: sortChampionsByName(bundledCatalog.list as ChampionInfo[]) };
 let champCache: Catalog | undefined;
 let retryCatalog: { patch: string; at: number } | undefined;
 let pendingList: { patch: string; task: Promise<Catalog> } | undefined;
 
 export async function championCatalog() {
   const patch = await confirmedPatch();
-  const previous = champCache ?? bundledCatalog;
+  const previous = champCache ?? bundledChampionCatalog;
   if (!patch) return { ...previous, current: false };
   if (champCache?.patch === patch) return { ...champCache, current: true };
   if (retryCatalog?.patch === patch && Date.now() < retryCatalog.at) return { ...previous, current: false };
@@ -558,9 +565,9 @@ async function readChampionList(patch: string): Promise<Catalog> {
       return { id, name, title, tags, ...(Number.isSafeInteger(numericId) && numericId > 0 ? { key: numericId } : {}) };
     });
     if (!list.length) throw new Error("Empty champion roster");
-    return (champCache = { patch, list });
+    return (champCache = { patch, list: sortChampionsByName(list) });
   } catch {
     retryCatalog = { patch, at: Date.now() + 60_000 };
-    return champCache ?? bundledCatalog;
+    return champCache ?? bundledChampionCatalog;
   }
 }

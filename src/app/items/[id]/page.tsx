@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { GameAssetIcon } from "@/components/game-asset-icon";
 import { BuildsLink } from "@/components/builds-link";
-import { buildCatalog } from "@/lib/build-catalog";
+import { buildCatalog, shopListed } from "@/lib/build-catalog";
 import { buildItemId, buildsHref } from "@/lib/build-sharing";
 import { readSearchReturn } from "@/lib/search-scopes";
 import { readItemDirectoryReturn } from "@/lib/item-navigation";
@@ -19,11 +19,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   if (!item) return {};
   const patch = publicPatch(catalog.patch);
   const effect = item.effect.replace(/\s+/g, " ").trim().slice(0, 150);
+  const title = `${item.name} — ${item.gold.toLocaleString("en-US")} Gold, Effects & Builds`;
+  const description = `${item.name} costs ${item.gold.toLocaleString("en-US")} gold${patch ? ` on patch ${patch}` : ""}. ` +
+    `${effect ? `${effect} ` : ""}See community builds with ${item.name} on Baron Pit.`;
   return {
-    title: `${item.name} — ${item.gold.toLocaleString("en-US")} Gold, Effects & Builds`,
-    description: `${item.name} costs ${item.gold.toLocaleString("en-US")} gold${patch ? ` on patch ${patch}` : ""}. ` +
-      `${effect ? `${effect} ` : ""}See community builds with ${item.name} on Baron Pit.`,
+    title,
+    description,
     alternates: { canonical: `/items/${item.id}` },
+    openGraph: { title, description },
+    twitter: { title, description },
   };
 }
 
@@ -55,7 +59,7 @@ export default async function ItemPage({ params, searchParams }: {
         <p style={{ whiteSpace: "pre-line" }}>
           {item.effect || "Riot lists no effect text for this item on this patch."}
         </p>
-        {!item.shop && <p className="meta">Outside the standard Summoner’s Rift shop.</p>}
+        {!shopListed(item) && <p className="meta">Outside the standard Summoner’s Rift shop.</p>}
       </section>
       <div className={styles.links}>
         {item.shop && <BuildsLink className="btn" href={buildsHref({ item: item.id, compose: true, from: searchReturn })}>Share a build with {item.name}</BuildsLink>}

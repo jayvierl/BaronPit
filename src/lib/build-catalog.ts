@@ -8,6 +8,17 @@ export interface ShopItem {
   gold: number;
   effect: string;
   shop: boolean;
+  /** A mode-variant duplicate of a same-name shop item (e.g. the Swiftplay
+   * copy of Abyssal Mask): purchasable in its mode, but not the canonical
+   * Summoner's Rift entry, so directory-style lists show only the canonical
+   * one. Build comparisons may still offer it, labelled by price and id. */
+  variant?: boolean;
+}
+
+/** Listed once in the Summoner's Rift shop directory: a shop item that is
+ * not a mode-variant duplicate of another entry. */
+export function shopListed(item: ShopItem): boolean {
+  return item.shop && !item.variant;
 }
 export interface RuneChoice {
   id: number;
@@ -30,6 +41,12 @@ export function parseBuildCatalog(patch: string, itemPayload: unknown, runePaylo
   if (!catalogPatch.test(patch) || object(itemPayload).version !== patch || !Array.isArray(runePayload))
     throw new Error("Invalid patch");
   const items: ShopItem[] = [];
+  // Mode variants (e.g. Swiftplay copies) repeat a shop item's name under a
+  // second id with mode-specific stats and price, and also claim map 11.
+  // The canonical Summoner's Rift entry is the one that belongs to the
+  // standard cross-map item set (maps 453 and 12); variants serve map 11
+  // only. Keep the raw signals so each name resolves to one shop entry.
+  const signals = new Map<number, { standard: boolean; aram: boolean; champion: string }>();
   for (const [key, entry] of Object.entries(object(object(itemPayload).data))) {
     const i = object(entry),
       gold = object(i.gold);
@@ -40,17 +57,41 @@ export function parseBuildCatalog(patch: string, itemPayload: unknown, runePaylo
       Number(gold.total) < 0
     )
       continue;
+    const maps = object(i.maps);
     items.push({
       id: Number(key),
       name: plain(i.name),
       gold: Number(gold.total),
       effect: plain(i.description) || plain(i.plaintext),
       shop:
-        object(i.maps)["11"] === true &&
+        maps["11"] === true &&
         gold.purchasable === true &&
         i.inStore !== false &&
         i.hideFromAll !== true,
     });
+    signals.set(Number(key), {
+      standard: maps["453"] === true,
+      aram: maps["12"] === true,
+      champion: plain(i.requiredChampion),
+    });
+  }
+  const shopByName = new Map<string, ShopItem[]>();
+  for (const item of items) {
+    if (!item.shop) continue;
+    const key = `${item.name.toLowerCase()}|${signals.get(item.id)?.champion ?? ""}`;
+    const group = shopByName.get(key);
+    if (group) group.push(item);
+    else shopByName.set(key, [item]);
+  }
+  for (const group of shopByName.values()) {
+    if (group.length < 2) continue;
+    const ranked = [...group].sort((a, b) => {
+      const sa = signals.get(a.id), sb = signals.get(b.id);
+      return Number(sb?.standard ?? false) - Number(sa?.standard ?? false)
+        || Number(sb?.aram ?? false) - Number(sa?.aram ?? false)
+        || a.id - b.id;
+    });
+    for (const loser of ranked.slice(1)) loser.variant = true;
   }
   const runes: RuneChoice[] = [];
   for (const entry of runePayload) {

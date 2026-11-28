@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { BuildsLink } from "@/components/builds-link";
 import { Composer } from "@/components/composer";
@@ -15,6 +16,16 @@ import { buildFeed } from "@/lib/social";
 import styles from "./builds.module.css";
 
 type Params = { champ?: string; item?: string; offmeta?: string; compose?: string; room?: string; from?: string | string[] };
+
+const BUILDS_TITLE = "League of Legends Builds — Community Builds & Counters";
+const BUILDS_DESCRIPTION = "Browse and share League of Legends builds from the community: starting items, full paths and the reasoning behind them, for every champion.";
+export const metadata: Metadata = {
+  title: BUILDS_TITLE,
+  description: BUILDS_DESCRIPTION,
+  alternates: { canonical: "/builds" },
+  openGraph: { title: BUILDS_TITLE, description: BUILDS_DESCRIPTION },
+  twitter: { title: BUILDS_TITLE, description: BUILDS_DESCRIPTION },
+};
 
 export const dynamic = "force-dynamic";
 

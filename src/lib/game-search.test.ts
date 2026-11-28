@@ -5,7 +5,7 @@ const { roster, items, rooms } = vi.hoisted(() => ({
   roster: vi.fn(), items: vi.fn(), rooms: vi.fn(),
 }));
 vi.mock("./riot", () => ({ championCatalog: roster }));
-vi.mock("./build-catalog", () => ({ buildCatalog: items }));
+vi.mock("./build-catalog", () => ({ buildCatalog: items, shopListed: (item: { shop: boolean; variant?: boolean }) => item.shop && !item.variant }));
 vi.mock("./rooms", () => ({ visibleChampionRoomSlugs: rooms }));
 
 describe("game results in community search", () => {
